@@ -791,7 +791,11 @@
     this._ellipse(cx, cy, r, r, 0, a0, a1, ccw);
   };
   function pathArg(ctx, p) { return p instanceof Path2D ? p._data(ctx) : ctx._p.d; }
-  function isEvenOdd(a) { return a === 'evenodd'; }
+  // QtWebKit 2.2's fill() and clip() take no winding-rule argument (added
+  // to WebKit in 2012): 'evenodd' is ignored and the rule stays nonzero.
+  // Chart.js 2 draws a bar border as fill('evenodd') of two nested rects,
+  // which therefore paints the whole bar in the opaque border colour.
+  function isEvenOdd(a) { return false; }
   C2._alpha = function () { return this._s.globalAlpha; };
   C2.fill = function (a, b) {
     var path = a instanceof Path2D ? a._data(this) : this._p.d, rule = a instanceof Path2D ? b : a;
@@ -801,8 +805,11 @@
   C2.stroke = function (a) {
     var path = a instanceof Path2D ? a._data(this) : this._p.d, s = this._s;
     if (!path.length) return;
+    // QtWebKit 2.2 strokes solid lines: setLineDash() has no visible
+    // effect in the 0.12.6 binary (tests/js/canvas), so the dash is kept
+    // for getLineDash() only.
     wk.canvasStroke.apply(null, [this.canvas, path, s.strokeStyle, this._alpha(), s.lineWidth, s.lineCap, s.lineJoin,
-      s.miterLimit, s.dash, s.dashOffset].concat(s.t));
+      s.miterLimit, [], 0].concat(s.t));
   };
   C2.clip = function (a, b) {
     var path = a instanceof Path2D ? a._data(this) : this._p.d, rule = a instanceof Path2D ? b : a;
@@ -821,7 +828,7 @@
     if (!fin(x, y, w, h)) return;
     var s = this._s;
     wk.canvasStroke.apply(null, [this.canvas, this._rectPath(x, y, w, h), s.strokeStyle, this._alpha(), s.lineWidth, s.lineCap,
-      s.lineJoin, s.miterLimit, s.dash, s.dashOffset].concat(s.t));
+      s.lineJoin, s.miterLimit, [], 0].concat(s.t));
   };
   C2.clearRect = function (x, y, w, h) {
     if (!fin(x, y, w, h)) return;

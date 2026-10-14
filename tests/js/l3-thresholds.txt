@@ -5,8 +5,8 @@
 # the measured value rounded down to the hundredth minus 0.01; raise a line when a
 # change improves a page, never lower it).
 
-canvas         *  0.82  # canvas text and arcs
-chart2         *  0.81  # Chart.js bars and axis labels
+canvas         *  0.82  # canvas painted as vector (the reference rasterises it)
+chart2         *  0.88  # canvas painted as vector (the reference rasterises it)
 debugjs        *  0.96
 docwrite       *  0.95
 footer-subst   *  0.89  # short page: glyph positions
