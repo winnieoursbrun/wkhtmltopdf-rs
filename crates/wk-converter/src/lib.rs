@@ -134,7 +134,11 @@ struct PageObject<'s> {
     loader_index: Option<usize>,
     /// The loader marked the object as skipped (`--load-error-handling skip`).
     skip: bool,
+    /// The loaded page, dropped once rendered: the DOM, styles and layout
+    /// are not needed to print, and freeing them lowers the peak memory.
     page: Option<WebPage>,
+    /// `url_key` of the loaded page's URL.
+    url: Option<String>,
     rendered: Option<RenderedPage>,
     slices: Vec<PageSlice>,
     /// Counted pages (`pageCount`; 0 with `pagesCount == false`).
@@ -408,6 +412,7 @@ impl Converter<'_, '_> {
                 loader_index: None,
                 skip: false,
                 page: None,
+                url: None,
                 rendered: None,
                 slices: Vec::new(),
                 page_count: 0,
@@ -529,6 +534,7 @@ impl Converter<'_, '_> {
         for o in objs.iter_mut() {
             if let Some(i) = o.loader_index {
                 o.page = pages[i].take();
+                o.url = o.page.as_ref().map(|p| url_key(&p.url));
                 o.skip = loader.resources[i].skip;
             }
         }
@@ -630,6 +636,7 @@ impl Converter<'_, '_> {
             }
             o.outline_doc = Some(outline.documents.len() - 1);
             o.rendered = Some(rendered);
+            o.page = None;
         }
         let copies = self.g.copies.max(1) as usize;
         let mut actual_pages = page_count * copies;
@@ -728,6 +735,7 @@ impl Converter<'_, '_> {
                     toc_changed |= changed;
                     o.local_links.extend(back_links(back));
                     o.rendered = Some(rendered);
+                    o.page = None;
                 }
                 actual_pages = page_count * copies;
                 toc_loader.clear_resources();
@@ -744,8 +752,8 @@ impl Converter<'_, '_> {
             if o.is_skipped() || o.settings.is_table_of_content {
                 continue;
             }
-            if let Some(p) = &o.page {
-                url_to_obj.insert(url_key(&p.url), d);
+            if let Some(u) = &o.url {
+                url_to_obj.insert(u.clone(), d);
             }
         }
         // Targets registered on other objects: (object, name, page, x, y).
