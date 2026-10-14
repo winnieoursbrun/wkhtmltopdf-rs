@@ -2,7 +2,7 @@ use super::ElementCx;
 use crate::color::{Color, ToColorColor as _};
 use anyrender::PaintScene;
 use blitz_dom::local_name;
-use kurbo::{Affine, BezPath, Cap, Circle, Join, Point, RoundedRect, Stroke, Vec2};
+use kurbo::{Affine, BezPath, Cap, Circle, Join, Stroke, Vec2};
 use peniko::Fill;
 use style::dom::TElement as _;
 
@@ -25,79 +25,41 @@ impl ElementCx<'_, '_> {
             self.style.clone_color().as_srgb_color()
         };
 
-        let width = self.frame.border_box.width();
-        let height = self.frame.border_box.height();
-        let min_dimension = width.min(height);
-        let scale = (min_dimension - 4.0).max(0.0) / 16.0;
-
-        let frame = self.frame.border_box.to_rounded_rect(scale * 2.0);
-
+        // wkhtmltopdf-rs: Qt's default style as QtWebKit 2.2 prints it
+        // (tests/parts/forms): a white box or circle (12 px across) with a
+        // 0.7 px black outline centred on its edge; the check mark and the
+        // radio dot use the element's colour.
+        let rect = self.frame.border_box;
+        let outline = Stroke::new(0.7);
+        let black = Color::from_rgba8(0, 0, 0, 255);
         match type_attr {
             Some("checkbox") => {
-                draw_checkbox(scene, checked, frame, self.transform, accent_color, scale);
+                let r = rect.to_rounded_rect(0.0);
+                scene.fill(Fill::NonZero, self.transform, Color::WHITE, None, &r);
+                scene.stroke(&outline, self.transform, black, None, &r);
+                if checked {
+                    let s = rect.width().min(rect.height()) / 13.0;
+                    let mut path = BezPath::new();
+                    path.move_to((3.0, 6.5));
+                    path.line_to((5.5, 9.0));
+                    path.line_to((10.0, 3.5));
+                    path.apply_affine(Affine::translate(Vec2 { x: rect.x0, y: rect.y0 }) * Affine::scale(s));
+                    let style = Stroke::new(2.0 * s).with_caps(Cap::Butt).with_join(Join::Miter);
+                    scene.stroke(&style, self.transform, accent_color, None, &path);
+                }
             }
             Some("radio") => {
-                let center = frame.center();
-                draw_radio_button(scene, checked, center, self.transform, accent_color, scale);
+                let center = rect.center();
+                let radius = (rect.width().min(rect.height()) - 1.0).max(0.0) / 2.0;
+                let ring = Circle::new(center, radius);
+                scene.fill(Fill::NonZero, self.transform, Color::WHITE, None, &ring);
+                scene.stroke(&outline, self.transform, black, None, &ring);
+                if checked {
+                    let dot = Circle::new(center, radius / 2.0);
+                    scene.fill(Fill::NonZero, self.transform, accent_color, None, &dot);
+                }
             }
             _ => {}
         }
-    }
-}
-
-fn draw_checkbox(
-    scene: &mut impl PaintScene,
-    checked: bool,
-    frame: RoundedRect,
-    transform: Affine,
-    accent_color: Color,
-    scale: f64,
-) {
-    if checked {
-        scene.fill(Fill::NonZero, transform, accent_color, None, &frame);
-        //Tick code derived from masonry
-        let mut path = BezPath::new();
-        path.move_to((2.0, 9.0));
-        path.line_to((6.0, 13.0));
-        path.line_to((14.0, 2.0));
-
-        path.apply_affine(Affine::translate(Vec2 { x: 2.0, y: 1.0 }).then_scale(scale));
-
-        let style = Stroke {
-            width: 2.0 * scale,
-            join: Join::Round,
-            miter_limit: 10.0,
-            start_cap: Cap::Round,
-            end_cap: Cap::Round,
-            dash_pattern: Default::default(),
-            dash_offset: 0.0,
-        };
-
-        scene.stroke(&style, transform, Color::WHITE, None, &path);
-    } else {
-        scene.fill(Fill::NonZero, transform, Color::WHITE, None, &frame);
-        scene.stroke(&Stroke::default(), transform, accent_color, None, &frame);
-    }
-}
-
-fn draw_radio_button(
-    scene: &mut impl PaintScene,
-    checked: bool,
-    center: Point,
-    transform: Affine,
-    accent_color: Color,
-    scale: f64,
-) {
-    let outer_ring = Circle::new(center, 8.0 * scale);
-    let gap = Circle::new(center, 6.0 * scale);
-    let inner_circle = Circle::new(center, 4.0 * scale);
-    if checked {
-        scene.fill(Fill::NonZero, transform, accent_color, None, &outer_ring);
-        scene.fill(Fill::NonZero, transform, Color::WHITE, None, &gap);
-        scene.fill(Fill::NonZero, transform, accent_color, None, &inner_circle);
-    } else {
-        const GRAY: Color = color::palette::css::GRAY;
-        scene.fill(Fill::NonZero, transform, GRAY, None, &outer_ring);
-        scene.fill(Fill::NonZero, transform, Color::WHITE, None, &gap);
     }
 }

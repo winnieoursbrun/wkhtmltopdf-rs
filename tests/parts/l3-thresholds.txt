@@ -26,7 +26,7 @@ cover-toc-pages        5  0.98
 cover-toc-pages        6  0.98
 dump-outline-escaping  1  0.97
 dump-outline-escaping  2  0.98
-forms                  *  0.06
+forms                  *  0.83  # select (combobox) not drawn; push button size
 grayscale              *  0.98
 hf-default-header      1  0.95
 hf-default-header      2  0.96
