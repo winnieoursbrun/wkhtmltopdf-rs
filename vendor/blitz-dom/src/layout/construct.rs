@@ -1303,7 +1303,42 @@ pub(crate) fn build_inline_layout_into(
 
                 let text =
                     text_transformer.transform(&data.content, parent_text_transform, builder);
-                builder.push_text(text);
+                // wkhtmltopdf-rs: `font-variant: small-caps` like WebKit
+                // 2012: characters with an uppercase form are uppercased
+                // and drawn at 0.7 of the font size (smallCapsFontData).
+                let small_caps = node.parent.and_then(|p| {
+                    let s = nodes[p].primary_styles()?;
+                    (s.get_font().font_variant_caps
+                        == style::computed_values::font_variant_caps::T::SmallCaps)
+                        .then(|| {
+                            let mut t = stylo_to_parley::style(p, &s);
+                            t.font_size *= 0.7;
+                            t
+                        })
+                });
+                match small_caps {
+                    None => builder.push_text(text),
+                    Some(small) => {
+                        let is_small = |c: char| c.is_lowercase() && c.to_uppercase().next() != Some(c);
+                        let mut rest = text;
+                        while let Some(c) = rest.chars().next() {
+                            let small_run = is_small(c);
+                            let end = rest
+                                .char_indices()
+                                .find(|&(_, ch)| is_small(ch) != small_run)
+                                .map_or(rest.len(), |(i, _)| i);
+                            let (seg, tail) = rest.split_at(end);
+                            if small_run {
+                                builder.push_style_span(small.clone());
+                                builder.push_text(&seg.to_uppercase());
+                                builder.pop_style_span();
+                            } else {
+                                builder.push_text(seg);
+                            }
+                            rest = tail;
+                        }
+                    }
+                }
             }
             NodeData::Comment { .. } => {
                 // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);

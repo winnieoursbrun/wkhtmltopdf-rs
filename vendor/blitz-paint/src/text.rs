@@ -251,6 +251,20 @@ pub(crate) struct DrawTextContext {
     path_scratch: Vec<NodeId>,
     deco_boxes: Vec<LineDecoration>,
     win_ascent_ratios: WinAscentCache,
+    /// wkhtmltopdf-rs: `text-overflow: ellipsis` on the inline root being
+    /// drawn: the width of its content box (layout units).
+    pub(crate) ellipsis_limit: Option<f64>,
+}
+
+/// wkhtmltopdf-rs: the glyph id and advance of `…` in `font` at `size`.
+fn ellipsis_glyph(font: &peniko::FontData, size: f32) -> Option<(u32, f64)> {
+    use skrifa::MetadataProvider;
+    let f = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
+    let gid = f.charmap().map('\u{2026}')?;
+    let adv = f
+        .glyph_metrics(skrifa::instance::Size::new(size), skrifa::instance::LocationRef::default())
+        .advance_width(gid)?;
+    Some((gid.to_u32(), adv as f64))
 }
 
 /// Resolve the CSS `text-decoration-thickness` to a device-pixel size.
@@ -579,7 +593,9 @@ pub(crate) fn stroke_text<'a>(
         path_scratch,
         deco_boxes,
         win_ascent_ratios,
+        ellipsis_limit,
     } = context;
+    let ellipsis_limit = *ellipsis_limit;
     stack.clear();
     path_scratch.clear();
     deco_boxes.clear();
@@ -597,6 +613,43 @@ pub(crate) fn stroke_text<'a>(
         // draws one decoration per box rather than one stepped segment per differently-sized
         // run. Clearing preserves the allocation for the next line and inline context.
         deco_boxes.clear();
+
+        // wkhtmltopdf-rs: `text-overflow: ellipsis` (WebKit 2012): on a line
+        // wider than the box, glyphs past (box width - ellipsis width) are
+        // not drawn and `…` follows the last drawn glyph, in the font of the
+        // line's first run.
+        let mut cut: Option<f64> = None;
+        let mut ellipsis: Option<(peniko::FontData, f32, u32, f64, Color, NodeId, f32)> = None;
+        let mut ellipsis_x = 0.0f64;
+        if let Some(limit) = ellipsis_limit {
+            if line.metrics().advance as f64 > limit + 0.01 {
+                let first = line.items().find_map(|item| match item {
+                    PositionedLayoutItem::GlyphRun(g) => Some(g),
+                    _ => None,
+                });
+                if let Some(g) = first {
+                    let run = g.run();
+                    if let Some((gid, adv)) = ellipsis_glyph(run.font(), run.font_size()) {
+                        cut = Some(limit - adv);
+                        let color = doc
+                            .get_node(g.style().brush.id)
+                            .and_then(|n| n.primary_styles())
+                            .map(|s| s.clone_color().as_srgb_color())
+                            .unwrap_or(Color::BLACK);
+                        ellipsis = Some((
+                            run.font().clone(),
+                            run.font_size(),
+                            gid,
+                            adv,
+                            color,
+                            g.style().brush.id,
+                            g.baseline(),
+                        ));
+                    }
+                }
+            }
+        }
+        let keep = |x: f32, advance: f32| cut.is_none_or(|c| (x + advance) as f64 <= c + 0.01);
 
         for item in line.items() {
             if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
@@ -672,7 +725,7 @@ pub(crate) fn stroke_text<'a>(
                             1.0,
                             offset,
                             glyph_xform,
-                            glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
+                            glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).map(|glyph| anyrender::Glyph {
                                 id: glyph.id as _,
                                 x: glyph.x,
                                 y: glyph.y,
@@ -682,6 +735,18 @@ pub(crate) fn stroke_text<'a>(
                 }
                 // wkhtmltopdf-rs: publish the run's source text before the glyphs are drawn.
                 crate::run_text::publish(source_text, &glyph_run, style.brush.id);
+                if cut.is_some() {
+                    let kept = glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).count();
+                    if let Some(end) =
+                        glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).map(|g| g.x + g.advance).last()
+                    {
+                        ellipsis_x = ellipsis_x.max(end as f64);
+                    }
+                    if let Some(mut rt) = crate::run_text::take() {
+                        rt.glyph_ranges.truncate(kept);
+                        crate::run_text::set(rt);
+                    }
+                }
                 scene.draw_glyphs(
                     font,
                     font_size,
@@ -693,7 +758,7 @@ pub(crate) fn stroke_text<'a>(
                     1.0, // alpha
                     transform,
                     glyph_xform,
-                    glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
+                    glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).map(|glyph| anyrender::Glyph {
                         id: glyph.id as _,
                         x: glyph.x,
                         y: glyph.y,
@@ -750,6 +815,27 @@ pub(crate) fn stroke_text<'a>(
                     }
                 }
             }
+        }
+
+        if let Some((font, size, gid, _adv, color, node_id, baseline)) = ellipsis.take() {
+            crate::run_text::set(crate::run_text::RunText {
+                text: "\u{2026}".to_string(),
+                glyph_ranges: vec![0..3],
+                node_id,
+            });
+            scene.draw_glyphs(
+                &font,
+                size,
+                !FONT_EMBOLDEN_ENABLED,
+                &[],
+                kurbo::Vec2::default(),
+                Fill::NonZero,
+                &anyrender::Paint::from(color),
+                1.0,
+                transform,
+                None,
+                std::iter::once(anyrender::Glyph { id: gid as _, x: ellipsis_x as f32, y: baseline }),
+            );
         }
 
         flush_line_decorations(
