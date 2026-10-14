@@ -60,6 +60,12 @@ fn cli_fixtures_are_byte_identical() {
             .output()
             .expect("run wkhtmltopdf");
         let want_out = fs::read(dir.join(format!("{name}.stdout"))).unwrap();
+        // The fixtures were captured on Linux. Like upstream (`#if defined(Q_OS_UNIX)`), the
+        // port only registers `--use-xserver` on Unix, so documentation listing it cannot match
+        // elsewhere.
+        if cfg!(not(unix)) && want_out.windows(11).any(|w| w == b"use-xserver") {
+            continue;
+        }
         let want_err = fs::read(dir.join(format!("{name}.stderr"))).unwrap();
         let want_rc: i32 =
             fs::read_to_string(dir.join(format!("{name}.rc"))).unwrap().trim().parse().unwrap();
