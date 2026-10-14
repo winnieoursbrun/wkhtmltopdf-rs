@@ -219,7 +219,74 @@ struct Caches {
     images: HashMap<(u64, u32, u32), Option<krilla::image::Image>>,
     /// Culling box ([`bbox`]) of every command of a display list, keyed by
     /// its address: computed once, not once per page and band.
-    bboxes: HashMap<usize, std::rc::Rc<Vec<Option<kurbo::Rect>>>>,
+    bboxes: HashMap<usize, std::rc::Rc<Culling>>,
+}
+
+/// Culling data of a display list: the [`bbox`] of every command, and the commands
+/// bucketed by vertical extent, so a band only visits the commands that may touch it
+/// instead of the whole document's.
+struct Culling {
+    bboxes: Vec<Option<kurbo::Rect>>,
+    /// Commands drawn in every band (no box, or a box with a NaN edge).
+    always: Vec<u32>,
+    /// Commands whose box overlaps each `BUCKET_H` px slice of the document; boxes
+    /// above the first or below the last slice are counted in it.
+    buckets: Vec<Vec<u32>>,
+}
+
+impl Culling {
+    const BUCKET_H: f64 = 256.0;
+    const MAX_BUCKETS: usize = 1 << 14;
+
+    fn new(commands: &DisplayList) -> Culling {
+        let mut bboxes = Vec::with_capacity(commands.len());
+        bboxes.extend(commands.iter().map(|c| bbox(&c.get())));
+        let bottom = bboxes.iter().flatten().map(|b| b.y1).filter(|y| y.is_finite()).fold(0.0f64, f64::max);
+        let n = ((bottom / Self::BUCKET_H) as usize + 1).min(Self::MAX_BUCKETS);
+        let mut c = Culling { bboxes: Vec::new(), always: Vec::new(), buckets: vec![Vec::new(); n] };
+        for (i, b) in bboxes.iter().enumerate() {
+            match b {
+                Some(b) if !b.y0.is_nan() && !b.y1.is_nan() => {
+                    let (lo, hi) = c.bucket_range(b.y0, b.y1);
+                    for bucket in &mut c.buckets[lo..=hi] {
+                        bucket.push(i as u32);
+                    }
+                }
+                _ => c.always.push(i as u32),
+            }
+        }
+        for bucket in &mut c.buckets {
+            bucket.shrink_to_fit();
+        }
+        c.bboxes = bboxes;
+        c
+    }
+
+    /// Buckets covering `[y0, y1]` (clamped to the existing ones, so that two
+    /// overlapping ranges always share a bucket).
+    fn bucket_range(&self, y0: f64, y1: f64) -> (usize, usize) {
+        let last = self.buckets.len() - 1;
+        let at = |y: f64| ((y / Self::BUCKET_H).floor().max(0.0) as usize).min(last);
+        let (a, b) = (at(y0), at(y1));
+        (a.min(b), a.max(b))
+    }
+
+    /// Commands that may be drawn in the band `[y0, y1]`, in display-list order.
+    fn candidates(&self, y0: f64, y1: f64) -> Vec<u32> {
+        let mut out = self.always.clone();
+        if !y0.is_nan() && !y1.is_nan() {
+            let (lo, hi) = self.bucket_range(y0, y1);
+            for bucket in &self.buckets[lo..=hi] {
+                out.extend_from_slice(bucket);
+            }
+        } else {
+            // Not reached (bands are finite); keep the exact behaviour anyway.
+            out = (0..self.bboxes.len() as u32).collect();
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
 }
 
 fn tf(a: Affine) -> Transform {
@@ -443,8 +510,8 @@ fn bbox(cmd: &RenderCommand) -> Option<kurbo::Rect> {
 
 struct Replayer<'a> {
     page: &'a RenderedPage,
-    /// [`bbox`] of each command of the page's scene.
-    bboxes: &'a [Option<kurbo::Rect>],
+    /// Culling boxes of the page's scene.
+    culling: &'a Culling,
     caches: &'a mut Caches,
     image_dpi: u32,
     gray: bool,
@@ -593,8 +660,10 @@ impl Replayer<'_> {
     fn replay(&mut self, surface: &mut Surface, commands: &DisplayList, y0: f32, y1: f32) {
         let (y0d, y1d) = (f64::from(y0), f64::from(y1));
         let mut layers: Vec<usize> = vec![];
-        for (idx, cmd) in commands.iter().enumerate() {
-            if let Some(b) = self.bboxes[idx] {
+        for idx in self.culling.candidates(y0d, y1d) {
+            let idx = idx as usize;
+            let cmd = commands.get(idx).expect("culled command");
+            if let Some(b) = self.culling.bboxes[idx] {
                 let is_text = matches!(cmd, Command::Other(c) if matches!(**c, RenderCommand::GlyphRun(_)));
                 if b.y1 < y0d || b.y0 > y1d || (is_text && (b.y0 < y0d || b.y0 >= y1d)) {
                     continue;
@@ -748,17 +817,11 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
     let bboxes = caches
         .bboxes
         .entry(commands as *const DisplayList as usize)
-        .or_insert_with(|| {
-            // Sized up front and shared as is: collecting into an `Rc<[_]>` built a
-            // doubling `Vec` first, then copied it.
-            let mut v = Vec::with_capacity(commands.len());
-            v.extend(commands.iter().map(|c| bbox(&c.get())));
-            std::rc::Rc::new(v)
-        })
+        .or_insert_with(|| std::rc::Rc::new(Culling::new(commands)))
         .clone();
     let mut r = Replayer {
         page: band.page,
-        bboxes: &bboxes,
+        culling: &bboxes,
         caches,
         gray: opts.grayscale,
         image_dpi: opts.image_dpi,
