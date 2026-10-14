@@ -19,7 +19,8 @@ use boa_engine::object::FunctionObjectBuilder;
 use boa_engine::object::builtins::JsArray;
 use boa_engine::property::PropertyDescriptor;
 use boa_engine::{
-    Context, Finalize, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsValue, NativeFunction, Trace,
+    Context, Finalize, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsValue, NativeFunction,
+    Trace,
 };
 
 use crate::host::{Host, with_host};
@@ -477,10 +478,8 @@ fn text_content_set(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRe
     let v = args.get_or_undefined(0);
     let text = if v.is_null() { String::new() } else { v.to_string(ctx)?.to_std_string_escaped() };
     with_host(|h| {
-        let is_char = matches!(
-            h.doc.get_node(id).map(|n| &n.data),
-            Some(NodeData::Text(_) | NodeData::Comment { .. })
-        );
+        let is_char =
+            matches!(h.doc.get_node(id).map(|n| &n.data), Some(NodeData::Text(_) | NodeData::Comment { .. }));
         if is_char {
             set_char_data(h, id, &text);
         } else if id != root(h) {
@@ -533,7 +532,12 @@ fn insertion_nodes(h: &Host, child: NodeId) -> Vec<NodeId> {
 /// Shared insertion: `anchor = None` appends. Fragments are flattened.
 /// Inserted, connected `<script>` elements run (jQuery's DOMEval relies on
 /// this).
-pub(crate) fn insert(parent_id: NodeId, child: NodeId, anchor: Option<NodeId>, ctx: &mut Context) -> JsResult<()> {
+pub(crate) fn insert(
+    parent_id: NodeId,
+    child: NodeId,
+    anchor: Option<NodeId>,
+    ctx: &mut Context,
+) -> JsResult<()> {
     let scripts = with_host(|h| {
         if ancestors_incl(h, parent_id).contains(&child) {
             return Err(dom_err("HierarchyRequestError", "the new child is an ancestor of the parent"));
@@ -849,7 +853,9 @@ fn set_attribute(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResul
     if name.is_empty() || name.contains(|c: char| c.is_whitespace() || c == '<' || c == '>' || c == '"') {
         return Err(dom_err("InvalidCharacterError", "invalid attribute name"));
     }
-    let name = if with_host(|h| h.doc.get_node(id).and_then(|n| n.element_data()).is_some_and(|e| e.name.ns == ns!(html))) {
+    let name = if with_host(|h| {
+        h.doc.get_node(id).and_then(|n| n.element_data()).is_some_and(|e| e.name.ns == ns!(html))
+    }) {
         name.to_ascii_lowercase()
     } else {
         name
@@ -1029,7 +1035,9 @@ fn get_elements_by_tag_name(this: &JsValue, args: &[JsValue], ctx: &mut Context)
     let id = id_of(this)?;
     let name = arg_str(args, 0, ctx)?.to_ascii_lowercase();
     let ids = with_host(|h| {
-        element_ids_matching(h, id, &|h, d| name == "*" || local(h, d).is_some_and(|l| l.eq_ignore_ascii_case(&name)))
+        element_ids_matching(h, id, &|h, d| {
+            name == "*" || local(h, d).is_some_and(|l| l.eq_ignore_ascii_case(&name))
+        })
     });
     Ok(array_of(ids, ctx))
 }
@@ -1057,7 +1065,8 @@ fn get_elements_by_class_name(this: &JsValue, args: &[JsValue], ctx: &mut Contex
 fn get_elements_by_name(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let id = id_of(this)?;
     let want = arg_str(args, 0, ctx)?;
-    let ids = with_host(|h| element_ids_matching(h, id, &|h, d| get_attr(h, d, "name").as_deref() == Some(&want)));
+    let ids =
+        with_host(|h| element_ids_matching(h, id, &|h, d| get_attr(h, d, "name").as_deref() == Some(&want)));
     Ok(array_of(ids, ctx))
 }
 
@@ -1069,7 +1078,7 @@ fn query_selector(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResu
     let id = id_of(this)?;
     let sel = arg_str(args, 0, ctx)?;
     let r = with_host(|h| h.doc.query_selector_in(id, &sel).map(|r| r.filter(|&n| n != id)))
-    .map_err(|_| syntax_err(&sel))?;
+        .map_err(|_| syntax_err(&sel))?;
     Ok(wrap_opt(r))
 }
 
@@ -1224,13 +1233,16 @@ fn create_element(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<
         return Err(dom_err("InvalidCharacterError", "invalid tag name"));
     }
     let tag = tag.to_ascii_lowercase();
-    let id = with_host(|h| h.doc.mutate().create_element(QualName::new(None, ns!(html), LocalName::from(tag)), vec![]));
+    let id = with_host(|h| {
+        h.doc.mutate().create_element(QualName::new(None, ns!(html), LocalName::from(tag)), vec![])
+    });
     Ok(wrap(id))
 }
 
 fn create_element_ns(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let nsv = args.get_or_undefined(0);
-    let nsuri = if nsv.is_null_or_undefined() { String::new() } else { nsv.to_string(ctx)?.to_std_string_escaped() };
+    let nsuri =
+        if nsv.is_null_or_undefined() { String::new() } else { nsv.to_string(ctx)?.to_std_string_escaped() };
     let qname = arg_str(args, 1, ctx)?;
     let local_part = qname.rsplit(':').next().unwrap_or(&qname).to_string();
     let namespace = match nsuri.as_str() {
@@ -1240,7 +1252,9 @@ fn create_element_ns(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResu
         "" => ns!(),
         other => blitz_dom::Namespace::from(other),
     };
-    let id = with_host(|h| h.doc.mutate().create_element(QualName::new(None, namespace, LocalName::from(local_part)), vec![]));
+    let id = with_host(|h| {
+        h.doc.mutate().create_element(QualName::new(None, namespace, LocalName::from(local_part)), vec![])
+    });
     Ok(wrap(id))
 }
 
@@ -1296,7 +1310,9 @@ fn title_get(_: &JsValue, _: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
 fn title_set(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let t = arg_str(args, 0, ctx)?;
     with_host(|h| {
-        let found = element_ids_matching(h, root(h), &|h, d| local(h, d).as_deref() == Some("title")).first().copied();
+        let found = element_ids_matching(h, root(h), &|h, d| local(h, d).as_deref() == Some("title"))
+            .first()
+            .copied();
         let title = match found {
             Some(id) => id,
             None => {

@@ -14,8 +14,8 @@ bench/run.sh --no-build      # reuse the existing image and Rust binary
 
 Results land in `bench/results/<UTC timestamp>/`, holding the raw files and `REPORT.md`.
 `bench/results/LATEST.md` is a copy of the newest report, with its links rebased. A failing
-binary never aborts the run. Its row reads `n/a (exit N)`, which is the case for every
-conversion of the Rust binary until P2 lands.
+binary never aborts the run. Its row reads `n/a (exit N)`. Since P2a the port converts static
+HTML/CSS; JavaScript, headers/footers and the TOC (P3/P4) still differ or fail.
 
 ## Why a dedicated image
 
@@ -39,13 +39,15 @@ cases use a WEBrick server on 127.0.0.1 inside the container.
 `scripts/build-rust.sh` cross-builds a static `aarch64-unknown-linux-musl` binary on macOS
 into `bench/.target/`:
 
-1. **Default**: `rustup target add aarch64-unknown-linux-musl` and link with `rust-lld`
-   (`CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld`). rustup ships this linker and
-   the target ships its own musl CRT objects. A pure-Rust workspace therefore needs no zig,
-   no cargo-zigbuild and no C cross toolchain. A release build takes about 20 s.
+1. **Default**: `rustup target add aarch64-unknown-linux-musl`, link with `rust-lld`
+   (`CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld`), and compile `ring` (rustls'
+   crypto, the only C code) with the system clang
+   (`CFLAGS=--target=aarch64-unknown-linux-musl -U__musl__`) archived by rustup's `llvm-ar`
+   (`rustup component add llvm-tools`, added on demand). This is the recipe of the root
+   `README.md`. No zig and no C cross toolchain are needed. The build uses the workspace's
+   `[profile.release]` (`lto = true`, `codegen-units = 1`), about 6 min from scratch.
 2. **Fallback**, automatic when 1 fails or forced with `BUILD_METHOD=docker`: a native build
    in `rust:1.90-alpine` (arm64), whose host target is already `aarch64-unknown-linux-musl`.
-   Use it once a dependency needs a C compiler.
 
 The binary is bind-mounted read-only at `/opt/rust/wkhtmltopdf`. The original is at
 `/usr/local/bin/wkhtmltopdf`.
@@ -101,7 +103,7 @@ Two quirks are worth knowing:
   order.
 - If the binary fails early, pdfkit raises errors other than
   `ImproperWkhtmltopdfExitStatus`: `to_file` raises `Errno::ENOENT` and a large stdin raises
-  `Errno::EPIPE`. Both show up with today's stub.
+  `Errno::EPIPE`.
 
 ## Rendering parity (`scripts/visual.py`)
 
@@ -131,7 +133,7 @@ equivalent within a tolerance). It is not pixel identity, because the engine is 
 | `--zoom 1.1` | must be flagged |
 | `--margin-left 0.85in` | must be flagged |
 
-This proves that the pipeline detects real differences while the port produces no PDF.
+This proves that the pipeline detects real differences independently of the port.
 Images go to `results/<ts>/visual/<case>/page-N-{original,rust,diff,side}.png`. Expect about
 20 MB per run today, and more once the port renders.
 

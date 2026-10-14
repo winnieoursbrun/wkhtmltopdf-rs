@@ -75,11 +75,8 @@ impl Io<'_> {
         if queued.is_empty() {
             return;
         }
-        let images: HashSet<String> = if self.load_images {
-            HashSet::new()
-        } else {
-            session.with_document(|d| image_urls(d))
-        };
+        let images: HashSet<String> =
+            if self.load_images { HashSet::new() } else { session.with_document(|d| image_urls(d)) };
         let mut waiting = Vec::new();
         for q in queued {
             let key = q.url.to_string();
@@ -329,7 +326,8 @@ mod tests {
     }
 
     fn load(html: &str, settings: WebSettings) -> (WebPage, Vec<String>) {
-        let fonts = wk_fonts::font_context(&wk_fonts::FontOptions { system_fonts: false, extra_dirs: Vec::new() });
+        let fonts =
+            wk_fonts::font_context(&wk_fonts::FontOptions { system_fonts: false, extra_dirs: Vec::new() });
         let mut net = NoNet::default();
         let url = Url::parse("file:///tmp/page.html?page=3&topage=7").unwrap();
         let page = WebPage::load(html, url, settings, fonts, &mut net);
@@ -371,7 +369,8 @@ mod tests {
     #[test]
     fn window_status_waits_then_the_delay_runs() {
         let html = "<title>t</title><script>var n = 0; function tick() { n++; document.title = 'n' + n; if (n === 10) window.status = 'go'; else setTimeout(tick, 100); } setTimeout(tick, 100); setTimeout(function () { document.title += ' late'; }, 1150);</script>";
-        let settings = WebSettings { javascript_delay: 200, window_status: "go".into(), ..WebSettings::default() };
+        let settings =
+            WebSettings { javascript_delay: 200, window_status: "go".into(), ..WebSettings::default() };
         let (page, _) = load(html, settings);
         // The status is seen at t=1000 (polled every 50 ms), then 200 ms more:
         // the 1150 ms timer runs.

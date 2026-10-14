@@ -197,4 +197,3 @@ pub fn ratio(a: &[String], b: &[String]) -> f64 {
     }
     2.0 * f64::from(prev[b.len()]) / (a.len() + b.len()) as f64
 }
-

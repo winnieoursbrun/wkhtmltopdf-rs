@@ -21,9 +21,9 @@ use boa_engine::{Context, JsError, JsNativeErrorKind, JsObject, JsString, JsValu
 use parley::FontContext;
 use url::Url;
 
+use crate::JsServices;
 use crate::canvas::CanvasState;
 use crate::fnlines::FunctionLines;
-use crate::JsServices;
 
 /// A pending `setTimeout`/`setInterval`.
 pub(crate) struct Timer {

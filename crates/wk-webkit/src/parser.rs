@@ -17,9 +17,9 @@ use std::collections::HashMap;
 
 use blitz_dom::node::Attribute;
 use blitz_dom::{NodeId, QualName, local_name};
+use html5ever::TokenizerResult;
 use html5ever::buffer_queue::BufferQueue;
 use html5ever::tendril::StrTendril;
-use html5ever::TokenizerResult;
 use html5ever::tokenizer::{Tokenizer, TokenizerOpts};
 use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeBuilder, TreeBuilderOpts, TreeSink};
 use wk_js::with_document;
@@ -93,7 +93,8 @@ impl TreeSink for PausingSink {
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> Self::ElemName<'a> {
         if !self.names.borrow().contains_key(target) {
-            let name = with_document(|d| d.get_node(*target).and_then(|n| n.element_data()).map(|e| e.name.clone()));
+            let name =
+                with_document(|d| d.get_node(*target).and_then(|n| n.element_data()).map(|e| e.name.clone()));
             match name {
                 Some(n) => {
                     self.names.borrow_mut().insert(*target, n);
@@ -104,7 +105,12 @@ impl TreeSink for PausingSink {
         ElemNameRef::Map(Ref::map(self.names.borrow(), |m| &m[target]))
     }
 
-    fn create_element(&self, name: QualName, attrs: Vec<html5ever::Attribute>, _flags: ElementFlags) -> Self::Handle {
+    fn create_element(
+        &self,
+        name: QualName,
+        attrs: Vec<html5ever::Attribute>,
+        _flags: ElementFlags,
+    ) -> Self::Handle {
         let attrs: Vec<Attribute> = attrs.into_iter().map(to_blitz_attr).collect();
         let local = name.local.clone();
         let id = with_document(|d| d.mutate().create_element(name.clone(), attrs));
@@ -132,7 +138,9 @@ impl TreeSink for PausingSink {
             match child {
                 NodeOrText::AppendNode(id) => m.append_children(*parent_id, &[id]),
                 NodeOrText::AppendText(text) => {
-                    let appended = m.last_child_id(*parent_id).is_some_and(|id| m.append_text_to_node(id, &text).is_ok());
+                    let appended = m
+                        .last_child_id(*parent_id)
+                        .is_some_and(|id| m.append_text_to_node(id, &text).is_ok());
                     if !appended {
                         let t = m.create_text_node(&text);
                         m.append_children(*parent_id, &[t]);
@@ -148,8 +156,9 @@ impl TreeSink for PausingSink {
             match new_node {
                 NodeOrText::AppendNode(id) => m.insert_nodes_before(*sibling_id, &[id]),
                 NodeOrText::AppendText(text) => {
-                    let appended =
-                        m.previous_sibling_id(*sibling_id).is_some_and(|id| m.append_text_to_node(id, &text).is_ok());
+                    let appended = m
+                        .previous_sibling_id(*sibling_id)
+                        .is_some_and(|id| m.append_text_to_node(id, &text).is_ok());
                     if !appended {
                         let t = m.create_text_node(&text);
                         m.insert_nodes_before(*sibling_id, &[t]);
@@ -159,7 +168,12 @@ impl TreeSink for PausingSink {
         });
     }
 
-    fn append_based_on_parent_node(&self, element: &Self::Handle, prev_element: &Self::Handle, child: NodeOrText<Self::Handle>) {
+    fn append_based_on_parent_node(
+        &self,
+        element: &Self::Handle,
+        prev_element: &Self::Handle,
+        child: NodeOrText<Self::Handle>,
+    ) {
         if with_document(|d| d.mutate().node_has_parent(*element)) {
             self.append_before_sibling(element, child);
         } else {

@@ -138,9 +138,13 @@ pub(crate) fn parse_color(s: &str) -> Option<AlphaColor<Srgb>> {
 fn paint_from(v: &JsValue, alpha: f32, ctx: &mut Context) -> JsResult<Option<anyrender::Paint>> {
     if let Some(o) = v.as_object() {
         let kind = o.get(JsString::from("kind"), ctx)?.to_string(ctx)?.to_std_string_escaped();
-        let g = |k: &str, ctx: &mut Context| -> JsResult<f64> { o.get(JsString::from(k), ctx)?.to_number(ctx) };
+        let g =
+            |k: &str, ctx: &mut Context| -> JsResult<f64> { o.get(JsString::from(k), ctx)?.to_number(ctx) };
         let mut grad = match kind.as_str() {
-            "linear" => Gradient::new_linear(Point::new(g("x0", ctx)?, g("y0", ctx)?), Point::new(g("x1", ctx)?, g("y1", ctx)?)),
+            "linear" => Gradient::new_linear(
+                Point::new(g("x0", ctx)?, g("y0", ctx)?),
+                Point::new(g("x1", ctx)?, g("y1", ctx)?),
+            ),
             "radial" => Gradient::new_two_point_radial(
                 Point::new(g("x0", ctx)?, g("y0", ctx)?),
                 g("r0", ctx)? as f32,
@@ -193,7 +197,9 @@ pub(crate) fn canvas_fill(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> J
     let path = path_from(args.get_or_undefined(1), ctx)?;
     let alpha = num(args, 4, ctx)? as f32;
     let bt = affine_from(args, 5, ctx)?;
-    let Some(paint) = paint_from(args.get_or_undefined(2), alpha, ctx)? else { return Ok(JsValue::undefined()) };
+    let Some(paint) = paint_from(args.get_or_undefined(2), alpha, ctx)? else {
+        return Ok(JsValue::undefined());
+    };
     let rule = if args.get_or_undefined(3).to_boolean() { Fill::EvenOdd } else { Fill::NonZero };
     let brush_t = matches!(paint, anyrender::Paint::Gradient(_)).then_some(bt);
     with_canvas(id, |c| c.scene.fill(rule, Affine::IDENTITY, &paint, brush_t, &path));
@@ -223,7 +229,9 @@ pub(crate) fn canvas_stroke(_: &JsValue, args: &[JsValue], ctx: &mut Context) ->
     if ctm.determinant().abs() < 1e-12 || width.is_nan() || width <= 0.0 {
         return Ok(JsValue::undefined());
     }
-    let Some(paint) = paint_from(args.get_or_undefined(2), alpha, ctx)? else { return Ok(JsValue::undefined()) };
+    let Some(paint) = paint_from(args.get_or_undefined(2), alpha, ctx)? else {
+        return Ok(JsValue::undefined());
+    };
     let mut user = path;
     user.apply_affine(ctm.inverse());
     let mut stroke = Stroke::new(width)
@@ -238,7 +246,10 @@ pub(crate) fn canvas_stroke(_: &JsValue, args: &[JsValue], ctx: &mut Context) ->
             _ => Join::Miter,
         })
         .with_miter_limit(if miter > 0.0 { miter } else { 10.0 });
-    if !dashes.is_empty() && dashes.iter().all(|d| d.is_finite() && *d >= 0.0) && dashes.iter().any(|d| *d > 0.0) {
+    if !dashes.is_empty()
+        && dashes.iter().all(|d| d.is_finite() && *d >= 0.0)
+        && dashes.iter().any(|d| *d > 0.0)
+    {
         stroke = stroke.with_dashes(dash_offset, dashes);
     }
     let brush_t = matches!(paint, anyrender::Paint::Gradient(_)).then_some(Affine::IDENTITY);
@@ -319,7 +330,9 @@ pub(crate) fn parse_font(s: &str) -> CanvasFont {
             "normal" | "small-caps" => {}
             "bold" | "bolder" => f.weight = 700.0,
             "lighter" => f.weight = 300.0,
-            w if w.len() == 3 && w.chars().all(|c| c.is_ascii_digit()) => f.weight = w.parse().unwrap_or(400.0),
+            w if w.len() == 3 && w.chars().all(|c| c.is_ascii_digit()) => {
+                f.weight = w.parse().unwrap_or(400.0)
+            }
             _ => {
                 // The size token (possibly with /line-height).
                 let size_tok = lower.split('/').next().unwrap_or("");
@@ -434,7 +447,9 @@ pub(crate) fn canvas_text(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> J
     let stroke = args.get_or_undefined(16).to_boolean();
     let line_width = num(args, 17, ctx)?;
     let rtl = args.get_or_undefined(18).to_boolean();
-    let Some(paint) = paint_from(args.get_or_undefined(8), alpha, ctx)? else { return Ok(JsValue::undefined()) };
+    let Some(paint) = paint_from(args.get_or_undefined(8), alpha, ctx)? else {
+        return Ok(JsValue::undefined());
+    };
     if text.is_empty() || !x.is_finite() || !y.is_finite() {
         return Ok(JsValue::undefined());
     }
@@ -488,10 +503,14 @@ pub(crate) fn canvas_text(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> J
                 if ranges.len() != glyphs.len() {
                     ranges = vec![0..run_text.len(); glyphs.len()];
                 }
-                let coords: Vec<anyrender::NormalizedCoord> = run.normalized_coords().iter().map(|c| c.to_bits()).collect();
+                let coords: Vec<anyrender::NormalizedCoord> =
+                    run.normalized_coords().iter().map(|c| c.to_bits()).collect();
                 let index = c.scene.commands.len();
-                let style: peniko::Style =
-                    if stroke { peniko::Style::Stroke(Stroke::new(line_width)) } else { peniko::Style::Fill(Fill::NonZero) };
+                let style: peniko::Style = if stroke {
+                    peniko::Style::Stroke(Stroke::new(line_width))
+                } else {
+                    peniko::Style::Fill(Fill::NonZero)
+                };
                 c.scene.draw_glyphs(
                     run.font(),
                     run.font_size(),
@@ -532,13 +551,15 @@ pub(crate) fn canvas_image(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> 
         return Ok(JsValue::undefined());
     }
     // Source space → destination rectangle, under the current transform.
-    let place = ctm * Affine::translate((dx, dy)) * Affine::scale_non_uniform(dw / sw, dh / sh) * Affine::translate((-sx, -sy));
+    let place = ctm
+        * Affine::translate((dx, dy))
+        * Affine::scale_non_uniform(dw / sw, dh / sh)
+        * Affine::translate((-sx, -sy));
     let clip = Rect::new(sx, sy, sx + sw, sy + sh);
     let tag = with_host(|h| local(h, src)).unwrap_or_default();
     if tag == "canvas" {
-        let sub = with_host(|h| {
-            h.canvases.get(&src).map(|c| (c.scene.clone(), c.texts.clone(), c.clips.len()))
-        });
+        let sub =
+            with_host(|h| h.canvases.get(&src).map(|c| (c.scene.clone(), c.texts.clone(), c.clips.len())));
         let Some((scene, texts, open)) = sub else { return Ok(JsValue::undefined()) };
         with_host(|h| {
             let c = h.canvases.entry(id).or_default();
@@ -564,7 +585,13 @@ pub(crate) fn canvas_image(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> 
         Some((raster.width, raster.height, raster.data.clone()))
     });
     let Some((w, hgt, data)) = img else { return Ok(JsValue::undefined()) };
-    let image = ImageData { data, format: ImageFormat::Rgba8, alpha_type: ImageAlphaType::Alpha, width: w, height: hgt };
+    let image = ImageData {
+        data,
+        format: ImageFormat::Rgba8,
+        alpha_type: ImageAlphaType::Alpha,
+        width: w,
+        height: hgt,
+    };
     let brush = ImageBrush::new(image).with_alpha(alpha);
     with_canvas(id, |c| {
         c.scene.fill(Fill::NonZero, place, brush.as_ref(), None, &clip);
@@ -572,7 +599,10 @@ pub(crate) fn canvas_image(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> 
     Ok(JsValue::undefined())
 }
 
-fn apply_transform(mut cmd: anyrender::recording::RenderCommand, t: Affine) -> anyrender::recording::RenderCommand {
+fn apply_transform(
+    mut cmd: anyrender::recording::RenderCommand,
+    t: Affine,
+) -> anyrender::recording::RenderCommand {
     use anyrender::recording::RenderCommand as C;
     match &mut cmd {
         C::PushLayer(c) => c.transform = t * c.transform,
@@ -600,7 +630,9 @@ pub(crate) fn image_size(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> Js
 
 /// The canvas size from its attributes (defaults 300×150).
 pub(crate) fn canvas_size(h: &crate::host::Host, id: NodeId) -> (f64, f64) {
-    let dim = |n: &str, d: f64| get_attr(h, id, n).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| *v >= 0.0).unwrap_or(d);
+    let dim = |n: &str, d: f64| {
+        get_attr(h, id, n).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| *v >= 0.0).unwrap_or(d)
+    };
     (dim("width", 300.0), dim("height", 150.0))
 }
 
@@ -627,7 +659,10 @@ mod tests {
     #[test]
     fn colours() {
         assert_eq!(parse_color("#ff0000").map(|c| c.to_rgba8().to_u8_array()), Some([255, 0, 0, 255]));
-        assert_eq!(parse_color("rgba(0, 0, 255, 0.5)").map(|c| c.to_rgba8().to_u8_array()), Some([0, 0, 255, 128]));
+        assert_eq!(
+            parse_color("rgba(0, 0, 255, 0.5)").map(|c| c.to_rgba8().to_u8_array()),
+            Some([0, 0, 255, 128])
+        );
         assert!(parse_color("nonsense").is_none());
     }
 }

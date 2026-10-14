@@ -12,8 +12,8 @@ The target is the observable behaviour of the released 0.12.6 binary, down to it
 | Phase | Scope | State |
 |---|---|---|
 | P1 — CLI | All 122 options, object grammar, `--read-args-from-stdin`, documentation outputs, argument errors, settings model | **Done**: every `docs/upstream-fixtures/0.12.6/cli` case is byte-identical |
-| P2 — static pipeline | Loader, HTML/CSS layout, paginator, PDF output | **P2a done**: pdfkit's invocation (stdin → stdout) and file/URL inputs produce real PDFs. 10 of 13 `conversion` fixtures reproduce stderr and exit code exactly; `warn` and `info_b` match except for their JavaScript lines (P4); `toc` needs P3. L2 on `tests/corpus`: page count and size match on 6/6 pages, and text similarity is ≥ 0.95 on 5/6 (`report`: one word wraps differently, see `corpus_l2.rs`). P2b: see below the table |
-| P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | Started in P2a: PDF links (external and internal), outline bookmarks with `--outline-depth`, `--dump-outline` without TOC entries, multiple page/cover objects in one PDF (a TOC object prints a blank placeholder page). Headers/footers and the TOC are not started |
+| P2 — static pipeline | Loader, HTML/CSS layout, paginator, PDF output | **P2a done**: pdfkit's invocation (stdin → stdout) and file/URL inputs produce real PDFs. 13 of 13 `conversion` fixtures reproduce stderr and exit code exactly (`toc` included). L2 on `tests/corpus`: page count and size match on 6/6 pages, and text similarity is ≥ 0.95 on 5/6 (`report`: one word wraps differently, see `corpus_l2.rs`). P2b: see below the table |
+| P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | **Done**: text and HTML headers/footers with every variable, cover/TOC/page objects with per-object options, default and custom-XSL TOCs, outline and `--dump-outline`, named-destination links, `--page-offset`, forms, copies/collate, grayscale, including the upstream quirks of spec §10. `tests/parts`: 22 of 22 reference cases pass at L2 (`parts.rs`). Deviations: see below the table |
 | P4 — JavaScript | Boa, DOM bindings, `--javascript-delay`, `--window-status` | **Done** (`crates/wk-js`): scripts run in document order with a script-pausing parser, `document.write`, events, timers and `Date` on a virtual clock, `--window-status`, `--run-script`, `window.print()`, `--debug-javascript`, dialogs, the slow-script budget, XMLHttpRequest over the loader, canvas 2D painted as vector. `warn` and `info_b` reproduce exactly; `tests/js` (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution, …) is at L2 parity on 13/13 cases. Gaps: see below the table |
 | P5 — fidelity | Tables, forms, fonts, raster parity | Not started |
 | P6 — release | Static musl builds, pdfkit test suite | Not started |
@@ -27,10 +27,17 @@ error before the script continues (upstream: later); `document.write` after the 
 
 P2b gaps: `--minimum-font-size`, `--viewport-size`, `--user-style-sheet` over http, QtWebKit
 ignoring unprefixed `transform` and honouring `-webkit-` prefixes, `orphans`/`widows` properties,
-rows taller than a page, box shadows/filters/blend modes, `--grayscale`/`--lowquality`/image DPI
-and quality, `SSL error ignored` warnings, client certificates, `--cache-dir`, server reason
+rows taller than a page, box shadows/filters/blend modes, `--lowquality`/image DPI and quality, `SSL error ignored` warnings, client certificates, `--cache-dir`, server reason
 phrases in HTTP error messages (canonical phrases are printed), redirects' `Set-Cookie`. The
 `--javascript-delay` wait runs on the virtual clock (no wall-clock sleep).
+
+P3 deviations: header/footer HTML is rendered without running its scripts (P4 plugs into
+`wk_converter::scripts::run_scripts`); `[date]`/`[time]` are UTC; the custom TOC style sheet runs on
+an XSLT 1.0 subset (`wk-converter/src/xslt.rs` lists what is supported; XSLT 2.0-only constructs
+fail like a QtXmlPatterns static error, with an empty TOC); `Could not read the TOC XSL` stops the
+conversion (upstream goes on after `fail()`); the measured height of a `--header-html` page is its
+unshrunk body height, which is within a few points of QtWebKit's; form fields have no appearance
+streams, like Qt's (`/NeedAppearances true`).
 
 ## Layout
 
@@ -39,11 +46,11 @@ phrases in HTTP error messages (canonical phrases are printed), redirects' `Set-
 | `crates/wkhtmltopdf` | `src/pdf/*` | The `wkhtmltopdf` binary: object grammar, switch registration, doc parts, program flow |
 | `crates/wk-cli` | `src/shared/*` | Hand-written switch parser, argument handlers, text/man/html outputters, progress feedback |
 | `crates/wk-settings` | `src/lib/*settings*`, `reflect` | `PdfGlobal`, `PdfObject`, `LoadPage`, `Web`, … with defaults, value parsers and dotted-name get/set |
-| `crates/wk-converter` | `src/lib/pdfconverter`, `converter`, `outline`, `utilities` | Phase sequence, progress output, page counting, link resolution, outline, `handleError` exit codes |
+| `crates/wk-converter` | `src/lib/pdfconverter`, `converter`, `outline`, `tocstylesheet`, `utilities` | Phase sequence, progress output, header/footer measuring, page counting, TOC loading (XML parser and XSLT subset), link resolution, header/footer variables and pages, printing, outline, `handleError` exit codes |
 | `crates/wk-loader` | `src/lib/multipageloader` | stdin/file/`file://`/`http(s)`/`data:` loading (ureq + rustls), cookies and cookie jar, custom headers, POST, basic auth, proxies, local-file policy, `amfinished` error accounting |
 | `crates/wk-webkit` | QtWebKit | Engine facade over blitz-dom/blitz-html/blitz-paint 0.3 (html5ever, stylo, taffy, parley): WebKit-2012 print layout (1 CSS px = 0.6 pt, smart shrinking, zoom, media type), resource ordering, display-list recording, the script-pausing parser and the page lifecycle with JavaScript (`scripting.rs`) |
 | `crates/wk-js` | JavaScriptCore + WebCore bindings | Boa 0.22 realm per page: native DOM bindings with a `NodeId → JsObject` cache, a JS prelude (events, CSSOM, forms, location, navigator, XHR, canvas state), virtual-clock timers, console/dialog output like 0.12.6, canvas 2D vector recorder |
-| `crates/wk-print` | QPrinter / QPdfEngine | Paginator (no cut lines/rows, forced breaks, thead/tfoot repetition, margin truncation) and krilla PDF painter (subset text with source text, JPEG passthrough, gradients, links, outline, Info dictionary) |
+| `crates/wk-print` | QPrinter / QPdfEngine | Paginator (no cut lines/rows, forced breaks, thead/tfoot repetition, margin truncation) and krilla PDF painter (subset text with source text, JPEG passthrough, gradients, header/footer bands, texts and lines, named destinations, links, outline, Info dictionary, grayscale); AcroForm and `/PageMode` appended with lopdf |
 | `crates/wk-fonts` | fontconfig | Directory font scan, generic families → DejaVu Sans like the reference image, embedded `fonts-dejavu-core` faces (Bitstream Vera licence, `crates/wk-fonts/fonts/LICENSE`) |
 
 Vendored crates (`vendor/`, wired through `[patch.crates-io]`), each change marked `wkhtmltopdf-rs`:
@@ -87,7 +94,9 @@ a bare `alpine` image.
 `crates/wkhtmltopdf/tests/conversion_fixtures.rs` replays `docs/upstream-fixtures/0.12.6/conversion`
 (stderr and exit code), and `crates/wkhtmltopdf/tests/corpus_l2.rs` compares our PDFs with the
 reference PDFs of `tests/corpus/ref/` (made once with `tests/corpus/make-refs.sh` and the real
-binary in Docker; the test itself needs no Docker). Tests set `WKHTMLTOPDF_SYSTEM_FONTS=0` so only
+binary in Docker; the test itself needs no Docker). `crates/wkhtmltopdf/tests/parts.rs` does the same
+for the document-parts cases of `tests/parts` (stderr, exit code, `--dump-outline`, structure facts
+and text; see `tests/parts/README.md`). Tests set `WKHTMLTOPDF_SYSTEM_FONTS=0` so only
 the embedded DejaVu faces are used.
 
 `crates/wkhtmltopdf/tests/js_corpus.rs` does the same for the JavaScript corpus `tests/js`

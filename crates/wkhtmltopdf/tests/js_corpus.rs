@@ -88,7 +88,8 @@ fn check_env(case: &str, env: &[(&str, &str)]) {
 
     let ref_dir = corpus().join("ref");
     let want_stderr = fs::read_to_string(ref_dir.join(format!("{case}.stderr"))).unwrap();
-    let want_rc: i32 = fs::read_to_string(ref_dir.join(format!("{case}.rc"))).unwrap().trim().parse().unwrap();
+    let want_rc: i32 =
+        fs::read_to_string(ref_dir.join(format!("{case}.rc"))).unwrap().trim().parse().unwrap();
     assert_eq!(stderr, want_stderr, "{case}: stderr");
     assert_eq!(o.status.code(), Some(want_rc), "{case}: exit code");
     assert!(got.starts_with(b"%PDF"), "{case}: no PDF");

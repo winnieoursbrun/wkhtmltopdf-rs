@@ -8,10 +8,11 @@ use crate::dom::{children, local};
 use crate::host::Host;
 
 const VOID: &[&str] = &[
-    "area", "base", "basefont", "bgsound", "br", "col", "embed", "frame", "hr", "img", "input", "keygen", "link",
-    "meta", "param", "source", "track", "wbr",
+    "area", "base", "basefont", "bgsound", "br", "col", "embed", "frame", "hr", "img", "input", "keygen",
+    "link", "meta", "param", "source", "track", "wbr",
 ];
-const RAW_TEXT: &[&str] = &["script", "style", "xmp", "iframe", "noembed", "noframes", "plaintext", "noscript"];
+const RAW_TEXT: &[&str] =
+    &["script", "style", "xmp", "iframe", "noembed", "noframes", "plaintext", "noscript"];
 
 fn escape(s: &str, attr: bool, out: &mut String) {
     for c in s.chars() {
@@ -62,11 +63,7 @@ pub(crate) fn serialize_node(h: &Host, id: NodeId, out: &mut String) {
         }
         NodeData::Text(t) => {
             let raw = node.parent.and_then(|p| local(h, p)).is_some_and(|p| RAW_TEXT.contains(&p.as_str()));
-            if raw {
-                out.push_str(&t.content)
-            } else {
-                escape(&t.content, false, out)
-            }
+            if raw { out.push_str(&t.content) } else { escape(&t.content, false, out) }
         }
         NodeData::Comment { contents } => {
             out.push_str("<!--");

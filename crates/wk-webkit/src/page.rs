@@ -63,6 +63,9 @@ pub struct WebSettings {
     pub stop_slow_scripts: bool,
     /// `navigator.userAgent` (the loader's `User-Agent`).
     pub user_agent: String,
+    /// `--enable-forms`: inputs and text areas are painted white (their
+    /// values become form fields), like `beginPrintObject` does.
+    pub produce_forms: bool,
 }
 
 impl Default for WebSettings {
@@ -84,6 +87,7 @@ impl Default for WebSettings {
             stop_slow_scripts: true,
             user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/534.34 (KHTML, like Gecko) wkhtmltopdf Safari/534.34"
                 .into(),
+            produce_forms: false,
         }
     }
 }
@@ -142,6 +146,8 @@ pub struct Heading {
     pub text: String,
     pub x: f32,
     pub y: f32,
+    pub w: f32,
+    pub h: f32,
 }
 
 /// Named anchors for internal links, in document px.
@@ -174,6 +180,25 @@ pub struct RenderedPage {
     /// Original encoded bytes of raster images, by image blob id (JPEG
     /// passthrough).
     pub image_sources: HashMap<u64, Arc<Vec<u8>>>,
+    /// Height of the `<body>` box in CSS px (header/footer measuring).
+    pub body_height: f32,
+    /// `input` elements, then `textarea` elements, in document order.
+    pub form_elements: Vec<FormElement>,
+}
+
+/// An `input` or `textarea` element (source of `--enable-forms` fields).
+#[derive(Debug, Clone)]
+pub struct FormElement {
+    /// Border box in document px.
+    pub rect: kurbo::Rect,
+    pub is_textarea: bool,
+    /// The `type` attribute as written (empty when absent).
+    pub input_type: String,
+    pub name: String,
+    pub value: String,
+    pub checked: bool,
+    pub readonly: bool,
+    pub maxlength: Option<i32>,
 }
 
 /// A loaded page.
@@ -183,6 +208,8 @@ pub struct WebPage {
     settings: WebSettings,
     /// Bodies of loaded resources by URL (for JPEG passthrough).
     bodies: HashMap<String, Arc<Vec<u8>>>,
+    /// Values of password inputs, which are displayed as bullets.
+    password_values: HashMap<NodeId, String>,
     pub url: Url,
     /// Canvas content recorded by script.
     canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
@@ -199,6 +226,9 @@ pub(crate) fn ua_css(settings: &WebSettings) -> String {
     }
     if !settings.background {
         css.push_str("* { background-color: transparent !important; background-image: none !important; }\n");
+    }
+    if settings.produce_forms {
+        css.push_str("input, textarea { color: white !important; }\n");
     }
     css
 }
@@ -240,7 +270,13 @@ impl WebPage {
             media_type: Some(media),
             ..Default::default()
         };
-        let mut doc = HtmlDocument::from_html(html, config).into_inner();
+        // QtWebKit parses every `text/html` document with its HTML parser,
+        // whatever its DOCTYPE or root namespace; blitz-html would switch to
+        // its XML parser on an XHTML DOCTYPE, an XML declaration or an
+        // `xmlns` on `<html>` (then `<ol/>` would be an empty list, as in no
+        // browser). A leading empty comment defeats the sniffing.
+        let sniff_proof = format!("<!---->{html}");
+        let mut doc = HtmlDocument::from_html(&sniff_proof, config).into_inner();
         let extra = ua_css(&settings);
         if !extra.is_empty() {
             doc.add_user_agent_stylesheet(&extra);
@@ -248,11 +284,22 @@ impl WebPage {
         if let Some(css) = &settings.user_style_sheet {
             doc.add_user_agent_stylesheet(css);
         }
-        let mut page = WebPage { doc, net, settings, bodies: HashMap::new(), url, canvases: HashMap::new() };
+        let mut page = WebPage {
+            doc,
+            net,
+            settings,
+            bodies: HashMap::new(),
+            password_values: HashMap::new(),
+            url,
+            canvases: HashMap::new(),
+        };
+        page.mask_passwords();
         page.load_resources(fetcher);
         page
     }
 
+    /// A page loaded with scripts (`scripting.rs`): password values are
+    /// masked on the final DOM, after the scripts ran.
     pub(crate) fn from_parts(
         doc: BaseDocument,
         net: QueueNet,
@@ -261,7 +308,37 @@ impl WebPage {
         url: Url,
         canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
     ) -> WebPage {
-        WebPage { doc, net, settings, bodies, url, canvases }
+        let mut page = WebPage { doc, net, settings, bodies, password_values: HashMap::new(), url, canvases };
+        page.mask_passwords();
+        page
+    }
+
+    /// QtWebKit displays the value of `input[type=password]` as bullets.
+    fn mask_passwords(&mut self) {
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if tag(n) == "input"
+                && n.attr(local_name!("type")).is_some_and(|t| t.eq_ignore_ascii_case("password"))
+            {
+                if let Some(v) = n.attr(local_name!("value")).filter(|v| !v.is_empty()) {
+                    found.push((id, v.to_string()));
+                }
+            }
+        }
+        let mut m = self.doc.mutate();
+        for (id, v) in &found {
+            let bullets = "\u{2022}".repeat(v.chars().count());
+            m.set_attribute(
+                *id,
+                blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("value")),
+                &bullets,
+            );
+        }
+        drop(m);
+        self.password_values.extend(found);
     }
 
     /// The document `<title>`.
@@ -430,6 +507,8 @@ impl WebPage {
         }
         let (links, headings, anchors) = self.collect_links(&recorder);
         let image_sources = self.image_sources();
+        let body_height = self.body_height();
+        let form_elements = self.form_elements();
         RenderedPage {
             recorder,
             geometry,
@@ -439,7 +518,69 @@ impl WebPage {
             layout_width: layout_w,
             pt_per_px,
             image_sources,
+            body_height,
+            form_elements,
         }
+    }
+
+    /// Height of the first `<body>` element's box (`elementLocation(body)`).
+    fn body_height(&self) -> f32 {
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            if tag(n) == "body" {
+                return n.final_layout().size.height;
+            }
+            stack.extend(n.children.iter().rev().copied());
+        }
+        0.0
+    }
+
+    /// `findAllElements("input")` then `findAllElements("textarea")`.
+    fn form_elements(&self) -> Vec<FormElement> {
+        let mut order = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            order.push(id);
+            stack.extend(n.children.iter().rev().copied());
+        }
+        let mut out = Vec::new();
+        for want in ["input", "textarea"] {
+            for &id in &order {
+                let n = self.doc.get_node(id).expect("node");
+                if tag(n) != want {
+                    continue;
+                }
+                let pos = n.absolute_position(0.0, 0.0);
+                let l = n.final_layout();
+                let attr = |a| n.attr(a).map(str::to_string);
+                out.push(FormElement {
+                    rect: kurbo::Rect::new(
+                        f64::from(pos.x),
+                        f64::from(pos.y),
+                        f64::from(pos.x + l.size.width),
+                        f64::from(pos.y + l.size.height),
+                    ),
+                    is_textarea: want == "textarea",
+                    input_type: attr(local_name!("type")).unwrap_or_default(),
+                    name: attr(local_name!("name")).unwrap_or_default(),
+                    // QWebElement::toPlainText() of a textarea is empty in
+                    // QtWebKit 2.2: its content is dropped (verified).
+                    value: if want == "textarea" {
+                        String::new()
+                    } else if let Some(v) = self.password_values.get(&id) {
+                        v.clone()
+                    } else {
+                        attr(local_name!("value")).unwrap_or_default()
+                    },
+                    checked: n.attr(local_name!("checked")).is_some(),
+                    readonly: n.attr(local_name!("readonly")).is_some(),
+                    maxlength: n.attr(local_name!("maxlength")).map(|v| v.trim().parse().unwrap_or(0)),
+                });
+            }
+        }
+        out
     }
 
     fn set_viewport(&mut self, w: f32, h: f32) {
@@ -536,11 +677,20 @@ impl WebPage {
                     }
                 }
                 if let Some(level) = t.strip_prefix('h').and_then(|d| d.parse::<u32>().ok()) {
-                    if (1..=6).contains(&level) {
+                    // `findAllElements("h1,…,h9")`: h7–h9 are taken literally.
+                    if (1..=9).contains(&level) && t.len() == 2 {
                         let text = n.text_content().replace(['\n', '\r', '\t'], " ");
                         let text = text.split(' ').filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
                         if !text.is_empty() {
-                            headings.push(Heading { level, text, x: pos.x, y: pos.y });
+                            let l = n.final_layout();
+                            headings.push(Heading {
+                                level,
+                                text,
+                                x: pos.x,
+                                y: pos.y,
+                                w: l.size.width,
+                                h: l.size.height,
+                            });
                         }
                     }
                 }

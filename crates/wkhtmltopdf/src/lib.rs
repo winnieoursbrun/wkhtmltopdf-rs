@@ -8,7 +8,7 @@ pub mod pdfarguments;
 pub mod pdfcommandlineparser;
 pub mod pdfdocparts;
 pub mod stdinargs;
-pub mod tocstylesheet;
+pub use wk_converter::tocstylesheet;
 pub use wk_loader::urlguess;
 
 pub use app::run;

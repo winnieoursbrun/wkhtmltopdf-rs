@@ -24,11 +24,10 @@
 //! Progress percentages: our loader is deterministic and reproduces the
 //! captured sequences, so they are compared as is.
 //!
-//! Known gaps, tested separately:
-//! - `toc` needs the TOC (P3): ignored.
-//!
-//! `warn` and `info_b` contain JavaScript output (`Javascript alert`,
-//! console messages) and are compared exactly.
+//! `warn`, `info_b` and `toc` (which loads `b.html`) contain JavaScript
+//! output (`Javascript alert`, console messages) and are compared exactly,
+//! and also without their JavaScript lines in separate tests; `toc`'s
+//! `--dump-outline` file is compared byte for byte.
 //!
 //! `missing_page*` and `badhost` need name resolution to fail for
 //! `nonexist.html` / `nonexistent.invalid` (true without network too).
@@ -75,6 +74,8 @@ struct Outcome {
     rc: i32,
     want_stderr: String,
     want_rc: i32,
+    /// `outline.xml` after the case (written by `toc`'s `--dump-outline`).
+    outline: Option<String>,
 }
 
 /// Run every case once, in order, in a fresh directory.
@@ -111,7 +112,15 @@ fn run_all() -> Vec<Outcome> {
         let want_stderr = fs::read_to_string(fixtures_dir().join(format!("{name}.stderr"))).unwrap();
         let want_rc =
             fs::read_to_string(fixtures_dir().join(format!("{name}.rc"))).unwrap().trim().parse().unwrap();
-        out.push(Outcome { name, stderr, rc: o.status.code().expect("exit code"), want_stderr, want_rc });
+        let outline = fs::read_to_string(dir.join("outline.xml")).ok();
+        out.push(Outcome {
+            name,
+            stderr,
+            rc: o.status.code().expect("exit code"),
+            want_stderr,
+            want_rc,
+            outline,
+        });
     }
     let _ = fs::remove_dir_all(&dir);
     out
@@ -157,7 +166,14 @@ fn diff(o: &Outcome, want: &str) -> Option<String> {
     let got = repad(&o.stderr);
     let want = repad(want);
     let want = want.as_str();
-    let o = &Outcome { name: o.name, stderr: got, rc: o.rc, want_stderr: String::new(), want_rc: o.want_rc };
+    let o = &Outcome {
+        name: o.name,
+        stderr: got,
+        rc: o.rc,
+        want_stderr: String::new(),
+        want_rc: o.want_rc,
+        outline: None,
+    };
     if o.stderr != want {
         let at = o
             .stderr
@@ -219,6 +235,7 @@ fn js_fixtures_match_without_javascript_lines() {
                 rc: o.rc,
                 want_stderr: String::new(),
                 want_rc: o.want_rc,
+                outline: None,
             };
             diff(&got, &without_js(&o.want_stderr))
         })
@@ -234,9 +251,39 @@ fn js_fixtures_exact() {
     assert!(failures.is_empty(), "{} mismatch(es):\n{}", failures.len(), failures.join("\n"));
 }
 
+/// `toc`: stderr without the `Javascript alert` line of `b.html` (P4), exit
+/// code, and the `--dump-outline` file byte for byte (`outline.xml`).
 #[test]
-#[ignore = "needs the TOC (P3) and JavaScript (P4)"]
-fn toc_fixture() {
+fn toc_fixture_without_javascript_lines() {
+    let all = run_all();
+    let mut failures: Vec<String> = all
+        .iter()
+        .filter(|o| P3_CASES.contains(&o.name))
+        .filter_map(|o| {
+            let got = Outcome {
+                name: o.name,
+                stderr: without_js(&o.stderr),
+                rc: o.rc,
+                want_stderr: String::new(),
+                want_rc: o.want_rc,
+                outline: None,
+            };
+            diff(&got, &without_js(&o.want_stderr))
+        })
+        .collect();
+    let want = fs::read_to_string(fixtures_dir().join("outline.xml")).unwrap();
+    let toc = all.iter().find(|o| o.name == "toc").unwrap();
+    if toc.outline.as_deref() != Some(want.as_str()) {
+        failures.push(format!(
+            "toc: outline.xml\n--- want\n{want}--- got\n{}",
+            toc.outline.as_deref().unwrap_or("")
+        ));
+    }
+    assert!(failures.is_empty(), "{} mismatch(es):\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn toc_fixture_exact() {
     let all = run_all();
     let failures: Vec<String> =
         all.iter().filter(|o| P3_CASES.contains(&o.name)).filter_map(|o| diff(o, &o.want_stderr)).collect();

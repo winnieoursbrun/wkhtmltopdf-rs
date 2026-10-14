@@ -155,7 +155,9 @@ fn wk_fetch(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValu
 /// to the element's line (`on<type>="…"`).
 fn wk_compile_handler(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let code = arg_str(args, 0, ctx)?;
-    let line = opt_id(args.get_or_undefined(1)).and_then(|id| with_host(|h| h.element_lines.get(&id).copied())).unwrap_or(1);
+    let line = opt_id(args.get_or_undefined(1))
+        .and_then(|id| with_host(|h| h.element_lines.get(&id).copied()))
+        .unwrap_or(1);
     let url = with_host(|h| h.url.to_string());
     let src = format!("(function (event) {{{code}\n}})");
     Ok(host::eval(ctx, &src, &url, line).unwrap_or(JsValue::undefined()))
@@ -187,7 +189,13 @@ fn wk_canvas_size(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<
     Ok(JsArray::from_iter([JsValue::from(w), JsValue::from(h)], ctx).into())
 }
 
-pub(crate) fn make_wk(ctx: &mut Context, protos: &crate::dom::Protos, url: &str, viewport: (u32, u32), ua: &str) -> JsResult<JsObject> {
+pub(crate) fn make_wk(
+    ctx: &mut Context,
+    protos: &crate::dom::Protos,
+    url: &str,
+    viewport: (u32, u32),
+    ua: &str,
+) -> JsResult<JsObject> {
     let wk = JsObject::with_object_proto(ctx.intrinsics());
     let natives: &[(&str, Fp)] = &[
         ("console", wk_console),

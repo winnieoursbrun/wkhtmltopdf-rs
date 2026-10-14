@@ -124,7 +124,9 @@ fn script_is_js(type_attr: Option<&str>, language: Option<&str>) -> bool {
             )
         }
         _ => match language.map(|l| l.trim().to_ascii_lowercase()) {
-            Some(l) if !l.is_empty() => l.starts_with("javascript") || l == "jscript" || l == "livescript" || l == "ecmascript",
+            Some(l) if !l.is_empty() => {
+                l.starts_with("javascript") || l == "jscript" || l == "livescript" || l == "ecmascript"
+            }
             _ => true,
         },
     }
@@ -227,7 +229,11 @@ impl Session {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(SLOW_SCRIPT_LOOP_LIMIT);
-        ctx.runtime_limits_mut().set_loop_iteration_limit(if opts.stop_slow_scripts { budget } else { u64::MAX });
+        ctx.runtime_limits_mut().set_loop_iteration_limit(if opts.stop_slow_scripts {
+            budget
+        } else {
+            u64::MAX
+        });
         ctx.runtime_limits_mut().set_recursion_limit(2048);
         let url = opts.url.to_string();
         host::install(Host {
@@ -311,7 +317,14 @@ impl Session {
 
     /// Run a parser-inserted script; returns what it wrote with
     /// `document.write`, to be parsed right after it.
-    pub fn run_parser_script(&mut self, id: NodeId, code: &str, url: &str, line: u32, svc: &mut dyn JsServices) -> String {
+    pub fn run_parser_script(
+        &mut self,
+        id: NodeId,
+        code: &str,
+        url: &str,
+        line: u32,
+        svc: &mut dyn JsServices,
+    ) -> String {
         let ctx = &mut self.ctx;
         with_services(svc, || execute_script(ctx, id, code, url, line));
         with_host(|h| std::mem::take(&mut h.write_buffer))
@@ -460,7 +473,12 @@ impl Session {
             if node.element_data().is_none_or(|e| &*e.name.local != "canvas") {
                 continue;
             }
-            let dim = |n: &str, d: f64| node.attr(blitz_dom::LocalName::from(n)).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| *v >= 0.0).unwrap_or(d);
+            let dim = |n: &str, d: f64| {
+                node.attr(blitz_dom::LocalName::from(n))
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                    .filter(|v| *v >= 0.0)
+                    .unwrap_or(d)
+            };
             let (width, height) = (dim("width", 300.0), dim("height", 150.0));
             let (scene, texts) = state.finish();
             pics.insert(id, CanvasPicture { scene, texts, width, height });

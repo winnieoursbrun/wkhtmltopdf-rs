@@ -3806,6 +3806,7 @@ dependencies = [
  "anyrender",
  "krilla",
  "kurbo",
+ "lopdf",
  "peniko",
  "skrifa 0.44.0",
  "wk-webkit",

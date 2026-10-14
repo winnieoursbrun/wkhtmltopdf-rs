@@ -27,3 +27,6 @@ bench/results/*/
 
 # Reference wkhtmltopdf 0.12.6 binary (oracle), never published
 /.ref/
+
+# Agent worktrees
+/.claude/
