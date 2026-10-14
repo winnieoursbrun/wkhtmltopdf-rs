@@ -1147,8 +1147,10 @@
       self._fire('readystatechange');
       self._fire(r[0] ? 'load' : 'error');
       self._fire('loadend');
+      return r[0];
     }
-    if (this._async) wk.addTimer(done, 0, false, []); else done();
+    if (this._async) wk.networkTask(done);
+    else if (!done()) throw new Error('NETWORK_ERR: XMLHttpRequest Exception 101');
   };
   g.XMLHttpRequest = XMLHttpRequest;
   g.FormData = function () { this._d = []; };

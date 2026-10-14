@@ -571,7 +571,13 @@ pub(crate) fn insert(parent_id: NodeId, child: NodeId, anchor: Option<NodeId>, c
         Ok(scripts)
     })?;
     for sid in scripts {
-        crate::run_inserted_script(sid, ctx);
+        // External scripts load asynchronously; inline ones run now.
+        let external = with_host(|h| get_attr(h, sid, "src").is_some_and(|s| !s.trim().is_empty()));
+        if external {
+            with_host(|h| h.async_scripts.push(sid));
+        } else {
+            crate::run_inserted_script(sid, ctx);
+        }
     }
     Ok(())
 }

@@ -241,7 +241,9 @@ impl ResourceObject {
                             std::io::ErrorKind::PermissionDenied => "Permission denied".to_string(),
                             _ => e.to_string(),
                         };
-                        let s = format!("Error opening {}: {reason}", qnetwork::qurl_to_string(&url));
+                        // `QUrl::toLocalFile()`, not the URL (verified with
+                        // 0.12.6: `Error opening /wk/p/nofile.html: …`).
+                        let s = format!("Error opening {}: {reason}", path.display());
                         let err = if e.kind() == std::io::ErrorKind::PermissionDenied {
                             NetworkError::ContentAccessDenied
                         } else {

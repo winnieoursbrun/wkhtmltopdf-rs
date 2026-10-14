@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>XMLHttpRequest</title>
+<style>body { font-family: 'DejaVu Sans'; font-size: 11pt; }</style>
+</head>
+<body>
+<h1>XMLHttpRequest and inserted scripts</h1>
+<ul id="out"></ul>
+<script>
+function out(t) {
+  var li = document.createElement('li');
+  li.textContent = t;
+  document.getElementById('out').appendChild(li);
+  console.log(t);
+}
+var x = new XMLHttpRequest();
+x.open('GET', 'data/rows.json', false);
+x.send();
+var rows = JSON.parse(x.responseText);
+out('sync: status ' + x.status + ', ' + rows.length + ' rows, first ' + rows[0].name);
+var z = new XMLHttpRequest();
+z.onreadystatechange = function () {
+  if (z.readyState === 4) out('async: ' + JSON.parse(z.responseText).length + ' rows');
+};
+z.open('GET', 'data/rows.json');
+z.send();
+out('after the async send');
+var s = document.createElement('script');
+s.src = 'data/inserted.js';
+document.body.appendChild(s);
+out('inserted script not run yet: ' + (typeof insertedValue));
+</script>
+<script>out('next parser script: ' + (typeof insertedValue));</script>
+</body></html>

@@ -84,6 +84,12 @@ pub(crate) struct Host {
     /// Scripts written by `document.write` outside the parser, to run after
     /// the current one.
     pub pending_scripts: Vec<NodeId>,
+    /// External scripts inserted by script: they load asynchronously and
+    /// run once the current task is over (WebCore's async script queue).
+    pub async_scripts: Vec<NodeId>,
+    /// Completions of asynchronous requests (XMLHttpRequest), run like
+    /// network events: before the async scripts, outside of timers.
+    pub network_tasks: Vec<JsValue>,
     /// Whether the parser is running (`document.write` feeds it).
     pub parsing: bool,
     /// Markup written by `document.write` during the current parser pause.
@@ -281,8 +287,14 @@ pub(crate) fn report_error(err: &JsError, ctx: &mut Context) {
         eprintln!("[wk-js] uncaught: {err}");
     }
     if is_slow_script(err) {
-        if with_host(|h| h.stop_slow_scripts) {
+        // `shouldInterruptJavaScript`, then the interrupt reported as an
+        // uncaught exception (verified with the 0.12.6 binary).
+        let (stop, debug) = with_host(|h| (h.stop_slow_scripts, h.debug_js));
+        if stop {
             warning("A slow script was stopped");
+            if debug {
+                warning("undefined:0 JavaScript execution exceeded timeout.");
+            }
         }
         return;
     }
@@ -403,6 +415,7 @@ pub(crate) fn advance(ctx: &mut Context, until: f64) -> bool {
             let url = with_host(|h| h.url.to_string());
             eval(ctx, &code.to_std_string_escaped(), &url, 1);
         }
+        crate::run_async_scripts(ctx);
     }
     with_host(|h| {
         if until > h.now() {

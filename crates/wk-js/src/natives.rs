@@ -161,6 +161,13 @@ fn wk_compile_handler(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRes
     Ok(host::eval(ctx, &src, &url, line).unwrap_or(JsValue::undefined()))
 }
 
+/// Queue the completion of an asynchronous request.
+fn wk_network_task(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
+    let f = args.get_or_undefined(0).clone();
+    with_host(|h| h.network_tasks.push(f));
+    Ok(JsValue::undefined())
+}
+
 /// `document.currentScript`.
 fn wk_current_script(_: &JsValue, _: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
     let id = with_host(|h| h.current_script.last().copied());
@@ -200,6 +207,7 @@ pub(crate) fn make_wk(ctx: &mut Context, protos: &crate::dom::Protos, url: &str,
         ("compileHandler", wk_compile_handler),
         ("canvasSize", wk_canvas_size),
         ("currentScript", wk_current_script),
+        ("networkTask", wk_network_task),
         ("reportException", wk_report_exception),
         ("canvasFill", canvas::canvas_fill),
         ("canvasStroke", canvas::canvas_stroke),

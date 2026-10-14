@@ -1,0 +1,6 @@
+Warning: file:///wk/js/xhr.html:9 sync: status 0, 3 rows, first alpha
+Warning: file:///wk/js/xhr.html:9 after the async send
+Warning: file:///wk/js/xhr.html:9 inserted script not run yet: undefined
+Warning: file:///wk/js/xhr.html:9 next parser script: undefined
+Warning: file:///wk/js/xhr.html:9 async: 3 rows
+Warning: file:///wk/js/xhr.html:9 inserted script ran

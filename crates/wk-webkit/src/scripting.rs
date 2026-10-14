@@ -273,13 +273,30 @@ pub(crate) fn load(
     session.dom_content_loaded(&mut io);
     io.create_queued(&session);
     io.finish_all(None);
+    session.run_async_scripts(&mut io);
     io.settle(&session);
     session.load_event(&mut io);
     io.settle(&session);
+    if session.print_requested() {
+        // `window.print()` before `loadFinished` ended the load early
+        // (`printRequested` → `loadDone`); QtWebKit's own progress and
+        // finished signals then reach a finished `ResourceObject`
+        // (verified with 0.12.6).
+        io.fetcher.warning(
+            "A finished ResourceObject received a loading progress signal. This might be an indication of an iframe taking too long to load.",
+        );
+        io.fetcher.warning(
+            "A finished ResourceObject received a loading finished signal. This might be an indication of an iframe taking too long to load.",
+        );
+    }
 
     // `loadFinished`: --run-script (main pages only), then the wait.
-    for code in &settings.run_script {
-        session.eval(code, &mut io);
+    // After an early `print()`, `loadFinished` reaches a finished object:
+    // no --run-script.
+    if !session.print_requested() {
+        for code in &settings.run_script {
+            session.eval(code, &mut io);
+        }
     }
     let status = (!settings.window_status.is_empty()).then_some(settings.window_status.as_str());
     session.wait(f64::from(settings.javascript_delay), status, &mut io);

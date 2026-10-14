@@ -142,6 +142,24 @@ pub(crate) fn run_inserted_script(id: NodeId, ctx: &mut Context) {
     execute_script(ctx, id, &code, &url, line);
 }
 
+/// Run the external scripts inserted by script so far (and those they
+/// insert), in insertion order.
+pub(crate) fn run_async_scripts(ctx: &mut Context) {
+    for _ in 0..1000 {
+        let tasks = with_host(|h| std::mem::take(&mut h.network_tasks));
+        for t in &tasks {
+            host::call(ctx, t, &JsValue::undefined(), &[]);
+        }
+        let list = with_host(|h| std::mem::take(&mut h.async_scripts));
+        if list.is_empty() && tasks.is_empty() {
+            return;
+        }
+        for id in list {
+            run_inserted_script(id, ctx);
+        }
+    }
+}
+
 fn script_source_of(h: &Host, id: NodeId) -> ScriptSource {
     let get = |n: &str| dom::get_attr(h, id, n);
     if !script_is_js(get("type").as_deref(), get("language").as_deref()) {
@@ -200,11 +218,12 @@ impl Session {
             });
         let clock = Rc::new(VirtualClock { start_wall_ms, now: std::cell::Cell::new(0.0) });
         let mut ctx = Context::builder().clock(clock.clone()).build().expect("Boa context");
-        ctx.runtime_limits_mut().set_loop_iteration_limit(if opts.stop_slow_scripts {
-            SLOW_SCRIPT_LOOP_LIMIT
-        } else {
-            u64::MAX
-        });
+        // `WKHTMLTOPDF_SLOW_SCRIPT_LOOPS` lowers the budget (tests).
+        let budget = std::env::var("WKHTMLTOPDF_SLOW_SCRIPT_LOOPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(SLOW_SCRIPT_LOOP_LIMIT);
+        ctx.runtime_limits_mut().set_loop_iteration_limit(if opts.stop_slow_scripts { budget } else { u64::MAX });
         ctx.runtime_limits_mut().set_recursion_limit(2048);
         let url = opts.url.to_string();
         host::install(Host {
@@ -220,6 +239,8 @@ impl Session {
             executed_scripts: Default::default(),
             current_script: Vec::new(),
             pending_scripts: Vec::new(),
+            async_scripts: Vec::new(),
+            network_tasks: Vec::new(),
             parsing: false,
             write_buffer: String::new(),
             write_anchor: HashMap::new(),
@@ -326,6 +347,13 @@ impl Session {
             let f = wk.get(JsString::from("fire"), ctx).unwrap_or_default();
             host::call(ctx, &f, &JsValue::undefined(), &[target, dom::s(ty), bubbles.into()]);
         });
+    }
+
+    /// Run the external scripts inserted by script (they load
+    /// asynchronously: after the parser yields, before `load`).
+    pub fn run_async_scripts(&mut self, svc: &mut dyn JsServices) {
+        let ctx = &mut self.ctx;
+        with_services(svc, || run_async_scripts(ctx));
     }
 
     /// End of parsing: `readyState = interactive`, `DOMContentLoaded`.

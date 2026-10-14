@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Slow script</title></head><body><p>before</p>
+<script>
+var t0 = Date.now(), n = 0;
+try { while (true) { n++; } } catch (e) { console.log('caught ' + e); }
+console.log('after loop, n>0 ' + (n > 0));
+</script>
+<script>console.log('next script ran'); document.body.appendChild(document.createTextNode('after'));</script>
+</body></html>

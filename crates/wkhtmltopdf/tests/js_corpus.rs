@@ -9,6 +9,10 @@
 //! word-level text similarity of at least [`MIN_SIMILARITY`] for the whole
 //! document and for every page (same metric as `corpus_l2.rs`).
 //!
+//! `slow` stops a `while (true)` loop: the slow-script budget is lowered
+//! with `WKHTMLTOPDF_SLOW_SCRIPT_LOOPS` so the test does not spend the
+//! default ~10 s budget (QtWebKit's interrupt fires after about 10 s too).
+//!
 //! Cases run in a fresh copy of `tests/js`; its path is replaced by
 //! `/wk/js` (where the references were made) in stderr. `TZ=UTC`, like the
 //! reference container.
@@ -58,6 +62,10 @@ fn case_args(case: &str, dir: &str) -> Vec<String> {
 }
 
 fn check(case: &str) {
+    check_env(case, &[]);
+}
+
+fn check_env(case: &str, env: &[(&str, &str)]) {
     let dir = std::env::temp_dir().join(format!("wk-js-corpus-{case}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     copy_dir(&corpus(), &dir);
@@ -69,6 +77,7 @@ fn check(case: &str) {
         .env("WKHTMLTOPDF_SYSTEM_FONTS", "0")
         .env("LC_ALL", "C")
         .env("TZ", "UTC")
+        .envs(env.iter().copied())
         .output()
         .expect("run wkhtmltopdf");
     let stderr = String::from_utf8_lossy(&o.stderr)
@@ -147,4 +156,29 @@ fn js_run_script() {
 #[test]
 fn js_debug_javascript_output() {
     check("debugjs");
+}
+
+#[test]
+fn js_window_print_ends_the_wait() {
+    check("print");
+}
+
+#[test]
+fn js_disabled() {
+    check("nojs");
+}
+
+#[test]
+fn js_xhr_and_inserted_scripts() {
+    check("xhr");
+}
+
+#[test]
+fn js_canvas_2d() {
+    check("canvas");
+}
+
+#[test]
+fn js_slow_script_is_stopped() {
+    check_env("slow", &[("WKHTMLTOPDF_SLOW_SCRIPT_LOOPS", "200000")]);
 }
