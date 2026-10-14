@@ -3,7 +3,67 @@
 Goal: beat wkhtmltopdf 0.12.6 on wall time, CPU and peak RSS for large documents
 (`bench/corpus/large.html`, a 30-page invoice with 1,450 table rows), without changing the
 output. Result: **wall and CPU beaten (1.6x and 2x less than the original); peak RSS cut by
-29 % but still 45 % above the original** (see "Peak RSS: what is left").
+29 % but still 45 % above the original** (see "Peak RSS: what is left"). The memory pass that
+followed (next section) brings the peak RSS **below the original's: 48.9 MiB vs 56.6 MiB**.
+
+# Memory pass (October 2026)
+
+Goal: peak RSS on `large.html` at or below the original's, output unchanged. Every step was
+checked with `bench/pdf-identity.sh`: the 67 PDFs of the corpus are byte-identical to `main`
+(`5a19b78`) after each commit; `cargo test --workspace`, clippy `-D warnings` and
+`cargo fmt --check` pass.
+
+## Results
+
+`wkbench:local` container (linux/arm64, static musl binaries), pdfkit's arguments plus
+`--javascript-delay 0`. Wall: hyperfine median of 20 runs after 3 warmups; CPU (user+sys,
+median) and peak RSS (lowest) of 9 `/usr/bin/time -v` runs. *orig* is wkhtmltopdf 0.12.6.1,
+*main* is `5a19b78`, *final* is this branch. All three measured in the same session.
+
+| Case | Wall orig / main / final | CPU s orig / main / final | Peak RSS MiB orig / main / final |
+|---|---|---|---|
+| `bench/corpus/large.html` | 536 / 313 / **261 ms** | 0.42 / 0.30 / **0.25** | 56.6 / 81.8 / **48.9** |
+| `bench/corpus/medium.html` | 49.0 / 15.5 / 15.3 ms | 0.04 / 0.01 / 0.01 | 40.0 / 18.9 / **15.6** |
+| `bench/corpus/small.html` | 25.0 / 6.0 / 5.9 ms | 0.02 / 0.00 / 0.00 | 38.3 / 16.5 / **14.1** |
+
+(The original's wall time on `large` drifts between sessions: 446 ms in the previous pass.)
+
+macOS arm64 host (release profile, `WKHTMLTOPDF_SYSTEM_FONTS=0`, `/usr/bin/time -l`, lowest
+of 9): `large` 82.0 → 59.0 MiB, `medium` 19.5 → 15.6 MiB, `small` 15.2 → 12.8 MiB, wall and
+CPU unchanged within noise (230 → 220 ms). macOS' allocator keeps more of the freed memory
+resident than musl's, hence the higher figure for the same heap.
+
+## What changed
+
+| Commit | Change | Heap peak on `large.html` (dhat) |
+|---|---|---|
+| | `main` | 72.6 MB |
+| `7f319a7` | `parley`: `Layout::shrink_to_fit` (and `ShapedText::shrink_to_fit` in `parley_engine`), called by blitz-dom once a layout is built and after each line-breaking pass. A one-line cell held its runs, lines, styles and clusters in 4-element minimum allocations plus the speculative per-character `reserve` | 55.6 MB |
+| `dbef450` | `blitz-dom` tables: cells index a per-table list of distinct grid item styles (compared with the last style of the same column and the last one added) instead of holding a ~1.2 KB `taffy::Style` each; the row placement, different on every row, is applied by a `CellStyle` wrapper (`get_grid_child_style`) | 46.5 MB |
+| `e4ed047` | `WebPage::render_final` (consumes the page; every page is rendered once and dropped): the inline layouts are moved out of the DOM before painting and handed to `blitz_paint::inline_layouts`, which drops each one right after painting its text, so the display list reuses their memory | 35.1 MB |
+| `ec64bac` | PDF writer: krilla shares the font blob instead of a copy of each face's file (2.2 MB for the four DejaVu faces); the culling boxes are built in an exactly sized `Vec` shared by `Rc` instead of a doubling `Vec` copied into an `Rc<[_]>` | 35.1 MB; PDF phase 11.4 → 6.6 MB |
+
+The peak is still at the end of painting: DOM nodes (slotmap 7.1 MB), taffy layout data
+(5.6 MB), the display list (chunks 5.1 MB, boxed glyph runs 3.9 MB, glyph vectors 1.4 MB, run
+texts 2.3 MB, boxed path fills 2.9 MB) and elements (2.5 MB). The heap-to-RSS gap is the
+allocator: freed DOM memory is reused by the display list, but the PDF phase's large buffers
+(content streams, deflate state, `lopdf` re-parse for the AcroForm/PageMode update) come on top.
+
+## Options evaluated and not taken
+
+- **Streaming pages to krilla / dropping the display list per page**: the PDF phase is no
+  longer the peak (its live allocations are 6.6 MB above the display list), and every page is
+  culled from the single display list of the document (a command may span several pages, and
+  repeated table header and footer groups are replayed on every page).
+- **Dropping the taffy layout caches before painting** (~3 MB): would need the cache split out
+  of `LayoutData`; not needed to reach the goal.
+- **Compacting glyph-run commands and run texts** (`u32` glyph ranges, a solid-fill glyph run
+  without the 464-byte `RenderCommand`): ~3 MB, but every consumer of `Command::get` would pay a
+  conversion; left for a later pass.
+- **Releasing stylo `ComputedValues` of painted nodes**: they do not show among the allocation
+  sites alive at the peak (cells share their computed values through stylo's sharing cache).
+
+# Speed pass (October 2026)
 
 ## Results
 
@@ -71,7 +131,7 @@ Heap, `dhat` at the global peak (end of painting, DOM and display list both aliv
 
 ## Peak RSS: what is left
 
-The original holds `large.html` in ~18 MB above its 39 MB baseline (Qt + WebKit libraries);
+*Superseded by the memory pass above.* The original holds `large.html` in ~18 MB above its 39 MB baseline (Qt + WebKit libraries);
 the port holds it in ~65 MB above its 17 MB baseline. What remains is the engine's own data,
 about 7 KB per table cell, all of it in the vendored engine crates:
 
