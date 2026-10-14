@@ -207,44 +207,6 @@ fn is_winsock_resolution_error(code: Option<i32>) -> bool {
     matches!(code, Some(11001 | 11002 | 11004))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn winsock_resolution_errors() {
-        assert!(is_winsock_resolution_error(Some(11001)));
-        assert!(is_winsock_resolution_error(Some(11002)));
-        assert!(is_winsock_resolution_error(Some(11004)));
-        assert!(!is_winsock_resolution_error(Some(11003)));
-        assert!(!is_winsock_resolution_error(Some(10061)));
-        assert!(!is_winsock_resolution_error(None));
-    }
-
-    #[test]
-    fn resolution_failure_maps_to_host_not_found() {
-        let url = Url::parse("http://nonexist.html/").unwrap();
-        let io = std::io::Error::other(
-            "failed to lookup address information: nodename nor servname provided, or not known",
-        );
-        let (err, msg) = map_error(&ureq::Error::Io(io), &url);
-        assert_eq!(err, NetworkError::HostNotFoundError);
-        assert_eq!(msg, "Host nonexist.html not found");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_resolution_failure_maps_to_host_not_found() {
-        let url = Url::parse("http://nonexistent.invalid/").unwrap();
-        for code in [11001, 11002, 11004] {
-            let io = std::io::Error::from_raw_os_error(code);
-            let (err, msg) = map_error(&ureq::Error::Io(io), &url);
-            assert_eq!(err, NetworkError::HostNotFoundError, "os error {code}");
-            assert_eq!(msg, "Host nonexistent.invalid not found");
-        }
-    }
-}
-
 impl HttpClient {
     pub fn new(settings: &LoadPage, user_agent: &str) -> HttpClient {
         HttpClient {
@@ -365,4 +327,42 @@ impl HttpClient {
 
 fn http_request(url: &Url, post: bool) -> ureq::http::request::Builder {
     ureq::http::Request::builder().method(if post { "POST" } else { "GET" }).uri(url.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn winsock_resolution_errors() {
+        assert!(is_winsock_resolution_error(Some(11001)));
+        assert!(is_winsock_resolution_error(Some(11002)));
+        assert!(is_winsock_resolution_error(Some(11004)));
+        assert!(!is_winsock_resolution_error(Some(11003)));
+        assert!(!is_winsock_resolution_error(Some(10061)));
+        assert!(!is_winsock_resolution_error(None));
+    }
+
+    #[test]
+    fn resolution_failure_maps_to_host_not_found() {
+        let url = Url::parse("http://nonexist.html/").unwrap();
+        let io = std::io::Error::other(
+            "failed to lookup address information: nodename nor servname provided, or not known",
+        );
+        let (err, msg) = map_error(&ureq::Error::Io(io), &url);
+        assert_eq!(err, NetworkError::HostNotFoundError);
+        assert_eq!(msg, "Host nonexist.html not found");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_resolution_failure_maps_to_host_not_found() {
+        let url = Url::parse("http://nonexistent.invalid/").unwrap();
+        for code in [11001, 11002, 11004] {
+            let io = std::io::Error::from_raw_os_error(code);
+            let (err, msg) = map_error(&ureq::Error::Io(io), &url);
+            assert_eq!(err, NetworkError::HostNotFoundError, "os error {code}");
+            assert_eq!(msg, "Host nonexistent.invalid not found");
+        }
+    }
 }
