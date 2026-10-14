@@ -20,6 +20,11 @@ wk-cli.workspace = true
 wk-settings.workspace = true
 wk-converter.workspace = true
 wk-loader.workspace = true
+# Heap profiler, only with `--features dhat-heap` (docs/perf.md).
+dhat = { version = "0.3", optional = true }
+
+[features]
+dhat-heap = ["dep:dhat"]
 
 [dev-dependencies]
 pdf-extract = "0.12"
