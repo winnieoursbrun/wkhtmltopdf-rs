@@ -444,12 +444,15 @@ impl Converter<'_, '_> {
                 - unit(self.g.margin.left.value, self.g.margin.left.unit)
                 - unit(self.g.margin.right.value, self.g.margin.right.unit))
             .max(1.0) as f32;
-            let dpi = f64::from(self.g.dpi.max(1));
+            // `calculateHeaderHeight`: the measuring printer gets the body
+            // height without the printing shrink, one device pixel per CSS
+            // pixel, divided by 3.78 px/mm. Verified on tests/parts
+            // (hf-html-static: a 77.6 px body reserves 21.5 mm where the
+            // printed header is 46.6 pt tall; this model gives 20.5 mm).
             let mut measure = |i: Option<usize>| -> Option<f64> {
                 let p = pages.get_mut(i?)?.as_mut()?;
                 let r = p.render(printable_w, ph as f32);
-                let height_pt = f64::from(r.body_height * r.pt_per_px);
-                Some(height_pt / 72.0 * dpi / MM_TO_POINT_MULTIPLIER)
+                Some(f64::from(r.body_height) / MM_TO_POINT_MULTIPLIER)
             };
             for o in objs.iter_mut() {
                 if let Some(h) = measure(o.measure_header) {
@@ -899,13 +902,29 @@ impl Converter<'_, '_> {
                             let spacing = mm_to_pt(ps.header.spacing);
                             let body = h.body_height * h.pt_per_px;
                             let origin = (paper.left, paper.top - spacing - body);
-                            push_hf_band(&mut op, h, s, origin, &url_to_obj, self.g.resolve_relative_links);
+                            push_hf_band(
+                                &mut op,
+                                h,
+                                s,
+                                origin,
+                                &url_to_obj,
+                                self.g.resolve_relative_links,
+                                paper.top,
+                            );
                         }
                         if let Some(f) = o.footers.get(pi) {
                             let s = hf_slices.get(&(d, false, pi)).expect("footer slice");
                             let spacing = mm_to_pt(ps.footer.spacing);
                             let origin = (paper.left, paper.top + paper.printable_height() + spacing);
-                            push_hf_band(&mut op, f, s, origin, &url_to_obj, self.g.resolve_relative_links);
+                            push_hf_band(
+                                &mut op,
+                                f,
+                                s,
+                                origin,
+                                &url_to_obj,
+                                self.g.resolve_relative_links,
+                                paper.top,
+                            );
                         }
                         out_pages.push(op);
                         actual_page += 1;
@@ -1042,7 +1061,10 @@ fn first_slice(r: &RenderedPage, paper_h: f32) -> PageSlice {
 }
 
 /// Draw a header/footer page and its links (`findLinks` on the header
-/// frame: both link kinds are always on there).
+/// frame: both link kinds are always on there). Like upstream, the link
+/// rectangles are `link_shift` (the top margin) above the drawn links:
+/// `addLink` maps them as if the content area started at the paper's top
+/// edge (verified: hf-html-static's header link lies above the page).
 fn push_hf_band<'p>(
     op: &mut OutPage<'p>,
     r: &'p RenderedPage,
@@ -1050,6 +1072,7 @@ fn push_hf_band<'p>(
     origin: (f32, f32),
     url_to_obj: &HashMap<String, usize>,
     resolve_relative: bool,
+    link_shift: f32,
 ) {
     let s = r.pt_per_px;
     for l in &r.links {
@@ -1060,7 +1083,7 @@ fn push_hf_band<'p>(
             continue;
         }
         let x0 = origin.0 + l.rect.x0 as f32 * s;
-        let y0 = origin.1 + (l.rect.y0 as f32 - slice.y0) * s;
+        let y0 = origin.1 + (l.rect.y0 as f32 - slice.y0) * s - link_shift;
         let rect = (x0, y0, x0 + l.rect.width() as f32 * s, y0 + l.rect.height() as f32 * s);
         if l.href.starts_with("__WKANCHOR_") {
             op.links.push(PdfLink { rect, target: LinkTarget::Named(l.href.clone()) });

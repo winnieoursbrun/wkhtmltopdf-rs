@@ -1,13 +1,15 @@
 //! PDF output. Stands in for `QPrinter` + the patched `QPdfEngine` as used
-//! by `PdfConverter` (`pdfconverter.cc`): page size and margins, one PDF
-//! page per page slice, link annotations, the outline, and the document
+//! by `PdfConverter` (`pdfconverter.cc`): one PDF page per output page with
+//! its bands (content slice, HTML header/footer), header/footer texts and
+//! lines, named destinations (`addAnchor`), link annotations (`addLink`,
+//! `addHyperlink`), the outline, `QPrinter::GrayScale`, and the document
 //! information dictionary (`/Title`, `/Creator wkhtmltopdf 0.12.6`,
 //! `/Producer Qt 4.8.7`, `/CreationDate` in UTC, like the 0.12.6 binary).
 //!
 //! The display list recorded by the engine is replayed into krilla: real,
 //! subset text (with the source text of every glyph run), images (JPEG
 //! passed through), linear/radial/sweep gradients, clips, opacity.
-//! Not yet (TODO P2b/P5): box shadows, filters, blend modes, `--grayscale`,
+//! Not yet (TODO P2b/P5): box shadows, filters, blend modes,
 //! `--lowquality`, `--image-dpi`/`--image-quality`, `--no-pdf-compression`.
 
 use std::collections::HashMap;
@@ -772,7 +774,8 @@ pub fn write_pdf(
                 surface.set_fill(None);
                 surface.set_stroke(Some(Stroke {
                     paint: rgb::Color::new(0, 0, 0).into(),
-                    width: 0.75,
+                    // Qt's default pen is cosmetic (width 0, a hairline).
+                    width: 0.0,
                     ..Default::default()
                 }));
                 surface.draw_path(&path);

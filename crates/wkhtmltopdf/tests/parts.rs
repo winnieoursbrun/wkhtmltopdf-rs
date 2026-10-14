@@ -237,6 +237,8 @@ struct Facts {
     info: BTreeMap<String, String>,
     /// (level, title, page)
     outline: Vec<(usize, String, Option<usize>)>,
+    /// Top of each bookmark's explicit destination, in outline order.
+    outline_y: Vec<Option<f64>>,
     named: BTreeMap<String, usize>,
     /// Per page: (target, page, rect)
     links: Vec<Vec<LinkFact>>,
@@ -368,6 +370,28 @@ fn facts(pdf: &[u8]) -> Facts {
             walk_outline(&doc, od.get(b"First").ok(), 1, &mut outline, &resolve);
         }
     }
+    fn walk_y(doc: &Document, first: Option<&Object>, out: &mut Vec<Option<f64>>) {
+        let mut cur = first.cloned();
+        while let Some(o) = cur {
+            let Ok(d) = deref(doc, &o).as_dict() else { break };
+            let y = match d.get(b"Dest").map(|o| deref(doc, o)) {
+                Ok(Object::Array(a)) if a.len() > 3 => Some(num(&a[3])),
+                _ => None,
+            };
+            out.push(y);
+            walk_y(doc, d.get(b"First").ok(), out);
+            cur = d.get(b"Next").ok().cloned();
+            if out.len() > 10_000 {
+                break;
+            }
+        }
+    }
+    let mut outline_y = Vec::new();
+    if let Ok(o) = catalog.get(b"Outlines") {
+        if let Ok(od) = deref(&doc, o).as_dict() {
+            walk_y(&doc, od.get(b"First").ok(), &mut outline_y);
+        }
+    }
     // Pages: sizes, links, colours.
     let mut sizes = Vec::new();
     let mut links = Vec::new();
@@ -437,7 +461,18 @@ fn facts(pdf: &[u8]) -> Facts {
         }
         out
     });
-    Facts { page_count: pages.len(), sizes, page_mode, info, outline, named, links, fields, non_gray }
+    Facts {
+        page_count: pages.len(),
+        sizes,
+        page_mode,
+        info,
+        outline,
+        outline_y,
+        named,
+        links,
+        fields,
+        non_gray,
+    }
 }
 
 /// 3-component colour settings that are not grey (`r == g == b`).
@@ -682,6 +717,14 @@ fn check(case: &str) {
             )
         })
         .collect();
+    let want_y: Vec<Option<f64>> = j.get("outline").arr().iter().map(|o| o.get("y").num()).collect();
+    for (i, (w, g)) in want_y.iter().zip(&f.outline_y).enumerate() {
+        if let (Some(w), Some(g)) = (w, g) {
+            if (w - g).abs() > RECT_TOLERANCE {
+                errors.push(format!("outline item {} y: ref {w}, ours {g:.1}", i + 1));
+            }
+        }
+    }
     if want_outline != f.outline {
         errors.push(format!("outline:\n  ref:  {want_outline:?}\n  ours: {:?}", f.outline));
     }
