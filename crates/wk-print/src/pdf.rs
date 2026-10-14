@@ -12,7 +12,7 @@
 //! Not yet (TODO P2b/P5): box shadows, filters, blend modes,
 //! `--lowquality`, `--image-dpi`/`--image-quality`, `--no-pdf-compression`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use anyrender::recording::RenderCommand;
@@ -716,7 +716,7 @@ fn date_time(secs: u64) -> DateTime {
         .utc_offset_minute(0)
 }
 
-fn outline_node(n: &OutlineNode, named: &HashMap<String, XyzDestination>) -> krilla::outline::OutlineNode {
+fn outline_node(n: &OutlineNode, named: &BTreeMap<String, XyzDestination>) -> krilla::outline::OutlineNode {
     let dest = named
         .get(&n.anchor)
         .cloned()
@@ -773,8 +773,9 @@ pub fn write_pdf(
     let mut caches = Caches::default();
     let page_settings = PageSettings::from_wh(width, height).ok_or("invalid page size")?;
     // Named destinations: like Qt's anchor table, the last definition of a
-    // name wins (with copies, the last copy).
-    let mut named: HashMap<String, XyzDestination> = HashMap::new();
+    // name wins (with copies, the last copy). Ordered, so destinations are
+    // registered (and numbered) in the same order on every run.
+    let mut named: BTreeMap<String, XyzDestination> = BTreeMap::new();
     for (i, p) in pages.iter().enumerate() {
         for a in &p.anchors {
             named.insert(a.name.clone(), XyzDestination::new(i, Point::from_xy(a.x, a.y)));
