@@ -71,6 +71,11 @@ pub struct WebSettings {
     /// `--enable-forms`: inputs and text areas are painted white (their
     /// values become form fields), like `beginPrintObject` does.
     pub produce_forms: bool,
+    /// Printable area (points) the page will be rendered on, when known at
+    /// load time: the load-time layout (resource discovery) is then done at
+    /// the print viewport, which `render` reuses instead of laying the
+    /// document out a second time.
+    pub print_area: Option<(f32, f32)>,
 }
 
 impl Default for WebSettings {
@@ -94,6 +99,7 @@ impl Default for WebSettings {
             user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/534.34 (KHTML, like Gecko) wkhtmltopdf Safari/534.34"
                 .into(),
             produce_forms: false,
+            print_area: None,
         }
     }
 }
@@ -261,6 +267,17 @@ pub(crate) fn ua_css(settings: &WebSettings) -> String {
     css
 }
 
+/// The viewport a page is first laid out at for printing on `printable_w_pt` ×
+/// `printable_h_pt` points: the printable area in CSS px at 96 dpi, widened by
+/// the minimum shrink factor.
+fn print_viewport(settings: &WebSettings, printable_w_pt: f32, printable_h_pt: f32) -> (f32, f32) {
+    let zoom = if settings.zoom > 0.0 { settings.zoom } else { 1.0 };
+    let min_shrink = if settings.smart_shrinking { MIN_SHRINK } else { 1.0 };
+    let base_w = printable_w_pt / 0.75 / zoom;
+    let base_h = printable_h_pt / 0.75 / zoom;
+    ((base_w * min_shrink).round().max(1.0), (base_h * min_shrink).round().max(1.0))
+}
+
 /// One resource request found in document order.
 struct Unit {
     url: Url,
@@ -294,8 +311,15 @@ impl WebPage {
         }
         let net = QueueNet::default();
         let media = if settings.print_media_type { MediaType::print() } else { MediaType::screen() };
+        let (load_w, load_h) = match settings.print_area {
+            Some((w, h)) => {
+                let (w, h) = print_viewport(&settings, w, h);
+                (w as u32, h as u32)
+            }
+            None => (800, 600),
+        };
         let config = DocumentConfig {
-            viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+            viewport: Some(Viewport::new(load_w, load_h, 1.0, ColorScheme::Light)),
             base_url: Some(url.to_string()),
             net_provider: Some(Arc::new(net.clone())),
             font_ctx: Some(font_ctx),
@@ -514,14 +538,10 @@ impl WebPage {
     }
 
     fn render_inner(&mut self, printable_w_pt: f32, printable_h_pt: f32, release_text: bool) -> RenderedPage {
+        let (mut layout_w, vh) = print_viewport(&self.settings, printable_w_pt, printable_h_pt);
         let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
-        let (min_shrink, max_shrink) =
-            if self.settings.smart_shrinking { (MIN_SHRINK, MAX_SHRINK) } else { (1.0, 1.0) };
-        // Printable width in CSS px at 96 dpi.
+        let max_shrink = if self.settings.smart_shrinking { MAX_SHRINK } else { 1.0 };
         let base_w = printable_w_pt / 0.75 / zoom;
-        let base_h = printable_h_pt / 0.75 / zoom;
-        let mut layout_w = (base_w * min_shrink).round().max(1.0);
-        let vh = (base_h * min_shrink).round().max(1.0);
         self.set_viewport(layout_w, vh);
         if self.settings.smart_shrinking {
             let content_w = self.content_width();

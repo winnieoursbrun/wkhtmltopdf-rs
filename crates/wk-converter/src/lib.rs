@@ -190,6 +190,7 @@ fn web_settings(
     app_name: &str,
     kind: PageKind,
     viewport: Option<(u32, u32)>,
+    print_area: Option<(f32, f32)>,
 ) -> WebSettings {
     let main = kind.is_main_loader();
     WebSettings {
@@ -210,6 +211,7 @@ fn web_settings(
         debug_javascript: o.load.debug_javascript,
         stop_slow_scripts: o.load.stop_slow_scripts,
         user_agent: wk_loader::user_agent(app_name),
+        print_area,
     }
 }
 
@@ -291,6 +293,7 @@ pub fn convert_raw(global: &PdfGlobal, objects: &[PdfObject], io: ConvertIo<'_>)
         app_name: &app_name,
         fonts: wk_fonts::font_context(&wk_fonts::FontOptions::default()),
         temp: toc::TempFiles::default(),
+        print_area: None,
     };
     let success = conv.run(objects, stdin, stdout);
     (success, error_code)
@@ -344,6 +347,9 @@ struct Converter<'a, 'b> {
     app_name: &'a str,
     fonts: parley::FontContext,
     temp: toc::TempFiles,
+    /// Printable area (points) the pages being loaded will be rendered on
+    /// (`WebSettings::print_area`).
+    print_area: Option<(f32, f32)>,
 }
 
 impl Converter<'_, '_> {
@@ -380,8 +386,14 @@ impl Converter<'_, '_> {
                     break;
                 }
                 // Ignored failure: an empty page is printed.
-                let ws =
-                    web_settings(settings, None, self.app_name, kind, viewport_size(&self.g.viewport_size));
+                let ws = web_settings(
+                    settings,
+                    None,
+                    self.app_name,
+                    kind,
+                    viewport_size(&self.g.viewport_size),
+                    self.print_area,
+                );
                 let mut f =
                     PageFetcher { loader: &mut *loader, index: i, pf: &mut *self.pf, pending: vec![] };
                 pages[i] = Some(WebPage::load("", reply.final_url.clone(), ws, self.fonts.clone(), &mut f));
@@ -402,6 +414,7 @@ impl Converter<'_, '_> {
                 self.app_name,
                 kind,
                 viewport_size(&self.g.viewport_size),
+                self.print_area,
             );
             let page = {
                 let mut f =
@@ -498,16 +511,18 @@ impl Converter<'_, '_> {
         if header_heights_calc_needed {
             // measuringHeadersLoaded: render each header/footer once and
             // reserve its body height (mm) plus the spacing.
-            let pages = self.load_all(&mut measuring, &measuring_specs);
-            if *self.error_code == 0 {
-                *self.error_code = measuring.http_error_code();
-            }
-            let Some(mut pages) = pages else { return false };
             let (pw, ph) = paper_size(&self.g);
             let unit = |v: f64, u| v * points_per_unit(u, self.g.dpi);
             let right = unit(self.g.margin.right.value, self.g.margin.right.unit);
             let left = unit(self.g.margin.left.value, self.g.margin.left.unit);
             let printable_w = Paper::snapped(pw, ph, [0.0, right, 0.0, left], self.g.dpi).printable_width();
+            self.print_area = Some((printable_w, ph as f32));
+            let pages = self.load_all(&mut measuring, &measuring_specs);
+            self.print_area = None;
+            if *self.error_code == 0 {
+                *self.error_code = measuring.http_error_code();
+            }
+            let Some(mut pages) = pages else { return false };
             let dev_per_pt = f64::from(self.g.dpi.max(1)) / 72.0;
             // `calculateHeaderHeight`: the body height printed on a test
             // printer (same shrink as the page), in whole device pixels
@@ -550,25 +565,9 @@ impl Converter<'_, '_> {
             .filter(|o| o.loader_index.is_some())
             .map(|o| (o.settings, PageKind::Document))
             .collect();
-        let pages = self.load_all(&mut loader, &specs);
-        // pagesLoaded
-        if *self.error_code == 0 {
-            *self.error_code = loader.http_error_code();
-        }
-        let Some(mut pages) = pages else { return false };
-        for o in objs.iter_mut() {
-            if let Some(i) = o.loader_index {
-                o.page = pages[i].take();
-                o.url = o.page.as_ref().map(|p| url_key(&p.url));
-                o.skip = loader.resources[i].skip;
-            }
-        }
-
+        // The paper is known before the pages load (it depends on the
+        // measured headers only): they are laid out at the print viewport.
         let m = self.g.margin;
-        if m.left.unit != m.right.unit || m.left.unit != m.top.unit || m.left.unit != m.bottom.unit {
-            self.pf.error("Currently all margin units must be the same!");
-            return false;
-        }
         let max_header = objs
             .iter()
             .map(|o| o.header_reserve)
@@ -588,6 +587,27 @@ impl Converter<'_, '_> {
             self.g.dpi,
         );
 
+        self.print_area = Some((paper.printable_width(), paper.printable_height()));
+        let pages = self.load_all(&mut loader, &specs);
+        self.print_area = None;
+        // pagesLoaded
+        if *self.error_code == 0 {
+            *self.error_code = loader.http_error_code();
+        }
+        let Some(mut pages) = pages else { return false };
+        for o in objs.iter_mut() {
+            if let Some(i) = o.loader_index {
+                o.page = pages[i].take();
+                o.url = o.page.as_ref().map(|p| url_key(&p.url));
+                o.skip = loader.resources[i].skip;
+            }
+        }
+
+        let m = self.g.margin;
+        if m.left.unit != m.right.unit || m.left.unit != m.top.unit || m.left.unit != m.bottom.unit {
+            self.pf.error("Currently all margin units must be the same!");
+            return false;
+        }
         // painter->begin(printer): the output is opened before printing.
         let mut output = if self.g.out == "-" || self.g.out.is_empty() {
             Output::Stdout
@@ -712,7 +732,9 @@ impl Converter<'_, '_> {
                     announced = true;
                     self.phase(2);
                 }
+                self.print_area = Some((paper.printable_width(), paper.printable_height()));
                 let pages = self.load_all(&mut toc_loader, &toc_specs);
+                self.print_area = None;
                 if *self.error_code == 0 {
                     *self.error_code = toc_loader.http_error_code();
                 }
@@ -854,7 +876,10 @@ impl Converter<'_, '_> {
             }
         }
         if !hf_specs.is_empty() {
+            // The header page is printed with zero vertical margins.
+            self.print_area = Some((paper.printable_width(), paper.height));
             let pages = self.load_all(&mut hf_loader, &hf_specs);
+            self.print_area = None;
             if *self.error_code == 0 {
                 *self.error_code = hf_loader.http_error_code();
             }
