@@ -18,10 +18,11 @@
 //! Not yet reproduced (TODO P2b): `--minimum-font-size`, `--viewport-size`,
 //! unprefixed `transform` being ignored by QtWebKit 2.2, `-webkit-` prefixed
 //! properties, `orphans`/`widows`.
-//! JavaScript does not run yet (P4): external scripts are requested (their
-//! load errors count like upstream) but not executed.
+//! JavaScript (P4) runs in `scripting.rs` when the document has scripts;
+//! documents without any take the static path below (no realm is created).
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use blitz_dom::{BaseDocument, DocumentConfig, MediaType, Node, NodeId, local_name};
@@ -50,6 +51,18 @@ pub struct WebSettings {
     pub zoom: f32,
     /// Smart shrinking (`--enable/disable-smart-shrinking`).
     pub smart_shrinking: bool,
+    /// `--javascript-delay` (ms, virtual clock).
+    pub javascript_delay: u32,
+    /// `--window-status` (main pages only).
+    pub window_status: String,
+    /// `--run-script` (main pages only).
+    pub run_script: Vec<String>,
+    /// `--debug-javascript`.
+    pub debug_javascript: bool,
+    /// `--stop-slow-scripts` / `--no-stop-slow-scripts`.
+    pub stop_slow_scripts: bool,
+    /// `navigator.userAgent` (the loader's `User-Agent`).
+    pub user_agent: String,
 }
 
 impl Default for WebSettings {
@@ -64,6 +77,13 @@ impl Default for WebSettings {
             user_style_sheet: None,
             zoom: 1.0,
             smart_shrinking: true,
+            javascript_delay: 200,
+            window_status: String::new(),
+            run_script: Vec::new(),
+            debug_javascript: false,
+            stop_slow_scripts: true,
+            user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/534.34 (KHTML, like Gecko) wkhtmltopdf Safari/534.34"
+                .into(),
         }
     }
 }
@@ -164,13 +184,15 @@ pub struct WebPage {
     /// Bodies of loaded resources by URL (for JPEG passthrough).
     bodies: HashMap<String, Arc<Vec<u8>>>,
     pub url: Url,
+    /// Canvas content recorded by script.
+    canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
 }
 
 fn tag(node: &Node) -> &str {
     node.element_data().map(|e| &*e.name.local).unwrap_or("")
 }
 
-fn ua_css(settings: &WebSettings) -> String {
+pub(crate) fn ua_css(settings: &WebSettings) -> String {
     let mut css = String::new();
     if settings.enable_javascript {
         css.push_str("noscript { display: none !important; }\n");
@@ -190,7 +212,14 @@ struct Unit {
 }
 
 impl WebPage {
-    /// Parse `html` and load its sub-resources through `fetcher`.
+    /// Parse `html`, load its sub-resources through `fetcher`, and run its
+    /// scripts when JavaScript is enabled (the whole `QWebFrame::load` up to
+    /// wkhtmltopdf's `loadDone`, including the `--javascript-delay` wait).
+    ///
+    /// This is also the entry point for header/footer HTML: load the page
+    /// with its query string in `url` (`?page=1&topage=3…`, read by the
+    /// substitution script through `location.search`), with
+    /// `run_script`/`window_status` left empty, then [`render`](Self::render).
     pub fn load(
         html: &str,
         url: Url,
@@ -198,6 +227,9 @@ impl WebPage {
         font_ctx: FontContext,
         fetcher: &mut dyn Fetcher,
     ) -> WebPage {
+        if settings.enable_javascript && crate::scripting::needs_js(html) {
+            return crate::scripting::load(html, url, settings, font_ctx, fetcher);
+        }
         let net = QueueNet::default();
         let media = if settings.print_media_type { MediaType::print() } else { MediaType::screen() };
         let config = DocumentConfig {
@@ -216,9 +248,20 @@ impl WebPage {
         if let Some(css) = &settings.user_style_sheet {
             doc.add_user_agent_stylesheet(css);
         }
-        let mut page = WebPage { doc, net, settings, bodies: HashMap::new(), url };
+        let mut page = WebPage { doc, net, settings, bodies: HashMap::new(), url, canvases: HashMap::new() };
         page.load_resources(fetcher);
         page
+    }
+
+    pub(crate) fn from_parts(
+        doc: BaseDocument,
+        net: QueueNet,
+        settings: WebSettings,
+        bodies: HashMap<String, Arc<Vec<u8>>>,
+        url: Url,
+        canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
+    ) -> WebPage {
+        WebPage { doc, net, settings, bodies, url, canvases }
     }
 
     /// The document `<title>`.
@@ -367,7 +410,9 @@ impl WebPage {
         let geometry = collect_geometry(&self.doc);
         let doc_h = geometry.doc_height.ceil().max(1.0) as u32;
         let mut recorder = Recorder::default();
+        blitz_paint::canvas::set_pictures(self.canvases.clone());
         blitz_paint::paint_scene(&mut recorder, &mut self.doc, 1.0, layout_w as u32, doc_h, 0, 0);
+        blitz_paint::canvas::clear_pictures();
 
         if std::env::var_os("WKHTMLTOPDF_DEBUG_SCENE").is_some() {
             for (i, c) in recorder.scene.commands.iter().enumerate() {
@@ -532,7 +577,7 @@ impl WebPage {
     }
 }
 
-fn is_image_url(url: &Url) -> bool {
+pub(crate) fn is_image_url(url: &Url) -> bool {
     let p = url.path().to_ascii_lowercase();
     [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".ico"].iter().any(|e| p.ends_with(e))
 }

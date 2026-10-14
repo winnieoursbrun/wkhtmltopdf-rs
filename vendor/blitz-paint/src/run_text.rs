@@ -33,6 +33,11 @@ pub fn take() -> Option<RunText> {
     CURRENT.with(|c| c.borrow_mut().take())
 }
 
+/// wkhtmltopdf-rs: publish a prepared text (canvas glyph runs).
+pub(crate) fn set(rt: RunText) {
+    CURRENT.with(|c| *c.borrow_mut() = Some(rt));
+}
+
 pub(crate) fn publish(source: Option<&str>, glyph_run: &GlyphRun<'_, TextBrush>, node_id: NodeId) {
     let rt = source.map(|src| build(src, glyph_run, node_id));
     CURRENT.with(|c| *c.borrow_mut() = rt);

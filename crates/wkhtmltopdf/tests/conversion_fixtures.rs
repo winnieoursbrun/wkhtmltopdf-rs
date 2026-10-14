@@ -7,14 +7,15 @@
 //! `run.sh` captures `twoout a.html b.html` (quirk §10.2: the second input
 //! silently becomes the output) *before* `rs`, which overwrote the original
 //! `b.html` with a PDF. `tests/conversion/b.html` is a reconstruction (title
-//! `Doc B`, `<h1>B</h1>`, a missing stylesheet, a missing script, an inline
-//! script logging `hello console` and alerting `hi` on line 1, a missing
-//! image). Fed to the reference binary (`wkref:local`), it reproduces
-//! `info_b.stderr` byte for byte, and `warn.stderr` except that the
-//! `Javascript alert` line comes before the image's `Blocked access` line
-//! (a load-order race inside QtWebKit; both orders are deterministic per
-//! input). The cases run in `run.sh` order in one directory, so `twoout`
-//! overwrites `b.html` before `rs` loads it, like the capture did.
+//! `Doc B`, a missing stylesheet and a missing script in the head, then in
+//! the body `<h1>B</h1>`, a missing image, and an inline script logging
+//! `hello console` and alerting `hi`, all on line 1). Fed to the reference
+//! binary (`wkref:local`), it reproduces `warn.stderr` and `info_b.stderr`
+//! byte for byte (verified 2026-10-14; an earlier reconstruction with the
+//! inline script in the head printed the alert before the image's
+//! `Blocked access` line). The cases run in `run.sh` order in one directory,
+//! so `twoout` overwrites `b.html` before `rs` loads it, like the capture
+//! did.
 //!
 //! Normalisation. Paths: the capture ran in `/wk/conv`; the working
 //! directory's path is replaced by `/wk/conv`, and since a message padded
@@ -24,10 +25,10 @@
 //! captured sequences, so they are compared as is.
 //!
 //! Known gaps, tested separately:
-//! - `warn` and `info_b` contain JavaScript output (`Javascript alert`,
-//!   console messages): JavaScript is P4. They are compared exactly in an
-//!   ignored test, and without the JavaScript lines in a regular one.
 //! - `toc` needs the TOC (P3): ignored.
+//!
+//! `warn` and `info_b` contain JavaScript output (`Javascript alert`,
+//! console messages) and are compared exactly.
 //!
 //! `missing_page*` and `badhost` need name resolution to fail for
 //! `nonexist.html` / `nonexistent.invalid` (true without network too).
@@ -202,23 +203,30 @@ fn conversion_fixtures_reproduce_stderr_and_exit_code() {
     assert!(failures.is_empty(), "{} mismatch(es):\n{}", failures.len(), failures.join("\n"));
 }
 
-/// `warn` and `info_b` with the JavaScript-produced lines removed from the
-/// expected output (JavaScript does not run before P4); everything else —
-/// blocked files, load errors, their order, padding and exit codes — must
-/// match exactly.
+/// `warn` and `info_b` with the JavaScript-produced lines removed from both
+/// sides: blocked files, load errors, their order, padding and exit codes
+/// (also run with JavaScript disabled in `quirks.rs`).
 #[test]
 fn js_fixtures_match_without_javascript_lines() {
     let all = run_all();
     let failures: Vec<String> = all
         .iter()
         .filter(|o| JS_CASES.contains(&o.name))
-        .filter_map(|o| diff(o, &without_js(&o.want_stderr)))
+        .filter_map(|o| {
+            let got = Outcome {
+                name: o.name,
+                stderr: without_js(&o.stderr),
+                rc: o.rc,
+                want_stderr: String::new(),
+                want_rc: o.want_rc,
+            };
+            diff(&got, &without_js(&o.want_stderr))
+        })
         .collect();
     assert!(failures.is_empty(), "{} mismatch(es):\n{}", failures.len(), failures.join("\n"));
 }
 
 #[test]
-#[ignore = "needs JavaScript (P4): alert and console output"]
 fn js_fixtures_exact() {
     let all = run_all();
     let failures: Vec<String> =

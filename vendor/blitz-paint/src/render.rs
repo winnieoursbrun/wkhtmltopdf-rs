@@ -561,6 +561,8 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                                     y: -node.scroll_offset().y * self.scale,
                                 });
                                 cx.draw_image(scene);
+                                // wkhtmltopdf-rs: canvas content recorded by script.
+                                cx.draw_canvas(scene);
                                 #[cfg(feature = "svg")]
                                 cx.draw_svg(scene);
                                 #[cfg(feature = "custom-widget")]
@@ -1130,6 +1132,16 @@ impl ElementCx<'_, '_> {
             .then_translate(Vec2 { x, y });
 
         anyrender_svg::render_svg_tree(scene, svg, transform);
+    }
+
+    /// wkhtmltopdf-rs: replay the canvas picture registered for this element.
+    fn draw_canvas(&self, scene: &mut impl PaintScene) {
+        if *self.element.name.local != *"canvas" {
+            return;
+        }
+        if let Some(pic) = crate::canvas::picture(self.node.id) {
+            crate::canvas::replay(scene, &pic, self.transform, self.frame.content_box);
+        }
     }
 
     fn draw_image(&self, scene: &mut impl PaintScene) {

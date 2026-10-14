@@ -10,9 +10,10 @@
 //!
 //! Not yet (P3): header/footer HTML and text, TOC generation (a TOC object
 //! prints one blank page so that page order and numbering stay right), the
-//! header/footer measuring load. P4: JavaScript (scripts are not run,
-//! `--javascript-delay` is not waited, `--window-status` and `--run-script`
-//! are ignored).
+//! header/footer measuring load. JavaScript (P4) runs inside
+//! `WebPage::load` with the object's `--javascript-delay`,
+//! `--window-status`, `--run-script`, `--debug-javascript` and slow-script
+//! settings.
 
 pub mod outline;
 pub mod utilities;
@@ -97,6 +98,10 @@ impl Fetcher for PageFetcher<'_, '_, '_> {
         let reply = self.loader.finish_request(self.index, &p, &mut fb);
         if reply.is_success() { Some(reply.body) } else { None }
     }
+
+    fn warning(&mut self, message: &str) {
+        self.pf.warning(message);
+    }
 }
 
 /// One object of the conversion (`PageObject`).
@@ -117,7 +122,9 @@ fn looks_like_html_and_not_a_url(s: &str) -> bool {
     before_query.contains('<') || s.to_ascii_lowercase().starts_with("data:")
 }
 
-fn web_settings(o: &PdfObject, user_css: Option<String>) -> WebSettings {
+/// The engine settings of an object. `main`: a page of the main loader
+/// (`--run-script` and `--window-status` apply to those only).
+fn web_settings(o: &PdfObject, user_css: Option<String>, user_agent: &str, main: bool) -> WebSettings {
     WebSettings {
         print_media_type: o.load.print_media_type,
         background: o.web.background,
@@ -128,6 +135,12 @@ fn web_settings(o: &PdfObject, user_css: Option<String>) -> WebSettings {
         user_style_sheet: user_css,
         zoom: o.load.zoom_factor,
         smart_shrinking: o.web.enable_intelligent_shrinking,
+        javascript_delay: o.load.jsdelay.max(0) as u32,
+        window_status: if main { o.load.window_status.clone() } else { String::new() },
+        run_script: if main { o.load.run_script.clone() } else { Vec::new() },
+        debug_javascript: o.load.debug_javascript,
+        stop_slow_scripts: o.load.stop_slow_scripts,
+        user_agent: user_agent.to_string(),
     }
 }
 
@@ -286,7 +299,7 @@ fn run(
                 break;
             }
             // Ignored failure: an empty page is printed.
-            let ws = web_settings(o.settings, None);
+            let ws = web_settings(o.settings, None, &wk_loader::user_agent(app_name), true);
             let mut f = PageFetcher {
                 loader: &mut loader,
                 index: i,
@@ -306,7 +319,12 @@ fn run(
             reply.content_type.as_deref(),
             &o.settings.web.default_encoding,
         );
-        let ws = web_settings(o.settings, user_style_sheet(&o.settings.web.user_style_sheet));
+        let ws = web_settings(
+            o.settings,
+            user_style_sheet(&o.settings.web.user_style_sheet),
+            &wk_loader::user_agent(app_name),
+            true,
+        );
         let page = {
             let mut f = PageFetcher {
                 loader: &mut loader,

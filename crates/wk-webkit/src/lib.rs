@@ -8,6 +8,8 @@ pub mod encoding;
 pub mod net;
 pub mod page;
 pub mod paint;
+mod parser;
+mod scripting;
 
 pub use blitz_paint::run_text::RunText;
 pub use net::Fetcher;

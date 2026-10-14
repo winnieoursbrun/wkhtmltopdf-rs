@@ -1,0 +1,19 @@
+[package]
+name = "wk-js"
+description = "JavaScript for the web engine: Boa realm, DOM bindings, timers on a virtual clock, canvas 2D (stands in for JavaScriptCore + WebCore bindings)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+blitz-dom.workspace = true
+blitz-paint.workspace = true
+parley.workspace = true
+anyrender.workspace = true
+peniko.workspace = true
+kurbo.workspace = true
+url.workspace = true
+boa_engine.workspace = true
+boa_gc.workspace = true
