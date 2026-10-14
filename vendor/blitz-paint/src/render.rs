@@ -898,6 +898,14 @@ impl ElementCx<'_, '_> {
 
             // Render text
             let mut draw_text_context = self.context.draw_text_context.borrow_mut();
+            // wkhtmltopdf-rs: `text-overflow: ellipsis` on a box that clips.
+            draw_text_context.ellipsis_limit = {
+                use style::values::computed::Overflow;
+                use style::values::specified::text::TextOverflowSide;
+                let clips = self.style.get_box().overflow_x != Overflow::Visible;
+                let ellipsis = matches!(self.style.get_text().text_overflow.second, TextOverflowSide::Ellipsis);
+                (clips && ellipsis).then(|| self.frame.content_box.width() * self.scale)
+            };
             crate::text::stroke_text(
                 scene,
                 text_layout.layout.lines(),
@@ -908,6 +916,7 @@ impl ElementCx<'_, '_> {
                 self.node.id,
                 &mut draw_text_context,
             );
+            draw_text_context.ellipsis_limit = None;
         }
     }
 

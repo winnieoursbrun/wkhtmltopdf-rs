@@ -231,7 +231,9 @@ impl LayoutPassState<'_> {
 
             let font_size = style.clone_font_size().used_size().px();
             let line_height = match style.clone_line_height() {
-                LineHeight::Normal => font_size * 1.2,
+                // wkhtmltopdf-rs: QtWebKit's `normal` with FreeType metrics
+                // rounded up (the DejaVu faces: ascent 0.928, descent 0.236).
+                LineHeight::Normal => qt_control_metrics(font_size).2,
                 LineHeight::Number(num) => font_size * num.0,
                 LineHeight::Length(value) => value.0.px(),
             };
@@ -287,14 +289,15 @@ impl LayoutPassState<'_> {
                         .attr(local_name!("cols"))
                         .and_then(|val| val.parse::<f32>().ok());
 
+                    // wkhtmltopdf-rs: RenderTextControlMultiLine: `cols`
+                    // (default 20) average characters plus a 16 px scrollbar.
+                    let (avg, _, _) = qt_control_metrics(font_size.unwrap_or(16.0));
                     let output = compute_leaf_layout(
                         inputs,
                         &node.layout_style(),
                         resolve_calc_value,
                         |_known_size, _available_space| taffy::Size {
-                            width: cols
-                                .map(|cols| cols * font_size.unwrap_or(16.0) * 0.6)
-                                .unwrap_or(300.0),
+                            width: cols.unwrap_or(20.0) * avg + 16.0,
                             height: resolved_line_height.unwrap_or(16.0) * rows,
                         },
                     );
@@ -333,8 +336,10 @@ impl LayoutPassState<'_> {
                         Some("hidden") => {
                             return taffy::LayoutOutput::HIDDEN;
                         }
-                        Some("checkbox") => {
-                            return compute_leaf_layout(
+                        Some("checkbox" | "radio") => {
+                            // wkhtmltopdf-rs: RenderThemeQt::baselinePosition
+                            // puts the baseline 2 px above the box bottom.
+                            let mut output = compute_leaf_layout(
                                 inputs,
                                 &node.layout_style(),
                                 resolve_calc_value,
@@ -355,21 +360,38 @@ impl LayoutPassState<'_> {
                                     }
                                 },
                             );
+                            let baseline = (output.size.height - 2.0).max(0.0);
+                            output.baselines = taffy::Baselines { first: Some(baseline), last: Some(baseline) };
+                            return output;
                         }
                         None | Some("text" | "password" | "email" | "tel" | "url" | "search") => {
-                            return compute_leaf_layout(
+                            // wkhtmltopdf-rs: RenderTextControlSingleLine:
+                            // `size` (default 20) average characters plus
+                            // (max - average) character width.
+                            let size = element_data
+                                .attr(local_name!("size"))
+                                .and_then(|v| v.trim().parse::<f32>().ok())
+                                .filter(|v| *v > 0.0)
+                                .unwrap_or(20.0);
+                            let fs = font_size.unwrap_or(16.0);
+                            let (avg, max, _) = qt_control_metrics(fs);
+                            let style = node.layout_style();
+                            let mut output = compute_leaf_layout(
                                 inputs,
-                                &node.layout_style(),
+                                &style,
                                 resolve_calc_value,
                                 |_known_size, _available_space| taffy::Size {
-                                    width: match inputs.available_space.width {
-                                        AvailableSpace::Definite(limit) => limit.min(300.0),
-                                        AvailableSpace::MinContent => 0.0,
-                                        AvailableSpace::MaxContent => 300.0,
-                                    },
+                                    width: size * avg + (max - avg),
                                     height: resolved_line_height.unwrap_or(16.0),
                                 },
                             );
+                            // The baseline is the inner text's (WebKit), not
+                            // the bottom margin edge.
+                            let top = style.padding().top.resolve_or_zero(None, resolve_calc_value)
+                                + style.border().top.resolve_or_zero(None, resolve_calc_value);
+                            let baseline = top + (fs * 1901.0 / 2048.0 - 1e-3).ceil();
+                            output.baselines = taffy::Baselines { first: Some(baseline), last: Some(baseline) };
+                            return output;
                         }
                         _ => {}
                     }
@@ -978,4 +1000,19 @@ impl Iterator for RefCellChildIter<'_> {
             taffy_node_id(*id)
         })
     }
+}
+
+/// wkhtmltopdf-rs: QFontMetrics of the DejaVu faces at `font_size` px, the
+/// fonts form controls use in the reference image: `averageCharWidth()`
+/// (OS/2 xAvgCharWidth 1038/2048) and `maxWidth()` (hhea advanceWidthMax
+/// 3838/2048) rounded to whole pixels, and the `normal` line height
+/// (ascent and descent rounded up). Verified on tests/parts/forms: 16 px
+/// gives 8, 30 and 19 (a size-20 field is 182 px wide, a 30-column
+/// textarea 256 px).
+pub(crate) fn qt_control_metrics(font_size: f32) -> (f32, f32, f32) {
+    let avg = (font_size * 1038.0 / 2048.0).round();
+    let max = (font_size * 3838.0 / 2048.0).round();
+    let up = |v: f32| (v - 1e-3).ceil();
+    let line = up(font_size * 1901.0 / 2048.0) + up(font_size * 483.0 / 2048.0);
+    (avg, max, line)
 }

@@ -224,8 +224,28 @@ fn tag(node: &Node) -> &str {
     node.element_data().map(|e| &*e.name.local).unwrap_or("")
 }
 
+/// Form controls as QtWebKit 2.2 draws them with Qt's default style
+/// (measured on the 0.12.6 binary, tests/parts/forms): text fields and
+/// textareas inherit the font, have a 1 px black frame on white and a 1 px
+/// side inset; checkboxes and radios are 13 px; push buttons use the
+/// default sans-serif face on Qt's button grey. Text field and textarea
+/// widths come from `size`/`cols` (blitz-dom layout).
+const QT_FORM_CONTROLS: &str = "\
+input:not([type]), input[type=text], input[type=password], input[type=search], input[type=email], \
+input[type=url], input[type=tel], input[type=number], textarea { font: inherit; color: black; \
+border: 1px solid black; padding: 0 1px; margin: 2px; background-color: white; line-height: normal; }
+textarea { padding: 0; }
+input[type=checkbox], input[type=radio] { width: 13px; height: 13px; border: none; padding: 0; \
+margin: 3px 3px 3px 4px; color: black; }
+input[type=radio] { margin: 3px 3px 0 5px; }
+input[type=submit], input[type=reset], input[type=button], button { font: inherit; \
+font-family: sans-serif; color: black; background-color: #d4d0c8; border: 1px solid #404040; \
+border-top-color: white; border-left-color: white; border-radius: 0; padding: 3px 6px; margin: 2px; }
+select { font: inherit; color: black; background-color: white; border: 1px solid black; margin: 2px; }
+";
+
 pub(crate) fn ua_css(settings: &WebSettings) -> String {
-    let mut css = String::new();
+    let mut css = String::from(QT_FORM_CONTROLS);
     if settings.enable_javascript {
         css.push_str("noscript { display: none !important; }\n");
     }
@@ -233,7 +253,10 @@ pub(crate) fn ua_css(settings: &WebSettings) -> String {
         css.push_str("* { background-color: transparent !important; background-image: none !important; }\n");
     }
     if settings.produce_forms {
-        css.push_str("input, textarea { color: white !important; }\n");
+        // `elm.setStyleProperty("color", "white")` on every input and
+        // textarea: text fields keep the inner-text colour computed at
+        // load, so only the theme-painted marks (check, radio dot) vanish.
+        css.push_str("input[type=checkbox], input[type=radio] { color: white !important; }\n");
     }
     css
 }

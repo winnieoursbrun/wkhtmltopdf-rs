@@ -1,0 +1,20 @@
+# L3 raster thresholds of the JavaScript corpus (tests/js/ref/<case>.pdf, arguments
+# in cases.tsv), checked by js_l3_raster in crates/wkhtmltopdf/tests/corpus_l3.rs.
+#
+# Format and rules: see tests/corpus/l3-thresholds.txt (minimum mean SSIM at 50 dpi,
+# the measured value rounded down to the hundredth minus 0.01; raise a line when a
+# change improves a page, never lower it).
+
+canvas         *  0.82  # canvas painted as vector (the reference rasterises it)
+chart2         *  0.88  # canvas painted as vector (the reference rasterises it)
+debugjs        *  0.96
+docwrite       *  0.95
+footer-subst   *  0.89  # short page: glyph positions
+jquery1        *  0.90
+jquery3        *  0.90
+nojs           *  0.96
+print          *  0.96
+runscript      *  0.96
+slow           *  0.99
+window-status  *  0.94
+xhr            *  0.95

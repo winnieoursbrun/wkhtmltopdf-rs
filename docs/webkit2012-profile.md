@@ -47,8 +47,8 @@ Implementation:
 | `text-decoration-color` and the other longhands | ignored | dropped | probe |
 | `outline-offset` | applied | kept (see paint) | probe |
 | `text-shadow` | applied | kept, **not painted yet** | probe |
-| `text-overflow: ellipsis` | applied | kept, **no ellipsis drawn yet** | probe |
-| `font-variant: small-caps` | applied | kept, **not rendered** (parley) | probe |
+| `text-overflow: ellipsis` | applied | kept; glyphs past (box width - `…` width) dropped, `…` drawn after them (blitz-paint) | probe |
+| `font-variant: small-caps` | applied | kept; lowercase letters uppercased at 0.7 of the font size, like WebKit's smallCapsFontData (blitz-dom inline construction) | probe |
 | `-webkit-text-stroke` | applied | dropped (unsupported by stylo) | probe |
 | `border-image` with a gradient | ignored | kept (also ignored by us) | probe |
 | other `-webkit-*`, `-moz-*`, `-ms-*` | — | dropped | |
