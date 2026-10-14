@@ -1,0 +1,10 @@
+--page-offset
+5
+--dump-outline
+out.outline.xml
+--footer-center
+[page] of [topage] (from [frompage])
+--header-right
+[sitepage]/[sitepages]
+doc.html
+out.pdf

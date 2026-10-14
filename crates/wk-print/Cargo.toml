@@ -1,0 +1,16 @@
+[package]
+name = "wk-print"
+description = "Paginator and PDF painter (stands in for QPrinter/QPdfEngine)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+wk-webkit.workspace = true
+anyrender.workspace = true
+peniko.workspace = true
+kurbo.workspace = true
+skrifa.workspace = true
+krilla.workspace = true

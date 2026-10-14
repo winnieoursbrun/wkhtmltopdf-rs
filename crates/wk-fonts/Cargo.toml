@@ -1,0 +1,12 @@
+[package]
+name = "wk-fonts"
+description = "Font discovery, generic families and embedded fallback fonts (stands in for fontconfig)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+parley.workspace = true
+memmap2 = "0.9"

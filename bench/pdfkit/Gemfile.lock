@@ -1,0 +1,15 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    pdfkit (0.8.7.3)
+    webrick (1.9.2)
+
+PLATFORMS
+  aarch64-linux
+
+DEPENDENCIES
+  pdfkit (= 0.8.7.3)
+  webrick (= 1.9.2)
+
+BUNDLED WITH
+   2.3.15

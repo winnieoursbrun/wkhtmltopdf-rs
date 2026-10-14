@@ -1,0 +1,10 @@
+spike: page=pages/4-timers.html url_query=""
+spike: time ms: parse=1.2 realm+prelude=3.1 scripts+events=0.3 wait(virtual 350 ms)=0.1 final-layout=0.3 serialize=0.0 total=5.3
+spike: forced layouts during JS=0 (0.0 ms) wrappers=8 mutations=13 created=5 queries=0 innerHTML-sets=0 document.write=0 timers-fired=9 pending-timers=1
+spike: wait: window.status "ready" found at t=150 ms, then waited 200 ms; final window.status="ready"
+spike: expect "<span>step5@150 </span></div>": PASS
+spike: expect "data-ticks=\"3\"": PASS
+spike: expect "data-dcl=\"1\"": PASS
+spike: expect "data-load=\"complete\"": PASS
+spike: expect-not "</span>NEVER": PASS
+spike: expect-not "</span>LATE": PASS

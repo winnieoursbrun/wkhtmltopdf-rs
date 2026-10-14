@@ -1,0 +1,6 @@
+spike: page=pages/3-table-500.html url_query=""
+spike: time ms: parse=1.2 realm+prelude=3.2 scripts+events=14.6 wait(virtual 200 ms)=0.0 final-layout=9.6 serialize=0.2 total=29.1
+spike: forced layouts during JS=0 (0.0 ms) wrappers=3504 mutations=4503 created=3501 queries=1 innerHTML-sets=0 document.write=0 timers-fired=0 pending-timers=0
+spike: wait: waited 200 virtual ms; final window.status=""
+spike: expect "Total: 1667907.50 (500 rows)": PASS
+spike: expect "<tr class=\"odd\"><td>500</td><td>Customer 499</td><td style=\"text-align: right;\">6671.63</td></tr>": PASS

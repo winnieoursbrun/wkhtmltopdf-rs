@@ -1,0 +1,110 @@
+{
+ "pdf_version": "1.4",
+ "page_count": 2,
+ "page_mode": "/UseOutlines",
+ "info": {
+  "/Title": "Tom & \"Jerry\" <co> 'x'",
+  "/Creator": "wkhtmltopdf 0.12.6",
+  "/Producer": "Qt 4.8.7"
+ },
+ "outline": [
+  {
+   "level": 1,
+   "title": "A & B",
+   "page": 1,
+   "y": 813.5
+  },
+  {
+   "level": 2,
+   "title": "<tag> \"quoted\" 'single'",
+   "page": 1,
+   "y": 778.2
+  },
+  {
+   "level": 3,
+   "title": "Accents: été, naïve, ß, €",
+   "page": 1,
+   "y": 749.8
+  },
+  {
+   "level": 4,
+   "title": "h7 element",
+   "page": 1,
+   "y": 725.0
+  },
+  {
+   "level": 2,
+   "title": "Multi line heading",
+   "page": 1,
+   "y": 702.5
+  },
+  {
+   "level": 1,
+   "title": "Starts at h3",
+   "page": 2,
+   "y": 813.5
+  },
+  {
+   "level": 1,
+   "title": "Then h1",
+   "page": 2,
+   "y": 787.2
+  },
+  {
+   "level": 1,
+   "title": "Then h1",
+   "page": 2,
+   "y": 752.0
+  }
+ ],
+ "named_dests": [
+  "/__WKANCHOR_2",
+  "/__WKANCHOR_4",
+  "/__WKANCHOR_6",
+  "/__WKANCHOR_8",
+  "/__WKANCHOR_a",
+  "/__WKANCHOR_e",
+  "/__WKANCHOR_g",
+  "/__WKANCHOR_i"
+ ],
+ "acroform_fields": null,
+ "pages": [
+  {
+   "n": 1,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 7,
+     "scn": 6
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 2,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 4,
+     "scn": 3
+    },
+    "non_gray_rgb": 0
+   }
+  }
+ ]
+}

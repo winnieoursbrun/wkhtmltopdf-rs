@@ -1,0 +1,43 @@
+Custom TOC heading
+ Entry: Custom TOC heading @ p.1
+     Entry: Chapter One @ p.2
+          Entry: Section 1.1 @ p.2
+               Entry: Subsection 1.1.1 @ p.2
+                   Entry: Deep 1.1.1.1 @ p.2
+               Entry: Section 1.2 @ p.2
+               Entry: Chapter Two @ p.3
+                   Entry: Section 2.1 @ p.3
+                         Entry: Subsection 2.1.1 @ p.3
+                         Entry: Section 2.2 @ p.4
+                         Entry: Chapter Three @ p.5
+Chapter One
+Intro paragraph of chapter one.
+
+Section 1.1
+Text of section 1.1.
+
+Subsection 1.1.1
+
+Text of subsection 1.1.1.
+
+Deep 1.1.1.1
+
+Fourth level text.
+
+Section 1.2
+Text of section 1.2.
+Chapter Two
+Chapter two starts on page 2.
+
+Section 2.1
+Text of section 2.1.
+
+Subsection 2.1.1
+Text of subsection 2.1.1.
+Page 3 has no heading at the top; section values carry forward.
+
+Section 2.2
+Text of section 2.2 on page 3.
+Chapter Three
+Last page.
+

@@ -1,0 +1,65 @@
+name: Bench
+
+# Original wkhtmltopdf 0.12.6 vs the Rust port, both native linux/arm64 in the
+# wkbench:local container (see bench/README.md). Slow (~6 min for a full run): manual or on release.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Phases to run
+        type: choice
+        default: full
+        options: [full, quick, visual, pdfkit]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # bench/scripts/build-rust.sh builds into bench/.target
+          workspaces: ". -> bench/.target"
+          key: bench-aarch64-musl
+      - name: Run bench/run.sh
+        env:
+          MODE: ${{ github.event_name == 'release' && 'full' || inputs.mode }}
+        run: |
+          case "$MODE" in
+            quick)  args=(--quick) ;;
+            visual) args=(--visual) ;;
+            pdfkit) args=(--pdfkit) ;;
+            *)      args=() ;;
+          esac
+          bench/run.sh "${args[@]}"
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f bench/results/LATEST.md ]; then
+            cat bench/results/LATEST.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "bench/run.sh produced no report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-results-${{ github.run_id }}
+          path: bench/results/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,206 @@
+{
+ "pdf_version": "1.4",
+ "page_count": 6,
+ "page_mode": "/UseOutlines",
+ "info": {
+  "/Title": "Cover Title",
+  "/Creator": "wkhtmltopdf 0.12.6",
+  "/Producer": "Qt 4.8.7"
+ },
+ "outline": [
+  {
+   "level": 1,
+   "title": "Table of Contents",
+   "page": 3,
+   "y": 813.5
+  },
+  {
+   "level": 1,
+   "title": "Alpha chapter",
+   "page": 4,
+   "y": 813.5
+  },
+  {
+   "level": 2,
+   "title": "Alpha section",
+   "page": 4,
+   "y": 778.2
+  },
+  {
+   "level": 1,
+   "title": "Beta chapter",
+   "page": 5,
+   "y": 813.5
+  },
+  {
+   "level": 2,
+   "title": "Beta section on page 2",
+   "page": 6,
+   "y": 813.5
+  }
+ ],
+ "named_dests": [
+  "/__WKANCHOR_2",
+  "/__WKANCHOR_3",
+  "/__WKANCHOR_4",
+  "/__WKANCHOR_5",
+  "/__WKANCHOR_8",
+  "/__WKANCHOR_9",
+  "/__WKANCHOR_a",
+  "/__WKANCHOR_b",
+  "/__WKANCHOR_e",
+  "/__WKANCHOR_f"
+ ],
+ "acroform_fields": null,
+ "pages": [
+  {
+   "n": 1,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 3,
+     "scn": 2
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 2,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 1,
+     "cs": 3,
+     "scn": 2
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 3,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [
+    {
+     "rect": [33.0, 773.0, 138.0, 787.2],
+     "dest_name": "/__WKANCHOR_e",
+     "dest_page": 3,
+     "dest_y": 813.5
+    },
+    {
+     "rect": [33.0, 758.0, 117.0, 772.2],
+     "dest_name": "/__WKANCHOR_2",
+     "dest_page": 4,
+     "dest_y": 813.5
+    },
+    {
+     "rect": [42.8, 746.0, 107.2, 757.2],
+     "dest_name": "/__WKANCHOR_4",
+     "dest_page": 4,
+     "dest_y": 778.2
+    },
+    {
+     "rect": [33.0, 731.0, 110.2, 745.2],
+     "dest_name": "/__WKANCHOR_8",
+     "dest_page": 5,
+     "dest_y": 813.5
+    },
+    {
+     "rect": [42.8, 719.0, 153.8, 730.2],
+     "dest_name": "/__WKANCHOR_a",
+     "dest_page": 6,
+     "dest_y": 813.5
+    }
+   ],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 51,
+     "cs": 58,
+     "scn": 57
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 4,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 8,
+     "cs": 10,
+     "scn": 9
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 5,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 7,
+     "cs": 9,
+     "scn": 8
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 6,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 6,
+     "cs": 8,
+     "scn": 7
+    },
+    "non_gray_rgb": 0
+   }
+  }
+ ]
+}

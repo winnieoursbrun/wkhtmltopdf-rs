@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+
+  parity:
+    name: parity (CLI fixtures + L2 corpus)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build test binaries
+        run: cargo test --workspace --locked --no-run
+      - name: Run parity suites
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Integration test targets that compare against outputs of the real wkhtmltopdf 0.12.6:
+          # the CLI fixture replay, plus any conversion / corpus (L2) suite present in the tree.
+          mapfile -t suites < <(
+            find crates tests -path '*/tests/*.rs' 2>/dev/null \
+              | grep -E '/(cli_fixtures|[^/]*(conversion|corpus|l2)[^/]*)\.rs$' | sort
+          )
+          echo "| Suite | Passed | Failed | Ignored | Result |" > summary.md
+          echo "|---|---:|---:|---:|---|" >> summary.md
+          status=0
+          for file in "${suites[@]}"; do
+            name="$(basename "$file" .rs)"
+            crate_dir="${file%%/tests/*}"
+            pkg="$(sed -n 's/^name *= *"\(.*\)"/\1/p' "$crate_dir/Cargo.toml" | head -1)"
+            echo "::group::$pkg / $name"
+            cargo test --locked -p "$pkg" --test "$name" -- --include-ignored 2>&1 | tee "$name.log"
+            rc=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            line="$(grep -E '^test result:' "$name.log" | tail -1)"
+            passed="$(sed -nE 's/.* ([0-9]+) passed.*/\1/p' <<<"$line")"
+            failed="$(sed -nE 's/.* ([0-9]+) failed.*/\1/p' <<<"$line")"
+            ignored="$(sed -nE 's/.* ([0-9]+) ignored.*/\1/p' <<<"$line")"
+            # Suites may report per-case counts on a line like "parity: 212/212 cases".
+            cases="$(grep -oE '[0-9]+/[0-9]+ cases' "$name.log" | tail -1 || true)"
+            result=$([ "$rc" -eq 0 ] && echo pass || echo "**FAIL**")
+            [ -n "$cases" ] && result="$result ($cases)"
+            echo "| \`$pkg/$name\` | ${passed:-0} | ${failed:-0} | ${ignored:-0} | $result |" >> summary.md
+            [ "$rc" -eq 0 ] || status=1
+          done
+          if [ "${#suites[@]}" -eq 0 ]; then
+            echo "| _no parity suite found_ | 0 | 0 | 0 | **FAIL** |" >> summary.md
+            status=1
+          fi
+          { echo "## Parity with wkhtmltopdf 0.12.6"; echo; cat summary.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            musl: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            musl: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install musl tools
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p wkhtmltopdf
+      - name: Smoke test
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/wkhtmltopdf"
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          "$bin" --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wkhtmltopdf-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/wkhtmltopdf
+            target/${{ matrix.target }}/release/wkhtmltopdf.exe
+          if-no-files-found: error
+          retention-days: 14

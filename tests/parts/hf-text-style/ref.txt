@@ -1,0 +1,60 @@
+Styled left                       Styled header       1
+
+Chapter One
+Intro paragraph of chapter one.
+
+Section 1.1
+Text of section 1.1.
+
+Subsection 1.1.1
+
+Text of subsection 1.1.1.
+
+Deep 1.1.1.1
+
+Fourth level text.
+
+Section 1.2
+Text of section 1.2.
+
+
+
+
+                                                  p1 of 4
+Styled left                     Styled header       2
+
+Chapter Two
+Chapter two starts on page 2.
+
+Section 2.1
+Text of section 2.1.
+
+Subsection 2.1.1
+
+Text of subsection 2.1.1.
+
+
+
+
+                                                p2 of 4
+Styled left                               Styled header               3
+
+Page 3 has no heading at the top; section values carry forward.
+
+Section 2.2
+Text of section 2.2 on page 3.
+
+
+
+
+                                                                  p3 of 4
+Styled left     Styled header       4
+
+Chapter Three
+Last page.
+
+
+
+
+                                p4 of 4
+

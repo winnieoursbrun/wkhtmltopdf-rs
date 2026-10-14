@@ -1,0 +1,8 @@
+--page-size
+A5
+--orientation
+Landscape
+--footer-center
+[page]
+doc.html
+out.pdf

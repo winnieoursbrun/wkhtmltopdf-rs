@@ -1,0 +1,63 @@
+1/5 Parts Doc                     Chapter One / Section 1.1          doc.html 1 1/4
+Chapter One
+Intro paragraph of chapter one.
+
+Section 1.1
+Text of section 1.1.
+
+Subsection 1.1.1
+
+Text of subsection 1.1.1.
+
+Deep 1.1.1.1
+
+Fourth level text.
+
+Section 1.2
+Text of section 1.2.
+
+
+
+
+14 Oct 2026 2026-10-14 15:13:55Parts Doc 1 [foo] BAR          sub3=Subsection 1.1.1
+2/5 Parts Doc                   Chapter Two / Section 2.1          doc.html 1 2/4
+Chapter Two
+Chapter two starts on page 2.
+
+Section 2.1
+Text of section 2.1.
+
+Subsection 2.1.1
+Text of subsection 2.1.1.
+
+
+
+
+14 Oct 2026 2026-10-14 15:13:55Parts Doc 2 [foo] BAR        sub3=Subsection 2.1.1
+3/5 Parts Doc                         Chapter Two / Section 2.2          doc.html 1 3/4
+Page 3 has no heading at the top; section values carry forward.
+
+Section 2.2
+Text of section 2.2 on page 3.
+
+
+
+
+14 Oct 2026 2026-10-14 15:13:55Parts Doc 3 [foo] BAR              sub3=Subsection 2.1.1
+4/5 Parts Doc                Chapter Three / Section 2.2          doc.html 1 4/4
+Chapter Three
+Last page.
+
+
+
+
+14 Oct 2026 2026-10-14 15:13:55Parts Doc 4 [foo] BAR       sub3=Subsection 2.1.1
+5/5 Second Object              Appendix / Section 2.2       second.html 1 1/1
+Appendix
+Second object, one page.
+
+
+
+
+14 Oct 2026 2026-10-14 15:13:55Parts Doc 5 [foo] BAR    sub3=Subsection 2.1.1
+

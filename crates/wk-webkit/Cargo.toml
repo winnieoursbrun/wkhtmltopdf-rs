@@ -1,0 +1,25 @@
+[package]
+name = "wk-webkit"
+description = "Web engine facade: DOM, style, layout, paint (stands in for QtWebKit)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+wk-fonts.workspace = true
+wk-loader.workspace = true
+blitz-dom.workspace = true
+blitz-html.workspace = true
+blitz-traits.workspace = true
+blitz-paint.workspace = true
+stylo.workspace = true
+parley.workspace = true
+anyrender.workspace = true
+peniko.workspace = true
+kurbo.workspace = true
+image.workspace = true
+url.workspace = true
+encoding_rs.workspace = true
+data-url.workspace = true

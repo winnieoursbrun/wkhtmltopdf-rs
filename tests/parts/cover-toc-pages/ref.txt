@@ -1,0 +1,37 @@
+The Cover
+Covers get no header/footer and no outline entry.
+Second physical page of the cover.
+                                 Table of Contents
+
+Table of Contents                                               2
+Alpha chapter                                                   3
+ Alpha section                                                  3
+Beta chapter                                                    4
+ Beta section on page 2                                         5
+
+
+
+
+                          3/5 Table of Contents Alpha chapter
+Alpha chapter
+Alpha section
+Body A.
+
+
+
+
+                4/5 Doc A Beta chapter
+Beta chapter
+Body B.
+
+
+
+
+               5/5 Doc B Beta chapter
+Beta section on page 2
+
+
+
+
+                         6/5 Doc B Beta chapter
+

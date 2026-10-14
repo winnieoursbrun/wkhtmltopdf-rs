@@ -1,0 +1,21 @@
+[package]
+name = "spike-route-a-fulgur"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Separate package: fulgur 0.40 pins stylo 0.8 (`links = "servo_style_crate"`), which cannot
+# share a dependency graph with blitz 0.3 / stylo 0.22 used by route (b).
+[workspace]
+
+[[bin]]
+name = "spike"
+path = "src/main.rs"
+
+[dependencies]
+fulgur = "=0.40.0"
+lopdf = "0.42"
+
+[profile.release]
+strip = true
+lto = "thin"

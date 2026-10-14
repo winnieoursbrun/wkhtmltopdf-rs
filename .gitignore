@@ -1,0 +1,28 @@
+# Cargo build output
+/target/
+**/target/
+spikes/**/target/
+bench/.target/
+
+# Reference C++ clone of wkhtmltopdf: local study material only, never published
+/upstream/
+
+# Benchmark runs: keep only the latest report
+bench/results/*/
+!bench/results/LATEST.md
+
+# Generated PDFs, except committed reference outputs and fixtures
+*.pdf
+!tests/corpus/ref/*.pdf
+!tests/parts/**/ref.pdf
+!docs/upstream-fixtures/**/*.pdf
+
+# OS / editor noise
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Reference wkhtmltopdf 0.12.6 binary (oracle), never published
+/.ref/

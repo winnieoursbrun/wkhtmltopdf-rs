@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>JS dashboard</title>
+<!-- gen_corpus.py replaces the marker below with vendor/jquery-1.12.4.min.js -->
+<script>/*@JQUERY@*/</script>
+<style>
+body { font: 10pt "DejaVu Sans", sans-serif; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 14px; }
+th, td { border: 1px solid #bbb; padding: 3px 6px; }
+th { background: #eef; }
+td.num { text-align: right; }
+.bar { background: #4a7bd0; height: 8px; }
+.neg { color: #b00; }
+</style>
+</head>
+<body>
+<h1 id="title">Loading&hellip;</h1>
+<div id="summary"></div>
+<div id="tables"></div>
+<script>
+// Deterministic pseudo-random generator so every run builds the same DOM.
+var seed = 42;
+function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+
+$(function () {
+  var regions = ['North', 'South', 'East', 'West', 'Central', 'Overseas'];
+  var total = 0;
+  $.each(regions, function (r, region) {
+    var $t = $('<table/>').append('<tr><th>Month</th><th>Orders</th><th>Revenue</th><th>Delta</th><th>Share</th></tr>');
+    var prev = 0;
+    for (var m = 1; m <= 12; m++) {
+      var orders = Math.floor(rnd() * 900) + 100;
+      var revenue = orders * (20 + Math.floor(rnd() * 80));
+      var delta = prev ? revenue - prev : 0;
+      prev = revenue; total += revenue;
+      var $row = $('<tr/>');
+      $row.append($('<td/>').text(region + ' ' + (m < 10 ? '0' : '') + m));
+      $row.append($('<td class="num"/>').text(orders));
+      $row.append($('<td class="num"/>').text(revenue.toFixed(2)));
+      $row.append($('<td class="num"/>').text(delta).toggleClass('neg', delta < 0));
+      $row.append($('<td/>').append($('<div class="bar"/>').css('width', Math.round(orders / 10) + 'px')));
+      $t.append($row);
+    }
+    $('#tables').append($('<h2/>').text(region)).append($t);
+  });
+  $('#title').text('Regional dashboard');
+  $('#summary').html('<p>Total revenue: <b>' + total.toFixed(2) + '</b> over ' + $('#tables tr').length + ' rows.</p>');
+  $('tr:even').css('background', '#f7f7f7');
+});
+</script>
+</body></html>

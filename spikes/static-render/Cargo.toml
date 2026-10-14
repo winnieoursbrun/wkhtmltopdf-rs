@@ -1,0 +1,36 @@
+[package]
+name = "static-render"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone spike: keep it out of the root workspace.
+[workspace]
+
+[[bin]]
+name = "spike"
+path = "src/main.rs"
+
+# Route (b): blitz 0.3 beta (stylo 0.22 / parley 0.12 / taffy 0.15) + own paginator + krilla 0.8 painter.
+# Route (a) (fulgur 0.40) lives in ./route-a-fulgur: it cannot share this dependency graph.
+[dependencies]
+blitz-dom = { version = "=0.3.0-beta.3", default-features = false, features = ["woff", "floats", "svg"] }
+blitz-html = { version = "=0.3.0-beta.3" }
+blitz-traits = { version = "=0.3.0-beta.3" }
+stylo = { version = "0.22" }
+krilla = { version = "0.8.2" }
+parley = { version = "0.12", default-features = false, features = ["std"] }
+kurbo = { version = "0.13" }
+blitz-paint = { version = "=0.3.0-beta.3", default-features = false }
+anyrender = { version = "0.14" }
+peniko = { version = "0.6" }
+skrifa = { version = "0.44" }
+url = { version = "2" }
+data-url = { version = "0.3" }
+# blitz-dom depends on `image` without codecs: the embedder must enable them.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 16

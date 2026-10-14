@@ -1,0 +1,11 @@
+spike: page=pages/5-chart.html url_query=""
+spike: time ms: parse=1.2 realm+prelude=3.1 scripts+events=82.1 wait(virtual 50 ms)=0.0 final-layout=0.2 serialize=0.0 total=87.0
+spike: forced layouts during JS=0 (0.0 ms) wrappers=2 mutations=6 created=0 queries=0 innerHTML-sets=0 document.write=0 timers-fired=0 pending-timers=0
+spike: wait: window.status never becomes "chart-ok" and no timer is pending: upstream would hang; final window.status="chart-failed"
+spike: missing API used: HTMLCanvasElement.getContext(2d) x2
+spike: canvas2d member used: ctx2d.canvas x2
+spike: canvas2d member used: ctx2d.font= x1
+spike: canvas2d member used: ctx2d.measureText x1
+spike: canvas2d member used: ctx2d.setTransform x1
+spike: canvas2d member used: ctx2d.textAlign= x1
+spike: canvas2d member used: ctx2d.textBaseline= x1

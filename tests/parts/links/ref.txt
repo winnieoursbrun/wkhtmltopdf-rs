@@ -1,0 +1,26 @@
+Links page
+to a[name=named] on page 2
+
+to #byid on page 3
+
+to a missing fragment
+
+to other.html (loaded object, no fragment)
+
+to other.html#frag
+
+external https
+
+mailto
+
+relative file not loaded
+Named anchor target
+Id target
+Other document
+back to links.html#byid
+
+
+
+
+frag target
+

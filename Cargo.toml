@@ -1,0 +1,69 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/wkhtmltopdf",
+    "crates/wk-cli",
+    "crates/wk-settings",
+    "crates/wk-fonts",
+    "crates/wk-loader",
+    "crates/wk-webkit",
+    "crates/wk-print",
+    "crates/wk-converter",
+]
+exclude = ["vendor/stylo", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "spikes"]
+
+[workspace.package]
+version = "0.1.0-alpha.1"
+edition = "2024"
+license = "LGPL-3.0-or-later"
+rust-version = "1.85"
+
+[workspace.dependencies]
+wk-cli = { path = "crates/wk-cli" }
+wk-settings = { path = "crates/wk-settings" }
+wk-fonts = { path = "crates/wk-fonts" }
+wk-loader = { path = "crates/wk-loader" }
+wk-webkit = { path = "crates/wk-webkit" }
+wk-print = { path = "crates/wk-print" }
+wk-converter = { path = "crates/wk-converter" }
+
+# Engine stack (versions validated by spikes/static-render).
+blitz-dom = { version = "=0.3.0-beta.3", default-features = false, features = ["woff", "floats", "svg"] }
+blitz-html = { version = "=0.3.0-beta.3" }
+blitz-traits = { version = "=0.3.0-beta.3" }
+blitz-paint = { version = "=0.3.0-beta.3", default-features = false, features = ["svg"] }
+stylo = { version = "0.22" }
+parley = { version = "0.12", default-features = false, features = ["std"] }
+anyrender = { version = "0.14" }
+peniko = { version = "0.6" }
+kurbo = { version = "0.13" }
+skrifa = { version = "0.44" }
+krilla = { version = "0.8.2" }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+url = { version = "2" }
+data-url = { version = "0.3" }
+encoding_rs = { version = "0.8" }
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip", "socks-proxy"] }
+base64 = { version = "0.22" }
+
+[patch.crates-io]
+# Servo-mode stylo with page-break-*/break-* enabled (vendor/stylo/properties/*.toml).
+stylo = { path = "vendor/stylo" }
+# blitz-paint publishing the source text of glyph runs (vendor/blitz-paint/src/run_text.rs).
+blitz-paint = { path = "vendor/blitz-paint" }
+# parley with QtWebKit's line-height: normal (ascent and descent rounded up, vendor/parley/src/style/mod.rs).
+parley = { path = "vendor/parley" }
+# parley_engine with whole-pixel glyph advances, like QtWebKit's hinted text (vendor/parley_engine/src/shape/shaped_text.rs).
+parley_engine = { path = "vendor/parley_engine" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+# Disk is scarce on the development machine: no debug info for dependencies.
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
+
+[profile.dev.package."*"]
+debug = false

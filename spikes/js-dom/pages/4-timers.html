@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><title>timers</title></head>
+<body><div id="log"></div>
+<script>
+var log = document.getElementById('log');
+function step(n) {
+  var s = document.createElement('span');
+  s.textContent = 'step' + n + '@' + n * 30 + ' ';
+  log.appendChild(s);
+  if (n < 5) setTimeout(function () { step(n + 1); }, 30);
+  else window.status = 'ready';
+}
+setTimeout(function () { step(1); }, 30);
+var ticks = 0;
+var iv = setInterval(function () { ticks++; if (ticks === 3) clearInterval(iv); }, 10);
+var never = setTimeout(function () { log.appendChild(document.createTextNode('NEVER')); }, 100);
+clearTimeout(never);
+setTimeout(function () { document.body.setAttribute('data-ticks', ticks); }, 190);
+setTimeout(function () { log.appendChild(document.createTextNode('LATE')); }, 5000);
+document.addEventListener('DOMContentLoaded', function () { log.setAttribute('data-dcl', '1'); });
+window.addEventListener('load', function () { log.setAttribute('data-load', document.readyState); });
+</script>
+</body></html>

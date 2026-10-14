@@ -1,0 +1,31 @@
+spike: page=pages/5b-chart2.html url_query=""
+spike: time ms: parse=1.2 realm+prelude=3.2 scripts+events=66.4 wait(virtual 200 ms)=0.0 final-layout=0.2 serialize=0.0 total=71.5
+spike: forced layouts during JS=0 (0.0 ms) wrappers=5 mutations=5 created=2 queries=0 innerHTML-sets=0 document.write=0 timers-fired=0 pending-timers=0
+spike: wait: window.status "chart-ok" found at t=0 ms, then waited 200 ms; final window.status="chart-ok"
+spike: missing API used: HTMLCanvasElement.getContext(2d) x2
+spike: canvas2d member used: ctx2d.beginPath x18
+spike: canvas2d member used: ctx2d.canvas x3
+spike: canvas2d member used: ctx2d.clearRect x1
+spike: canvas2d member used: ctx2d.clip x1
+spike: canvas2d member used: ctx2d.fillRect x5
+spike: canvas2d member used: ctx2d.fillStyle= x20
+spike: canvas2d member used: ctx2d.fillText x15
+spike: canvas2d member used: ctx2d.font= x30
+spike: canvas2d member used: ctx2d.lineCap= x1
+spike: canvas2d member used: ctx2d.lineDashOffset= x16
+spike: canvas2d member used: ctx2d.lineJoin= x1
+spike: canvas2d member used: ctx2d.lineTo x32
+spike: canvas2d member used: ctx2d.lineWidth= x19
+spike: canvas2d member used: ctx2d.measureText x16
+spike: canvas2d member used: ctx2d.moveTo x32
+spike: canvas2d member used: ctx2d.prevTextDirection x1
+spike: canvas2d member used: ctx2d.rect x1
+spike: canvas2d member used: ctx2d.restore x31
+spike: canvas2d member used: ctx2d.rotate x14
+spike: canvas2d member used: ctx2d.save x31
+spike: canvas2d member used: ctx2d.setLineDash x32
+spike: canvas2d member used: ctx2d.stroke x17
+spike: canvas2d member used: ctx2d.strokeStyle= x19
+spike: canvas2d member used: ctx2d.textAlign= x16
+spike: canvas2d member used: ctx2d.textBaseline= x16
+spike: canvas2d member used: ctx2d.translate x14

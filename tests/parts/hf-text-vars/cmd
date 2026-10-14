@@ -1,0 +1,18 @@
+--replace
+bar
+BAR
+--header-left
+[page]/[topage] [title]
+--header-center
+[section] / [subsection]
+--header-right
+[webpage] [frompage] [sitepage]/[sitepages]
+--footer-left
+[date] [isodate] [time]
+--footer-center
+[doctitle] [PAGE] [foo] [bar]
+--footer-right
+sub3=[subsubsection]
+doc.html
+second.html
+out.pdf

@@ -1,0 +1,4 @@
+Loading pages (1/6)
+[>                                                           ] 0%[======>                                                     ] 10%[==============================>                             ] 50%[============================================================] 100%QPainter::begin(): Returned false
+Error: Unable to write to destination                              
+Exit with code 1, due to unknown error.

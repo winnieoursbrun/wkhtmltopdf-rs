@@ -1,0 +1,12 @@
+{
+  "_doc": "Rendering-parity thresholds used by scripts/visual.py. Each metric gets PASS / WARN / FAIL; a case takes its worst metric. Page count or page size mismatch is always FAIL. Higher is better for ssim_* and text_similarity; lower is better for the others.",
+  "dpi": 96,
+  "fuzz_percent": 5,
+  "ssim_window": 7,
+  "page_size_tolerance_pt": 0.5,
+  "ssim_mean": { "pass": 0.95, "warn": 0.85 },
+  "ssim_worst": { "pass": 0.9, "warn": 0.75 },
+  "text_similarity": { "pass": 0.99, "warn": 0.95 },
+  "pixel_diff_percent": { "pass": 2.0, "warn": 10.0 },
+  "word_offset_pt": { "pass": 1.0, "warn": 5.0 }
+}

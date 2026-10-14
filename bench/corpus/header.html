@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<script>
+// Classic wkhtmltopdf header substitution: page variables arrive in the query string.
+function subst() {
+  var vars = {};
+  var query = document.location.search.substring(1).split('&');
+  for (var i = 0; i < query.length; i++) {
+    var kv = query[i].split('=', 2);
+    vars[kv[0]] = decodeURIComponent(kv[1] || '');
+  }
+  var names = ['section', 'subsection', 'page', 'topage', 'doctitle'];
+  for (var j = 0; j < names.length; j++) {
+    var els = document.getElementsByClassName(names[j]);
+    for (var k = 0; k < els.length; k++) els[k].textContent = vars[names[j]] || '';
+  }
+}
+</script>
+<style>
+body { margin: 0; font: 9pt "DejaVu Sans", sans-serif; color: #444; }
+table { width: 100%; border-bottom: 1px solid #999; }
+td.r { text-align: right; }
+</style>
+</head>
+<body onload="subst()">
+<table><tr>
+  <td><span class="doctitle"></span> &mdash; <span class="section"></span></td>
+  <td class="r">Page <span class="page"></span> / <span class="topage"></span></td>
+</tr></table>
+</body></html>

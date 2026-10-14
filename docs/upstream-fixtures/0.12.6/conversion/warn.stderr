@@ -1,0 +1,8 @@
+Warning: Blocked access to file 
+Warning: Blocked access to file 
+Error: Failed to load about:blank, with network status code 301 and http status code 0 - Protocol "about" is unknown
+Error: Failed to load about:blank, with network status code 301 and http status code 0 - Protocol "about" is unknown
+Warning: Blocked access to file 
+Warning: Javascript alert: hi
+Error: Failed to load about:blank, with network status code 301 and http status code 0 - Protocol "about" is unknown
+Exit with code 1 due to network error: ProtocolUnknownError

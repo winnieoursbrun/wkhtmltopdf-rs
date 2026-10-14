@@ -1,0 +1,696 @@
+//! A loaded web page. Stands in for `QWebPage`/`QWebFrame` as driven by
+//! wkhtmltopdf's `ResourceObject` (load) and `QWebPrinter` (print layout):
+//! html5ever + stylo + taffy/parley through blitz-dom, painted by
+//! blitz-paint.
+//!
+//! WebKit-2012 profile (QtWebKit 2.2 as patched for wkhtmltopdf 0.12.6):
+//! - printing lays the page out `1.25×` wider than the printable width
+//!   (WebKit's minimum printing shrink factor), so 1 CSS px = 0.6 pt; with
+//!   smart shrinking (default) a wider document is laid out up to `2×` the
+//!   printable width and scaled down; `--disable-smart-shrinking` uses `1×`;
+//! - `--zoom` scales CSS px; `--dpi` does not change the layout (WebKit
+//!   compensates it with a zoom of `dpi/96`);
+//! - `line-height: normal` rounds the font ascent and descent up
+//!   (FreeType), see `vendor/parley`;
+//! - `@media screen` unless `--print-media-type`;
+//! - page backgrounds are transparent unless the CSS sets one.
+//!
+//! Not yet reproduced (TODO P2b): `--minimum-font-size`, `--viewport-size`,
+//! unprefixed `transform` being ignored by QtWebKit 2.2, `-webkit-` prefixed
+//! properties, `orphans`/`widows`.
+//! JavaScript does not run yet (P4): external scripts are requested (their
+//! load errors count like upstream) but not executed.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use blitz_dom::{BaseDocument, DocumentConfig, MediaType, Node, NodeId, local_name};
+use blitz_html::HtmlDocument;
+use blitz_traits::shell::{ColorScheme, Viewport};
+use parley::FontContext;
+use style::values::computed::{BreakBetween, BreakWithin};
+use url::Url;
+
+use crate::net::{Fetcher, QueueNet, Queued, deliver};
+use crate::paint::{Recorder, glyph_run_bbox};
+
+/// Engine settings of one page object (`settings::Web` + the print-related
+/// global settings).
+#[derive(Debug, Clone)]
+pub struct WebSettings {
+    pub print_media_type: bool,
+    pub background: bool,
+    pub load_images: bool,
+    pub enable_javascript: bool,
+    pub minimum_font_size: i32,
+    pub default_encoding: String,
+    /// Contents of `--user-style-sheet`, already loaded.
+    pub user_style_sheet: Option<String>,
+    /// `--zoom`.
+    pub zoom: f32,
+    /// Smart shrinking (`--enable/disable-smart-shrinking`).
+    pub smart_shrinking: bool,
+}
+
+impl Default for WebSettings {
+    fn default() -> Self {
+        WebSettings {
+            print_media_type: false,
+            background: true,
+            load_images: true,
+            enable_javascript: true,
+            minimum_font_size: -1,
+            default_encoding: String::new(),
+            user_style_sheet: None,
+            zoom: 1.0,
+            smart_shrinking: true,
+        }
+    }
+}
+
+/// QtWebKit's printing shrink factors (`setPrintingMinimumShrinkFactor`,
+/// `setPrintingMaximumShrinkFactor`).
+pub const MIN_SHRINK: f32 = 1.25;
+pub const MAX_SHRINK: f32 = 2.0;
+
+/// A table and its repeated groups, in document px.
+#[derive(Debug, Clone)]
+pub struct TableInfo {
+    pub top: f32,
+    pub bottom: f32,
+    pub thead: Option<(f32, f32)>,
+    pub tfoot: Option<(f32, f32)>,
+}
+
+/// Where the document may, must and must not be cut (document px).
+#[derive(Debug, Default, Clone)]
+pub struct Geometry {
+    pub doc_height: f32,
+    /// Box edges where a break is allowed.
+    pub candidates: Vec<f32>,
+    /// Intervals a break must not cut (line boxes, rows, replaced elements,
+    /// `break-inside: avoid`).
+    pub atomic: Vec<(f32, f32)>,
+    /// Forced breaks (`break-before/after: page`).
+    pub forced: Vec<f32>,
+    pub tables: Vec<TableInfo>,
+    /// Where painted content starts (line boxes, replaced elements, boxes
+    /// with a border, padding or background): a page starts at the first of
+    /// them, so the margins at the top of a page are truncated like
+    /// WebKit's paginated layout does.
+    pub content_starts: Vec<f32>,
+    /// Line boxes of each inline formatting context, top to bottom (for
+    /// `orphans`/`widows`, which the 0.12.6 binary does not apply by
+    /// default).
+    pub paragraphs: Vec<Vec<(f32, f32)>>,
+}
+
+/// An `<a href>` hit area, in document px.
+#[derive(Debug, Clone)]
+pub struct LinkBox {
+    pub rect: kurbo::Rect,
+    /// The `href` attribute as written.
+    pub href: String,
+    /// `href` resolved against the document URL.
+    pub resolved: Option<Url>,
+}
+
+/// An `h1`…`h6` element (outline source).
+#[derive(Debug, Clone)]
+pub struct Heading {
+    pub level: u32,
+    pub text: String,
+    pub x: f32,
+    pub y: f32,
+}
+
+/// Named anchors for internal links, in document px.
+#[derive(Debug, Default, Clone)]
+pub struct Anchors {
+    pub a_name: HashMap<String, (f32, f32)>,
+    pub id: HashMap<String, (f32, f32)>,
+    pub name: HashMap<String, (f32, f32)>,
+}
+
+impl Anchors {
+    /// `a[name="f"]`, then `*[id="f"]`, then `*[name="f"]` (spec §3.6).
+    pub fn find(&self, f: &str) -> Option<(f32, f32)> {
+        self.a_name.get(f).or_else(|| self.id.get(f)).or_else(|| self.name.get(f)).copied()
+    }
+}
+
+/// The printable output of a page: display list plus everything the
+/// paginator and the PDF writer need.
+pub struct RenderedPage {
+    pub recorder: Recorder,
+    pub geometry: Geometry,
+    pub links: Vec<LinkBox>,
+    pub headings: Vec<Heading>,
+    pub anchors: Anchors,
+    /// Layout width in CSS px.
+    pub layout_width: f32,
+    /// PDF points per CSS px on the page.
+    pub pt_per_px: f32,
+    /// Original encoded bytes of raster images, by image blob id (JPEG
+    /// passthrough).
+    pub image_sources: HashMap<u64, Arc<Vec<u8>>>,
+}
+
+/// A loaded page.
+pub struct WebPage {
+    doc: BaseDocument,
+    net: QueueNet,
+    settings: WebSettings,
+    /// Bodies of loaded resources by URL (for JPEG passthrough).
+    bodies: HashMap<String, Arc<Vec<u8>>>,
+    pub url: Url,
+}
+
+fn tag(node: &Node) -> &str {
+    node.element_data().map(|e| &*e.name.local).unwrap_or("")
+}
+
+fn ua_css(settings: &WebSettings) -> String {
+    let mut css = String::new();
+    if settings.enable_javascript {
+        css.push_str("noscript { display: none !important; }\n");
+    }
+    if !settings.background {
+        css.push_str("* { background-color: transparent !important; background-image: none !important; }\n");
+    }
+    css
+}
+
+/// One resource request found in document order.
+struct Unit {
+    url: Url,
+    /// Requested only to account for its outcome (scripts: not run yet).
+    script: bool,
+    image: bool,
+}
+
+impl WebPage {
+    /// Parse `html` and load its sub-resources through `fetcher`.
+    pub fn load(
+        html: &str,
+        url: Url,
+        settings: WebSettings,
+        font_ctx: FontContext,
+        fetcher: &mut dyn Fetcher,
+    ) -> WebPage {
+        let net = QueueNet::default();
+        let media = if settings.print_media_type { MediaType::print() } else { MediaType::screen() };
+        let config = DocumentConfig {
+            viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+            base_url: Some(url.to_string()),
+            net_provider: Some(Arc::new(net.clone())),
+            font_ctx: Some(font_ctx),
+            media_type: Some(media),
+            ..Default::default()
+        };
+        let mut doc = HtmlDocument::from_html(html, config).into_inner();
+        let extra = ua_css(&settings);
+        if !extra.is_empty() {
+            doc.add_user_agent_stylesheet(&extra);
+        }
+        if let Some(css) = &settings.user_style_sheet {
+            doc.add_user_agent_stylesheet(css);
+        }
+        let mut page = WebPage { doc, net, settings, bodies: HashMap::new(), url };
+        page.load_resources(fetcher);
+        page
+    }
+
+    /// The document `<title>`.
+    pub fn title(&self) -> Option<String> {
+        self.doc.find_title_node().map(|n| n.text_content())
+    }
+
+    /// Resources in document order, split in batches at each `<script>`
+    /// (a parser-blocking script ends what WebCore requests together).
+    fn document_units(&self) -> Vec<Vec<Unit>> {
+        let mut batches = vec![Vec::new()];
+        let base = self.doc.base_url().clone();
+        let mut stack = vec![self.doc.root_node().id];
+        let mut order = Vec::new();
+        while let Some(id) = stack.pop() {
+            let Some(node) = self.doc.get_node(id) else { continue };
+            order.push(id);
+            for &c in node.children.iter().rev() {
+                stack.push(c);
+            }
+        }
+        for id in order {
+            let node = self.doc.get_node(id).expect("node");
+            match tag(node) {
+                "link" => {
+                    let rel = node.attr(local_name!("rel")).unwrap_or("").to_ascii_lowercase();
+                    if rel.split_ascii_whitespace().any(|r| r == "stylesheet") {
+                        if let Some(u) = node.attr(local_name!("href")).and_then(|h| base.join(h).ok()) {
+                            batches.last_mut().expect("batch").push(Unit {
+                                url: u,
+                                script: false,
+                                image: false,
+                            });
+                        }
+                    }
+                }
+                "img" => {
+                    if let Some(u) = node
+                        .attr(local_name!("src"))
+                        .filter(|s| !s.is_empty())
+                        .and_then(|h| base.join(h).ok())
+                    {
+                        batches.last_mut().expect("batch").push(Unit { url: u, script: false, image: true });
+                    }
+                }
+                "script" if self.settings.enable_javascript => {
+                    if let Some(u) = node
+                        .attr(local_name!("src"))
+                        .filter(|s| !s.is_empty())
+                        .and_then(|h| base.join(h).ok())
+                    {
+                        batches.last_mut().expect("batch").push(Unit { url: u, script: true, image: false });
+                    }
+                    batches.push(Vec::new());
+                }
+                _ => {}
+            }
+        }
+        batches
+    }
+
+    fn serve(&mut self, items: Vec<(Option<Queued>, Url, bool)>, fetcher: &mut dyn Fetcher) {
+        // createRequest for the whole batch, then the replies.
+        let mut handles = Vec::new();
+        for (q, url, skip) in items {
+            if skip {
+                if let Some(q) = q {
+                    deliver(q, None);
+                }
+                continue;
+            }
+            let id = fetcher.create(&url);
+            handles.push((q, url, id));
+        }
+        for (q, url, id) in handles {
+            let body = fetcher.finish(id);
+            if let Some(b) = &body {
+                self.bodies.insert(url.to_string(), Arc::new(b.clone()));
+            }
+            if let Some(q) = q {
+                deliver(q, body);
+            }
+        }
+    }
+
+    fn load_resources(&mut self, fetcher: &mut dyn Fetcher) {
+        let mut queued: Vec<Option<Queued>> = self.net.take().into_iter().map(Some).collect();
+        for batch in self.document_units() {
+            let mut items = Vec::new();
+            for unit in batch {
+                let q = queued
+                    .iter_mut()
+                    .find(|q| q.as_ref().is_some_and(|q| q.url == unit.url))
+                    .and_then(Option::take);
+                if q.is_none() && !unit.script {
+                    // Already requested (same URL earlier in the document).
+                    continue;
+                }
+                let skip = unit.image && !self.settings.load_images;
+                items.push((q, unit.url, skip));
+            }
+            self.serve(items, fetcher);
+        }
+        // Whatever blitz asked for that is not in the document order
+        // (imports, fonts, background images), until the queue is empty.
+        let mut rest: Vec<Queued> = queued.into_iter().flatten().collect();
+        for _ in 0..32 {
+            if rest.is_empty() {
+                self.doc.resolve(0.0);
+                rest = self.net.take();
+                if rest.is_empty() {
+                    break;
+                }
+            }
+            let items = rest.drain(..).map(|q| {
+                let url = q.url.clone();
+                let skip = !self.settings.load_images && is_image_url(&url);
+                (Some(q), url, skip)
+            });
+            let items: Vec<_> = items.collect();
+            self.serve(items, fetcher);
+        }
+    }
+
+    /// Lay out for printing on a printable area of `printable_w_pt` ×
+    /// `printable_h_pt` points, paint, and collect pagination data.
+    pub fn render(&mut self, printable_w_pt: f32, printable_h_pt: f32) -> RenderedPage {
+        let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
+        let (min_shrink, max_shrink) =
+            if self.settings.smart_shrinking { (MIN_SHRINK, MAX_SHRINK) } else { (1.0, 1.0) };
+        // Printable width in CSS px at 96 dpi.
+        let base_w = printable_w_pt / 0.75 / zoom;
+        let base_h = printable_h_pt / 0.75 / zoom;
+        let mut layout_w = (base_w * min_shrink).round().max(1.0);
+        let vh = (base_h * min_shrink).round().max(1.0);
+        self.set_viewport(layout_w, vh);
+        if self.settings.smart_shrinking {
+            let content_w = self.content_width();
+            if content_w > layout_w + 0.5 {
+                layout_w = content_w.min((base_w * max_shrink).round()).ceil();
+                self.set_viewport(layout_w, vh);
+            }
+        }
+        let pt_per_px = printable_w_pt / layout_w;
+
+        let geometry = collect_geometry(&self.doc);
+        let doc_h = geometry.doc_height.ceil().max(1.0) as u32;
+        let mut recorder = Recorder::default();
+        blitz_paint::paint_scene(&mut recorder, &mut self.doc, 1.0, layout_w as u32, doc_h, 0, 0);
+
+        if std::env::var_os("WKHTMLTOPDF_DEBUG_SCENE").is_some() {
+            for (i, c) in recorder.scene.commands.iter().enumerate() {
+                if let anyrender::recording::RenderCommand::GlyphRun(g) = c {
+                    let t = recorder.texts.get(&i);
+                    eprintln!(
+                        "glyphs #{i} n={} at {:?} text={:?} node={:?}",
+                        g.glyphs.len(),
+                        g.transform.translation(),
+                        t.map(|t| t.text.as_str()),
+                        t.map(|t| t.node_id)
+                    );
+                }
+            }
+        }
+        let (links, headings, anchors) = self.collect_links(&recorder);
+        let image_sources = self.image_sources();
+        RenderedPage {
+            recorder,
+            geometry,
+            links,
+            headings,
+            anchors,
+            layout_width: layout_w,
+            pt_per_px,
+            image_sources,
+        }
+    }
+
+    fn set_viewport(&mut self, w: f32, h: f32) {
+        self.doc.set_viewport(Viewport::new(w as u32, h as u32, 1.0, ColorScheme::Light));
+        for _ in 0..4 {
+            self.doc.resolve(0.0);
+            if !self.doc.has_pending_critical_resources() {
+                break;
+            }
+        }
+    }
+
+    /// Widest right edge of any box (the document's scroll width).
+    fn content_width(&self) -> f32 {
+        let mut w: f32 = 0.0;
+        let mut stack = vec![self.doc.root_element().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if !n.is_element() {
+                continue;
+            }
+            let l = n.final_layout();
+            if l.size.width > 0.0 {
+                let p = n.absolute_position(0.0, 0.0);
+                w = w.max(p.x + l.size.width);
+            }
+        }
+        w
+    }
+
+    fn image_sources(&self) -> HashMap<u64, Arc<Vec<u8>>> {
+        let mut out = HashMap::new();
+        let base = self.doc.base_url().clone();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            let Some(el) = n.element_data() else { continue };
+            let Some(raster) = el.raster_image_data() else { continue };
+            let Some(src) = n.attr(local_name!("src")).and_then(|s| base.join(s).ok()) else { continue };
+            let bytes = if src.scheme() == "data" {
+                data_url_bytes(&src).map(Arc::new)
+            } else {
+                self.bodies.get(src.as_str()).cloned()
+            };
+            if let Some(b) = bytes {
+                out.insert(raster.data.id(), b);
+            }
+        }
+        out
+    }
+
+    fn collect_links(&self, rec: &Recorder) -> (Vec<LinkBox>, Vec<Heading>, Anchors) {
+        let doc = &self.doc;
+        let base = doc.base_url().clone();
+        let mut anchors = Anchors::default();
+        let mut headings = Vec::new();
+        let mut links = Vec::new();
+        // anchor element of each node inside an <a href>
+        let mut link_of: HashMap<NodeId, NodeId> = HashMap::new();
+        let mut stack: Vec<(NodeId, Option<NodeId>)> = vec![(doc.root_node().id, None)];
+        while let Some((id, inherited)) = stack.pop() {
+            let Some(n) = doc.get_node(id) else { continue };
+            let mut current = inherited;
+            if n.is_element() {
+                let t = tag(n);
+                let pos = n.absolute_position(0.0, 0.0);
+                let xy = (pos.x, pos.y);
+                if let Some(v) = n.attr(local_name!("id")) {
+                    anchors.id.entry(v.to_string()).or_insert(xy);
+                }
+                if let Some(v) = n.attr(local_name!("name")) {
+                    anchors.name.entry(v.to_string()).or_insert(xy);
+                    if t == "a" {
+                        anchors.a_name.entry(v.to_string()).or_insert(xy);
+                    }
+                }
+                if t == "a" && n.attr(local_name!("href")).is_some() {
+                    current = Some(id);
+                    let l = n.final_layout();
+                    if l.size.width > 0.0 && l.size.height > 0.0 {
+                        let href = n.attr(local_name!("href")).unwrap_or("").to_string();
+                        links.push(LinkBox {
+                            rect: kurbo::Rect::new(
+                                pos.x as f64,
+                                pos.y as f64,
+                                (pos.x + l.size.width) as f64,
+                                (pos.y + l.size.height) as f64,
+                            ),
+                            resolved: base.join(&href).ok(),
+                            href,
+                        });
+                    }
+                }
+                if let Some(level) = t.strip_prefix('h').and_then(|d| d.parse::<u32>().ok()) {
+                    if (1..=6).contains(&level) {
+                        let text = n.text_content().replace(['\n', '\r', '\t'], " ");
+                        let text = text.split(' ').filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+                        if !text.is_empty() {
+                            headings.push(Heading { level, text, x: pos.x, y: pos.y });
+                        }
+                    }
+                }
+            }
+            if let Some(a) = current {
+                link_of.insert(id, a);
+            }
+            for &c in n.children.iter().rev() {
+                stack.push((c, current));
+            }
+        }
+        // Inline anchors: union of their glyph runs.
+        let mut inline: HashMap<(NodeId, i64), kurbo::Rect> = HashMap::new();
+        for (idx, rt) in &rec.texts {
+            let Some(&a) = link_of.get(&rt.node_id) else { continue };
+            let Some(bb) = glyph_run_bbox(&rec.scene.commands[*idx]) else { continue };
+            let key = (a, bb.y1.round() as i64);
+            inline.entry(key).and_modify(|r| *r = r.union(bb)).or_insert(bb);
+        }
+        let mut inline: Vec<_> = inline.into_iter().collect();
+        inline.sort_by_key(|((node, line), _)| (*line, *node));
+        for ((a, _), rect) in inline {
+            let n = doc.get_node(a).expect("anchor");
+            // Block anchors already have their box.
+            let l = n.final_layout();
+            if l.size.width > 0.0 && l.size.height > 0.0 {
+                continue;
+            }
+            let href = n.attr(local_name!("href")).unwrap_or("").to_string();
+            links.push(LinkBox { rect, resolved: base.join(&href).ok(), href });
+        }
+        headings.sort_by(|a, b| a.y.total_cmp(&b.y).then(a.x.total_cmp(&b.x)));
+        (links, headings, anchors)
+    }
+}
+
+fn is_image_url(url: &Url) -> bool {
+    let p = url.path().to_ascii_lowercase();
+    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".ico"].iter().any(|e| p.ends_with(e))
+}
+
+fn data_url_bytes(url: &Url) -> Option<Vec<u8>> {
+    let d = data_url::DataUrl::process(url.as_str()).ok()?;
+    d.decode_to_vec().ok().map(|(v, _)| v)
+}
+
+// ---------------------------------------------------------------------------
+// Pagination geometry (ported from spikes/static-render/src/paginate.rs).
+
+fn breaks_page(b: BreakBetween) -> bool {
+    matches!(b, BreakBetween::Page | BreakBetween::Always | BreakBetween::Left | BreakBetween::Right)
+}
+
+/// Vertical extent of a box. Blitz lays tables out as a grid of cells:
+/// `thead`/`tbody`/`tr` get no box of their own, so fall back to the union of
+/// their descendants' cells.
+fn extent(doc: &BaseDocument, node: &Node) -> Option<(f32, f32)> {
+    if !node.is_element() {
+        return None;
+    }
+    let h = node.final_layout().size.height;
+    if h > 0.0 {
+        let y = node.absolute_position(0.0, 0.0).y;
+        return Some((y, y + h));
+    }
+    if !matches!(tag(node), "thead" | "tbody" | "tfoot" | "tr") {
+        return None;
+    }
+    node.children
+        .iter()
+        .filter_map(|&c| doc.get_node(c))
+        .filter_map(|c| extent(doc, c))
+        .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+}
+
+/// Collect the pagination data of a laid-out document.
+pub fn collect_geometry(doc: &BaseDocument) -> Geometry {
+    let mut g = Geometry::default();
+    let root = doc.root_element();
+    walk(doc, root, &mut g);
+    g.doc_height = g.doc_height.max(root.final_layout().size.height);
+    g.candidates.push(g.doc_height);
+    g.candidates.sort_by(f32::total_cmp);
+    g.candidates.dedup();
+    g.forced.sort_by(f32::total_cmp);
+    g.forced.dedup();
+    g.content_starts.sort_by(f32::total_cmp);
+    g.content_starts.dedup();
+    g
+}
+
+fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
+    let layout = node.final_layout();
+    let (top, bottom) = extent(doc, node).unwrap_or_else(|| {
+        let y = node.absolute_position(0.0, 0.0).y;
+        (y, y)
+    });
+    g.doc_height = g.doc_height.max(bottom);
+    let t = tag(node).to_string();
+    let mut avoid_inside = false;
+
+    if node.is_element() {
+        if let Some(styles) = node.primary_styles() {
+            let b = styles.get_box();
+            if breaks_page(b.break_before) && top > 0.5 {
+                g.forced.push(top);
+            }
+            if breaks_page(b.break_after) {
+                g.forced.push(bottom);
+            }
+            avoid_inside = !matches!(b.break_inside, BreakWithin::Auto);
+            if !matches!(t.as_str(), "html" | "body") && bottom > top {
+                let l = node.final_layout();
+                let bg = styles.get_background();
+                let has_bg = !bg.background_color.resolve_to_absolute(&styles.clone_color()).is_transparent()
+                    || bg
+                        .background_image
+                        .0
+                        .iter()
+                        .any(|i| !matches!(i, style::values::computed::Image::None));
+                if l.border.top > 0.0 || l.padding.top > 0.0 || has_bg {
+                    g.content_starts.push(top);
+                }
+            }
+            if b.display.is_none() {
+                return;
+            }
+        }
+        g.candidates.push(top);
+        g.candidates.push(bottom);
+    }
+
+    let atomic = matches!(
+        t.as_str(),
+        "tr" | "td"
+            | "th"
+            | "img"
+            | "svg"
+            | "canvas"
+            | "video"
+            | "iframe"
+            | "input"
+            | "textarea"
+            | "select"
+            | "button"
+    ) || avoid_inside;
+    if atomic && bottom > top {
+        g.content_starts.push(top);
+        g.atomic.push((top, bottom));
+        return;
+    }
+
+    if t == "table" {
+        let mut thead = None;
+        let mut tfoot = None;
+        for &c in node.children.iter() {
+            let Some(child) = doc.get_node(c) else { continue };
+            match tag(child) {
+                "thead" if thead.is_none() => thead = extent(doc, child),
+                "tfoot" if tfoot.is_none() => tfoot = extent(doc, child),
+                _ => {}
+            }
+        }
+        g.tables.push(TableInfo { top, bottom, thead, tfoot });
+    }
+
+    if let Some(text) = node.element_data().and_then(|e| e.inline_layout_data.as_ref()) {
+        let y0 = top + layout.border.top + layout.padding.top + text.block_offset;
+        let lines: Vec<(f32, f32)> = text
+            .layout
+            .lines()
+            .map(|l| (y0 + l.metrics().block_min_coord, y0 + l.metrics().block_max_coord))
+            .collect();
+        if lines.len() > 1 {
+            g.paragraphs.push(lines);
+        }
+        for line in text.layout.lines() {
+            let m = line.metrics();
+            let (a, b) = (y0 + m.block_min_coord, y0 + m.block_max_coord);
+            g.atomic.push((a, b));
+            g.content_starts.push(a);
+            g.candidates.push(a);
+            g.candidates.push(b);
+        }
+    }
+
+    let children = node.layout_children.borrow();
+    let ids: Vec<_> = match children.as_ref() {
+        Some(c) => c.iter().copied().collect(),
+        None => node.children.iter().copied().collect(),
+    };
+    drop(children);
+    for id in ids {
+        if let Some(child) = doc.get_node(id) {
+            walk(doc, child, g);
+        }
+    }
+}

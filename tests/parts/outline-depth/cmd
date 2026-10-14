@@ -1,0 +1,6 @@
+--outline-depth
+2
+--dump-outline
+out.outline.xml
+doc.html
+out.pdf

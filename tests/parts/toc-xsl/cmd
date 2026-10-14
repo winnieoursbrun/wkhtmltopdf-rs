@@ -1,0 +1,7 @@
+--dump-outline
+out.outline.xml
+toc
+--xsl-style-sheet
+custom.xsl
+doc.html
+out.pdf

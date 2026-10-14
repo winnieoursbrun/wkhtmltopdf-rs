@@ -1,0 +1,6 @@
+spike: page=pages/8-docwrite.html url_query=""
+spike: time ms: parse=1.2 realm+prelude=3.1 scripts+events=0.1 wait(virtual 200 ms)=0.0 final-layout=0.3 serialize=0.0 total=5.0
+spike: forced layouts during JS=0 (0.0 ms) wrappers=3 mutations=4 created=0 queries=0 innerHTML-sets=0 document.write=2 timers-fired=0 pending-timers=0
+spike: wait: waited 200 virtual ms; final window.status=""
+spike: expect "</script><p id=\"w1\">written 1</p><p id=\"w2\">written 2</p><script>": PASS
+spike: expect "data-inner=\"ran\"": PASS

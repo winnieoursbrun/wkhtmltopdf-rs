@@ -1,0 +1,31 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The behaviour being
+reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
+
+## [Unreleased]
+
+## [0.1.0-alpha.1] - unreleased
+
+First public pre-release. Not a drop-in replacement yet: see the status table in the README.
+
+### Added
+
+- `wkhtmltopdf` binary with the complete 0.12.6 command line: all 122 options, the object
+  grammar (`cover`, `toc`, pages), `--read-args-from-stdin`, and the documentation outputs
+  (`-h`, `-H`, `--readme`, `--license`, `--version`, `--manpage`, `--htmldoc`), byte-identical
+  to the original on every captured CLI fixture.
+- Settings model (`PdfGlobal`, `PdfObject`, `LoadPage`, `Web`, …) with upstream defaults,
+  value parsers and dotted-name get/set.
+- Static builds for Linux (x86_64 and aarch64, musl), macOS (x86_64 and aarch64) and Windows
+  (x86_64, MSVC).
+
+### Known limitations
+
+-
+
+[Unreleased]: https://github.com/OWNER/wkhtmltopdf-rs/compare/v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/OWNER/wkhtmltopdf-rs/releases/tag/v0.1.0-alpha.1

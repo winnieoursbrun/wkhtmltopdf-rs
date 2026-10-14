@@ -1,0 +1,11 @@
+--header-center
+Global header [title]
+a.html
+--no-background
+b.html
+--header-center
+B header
+--footer-right
+[title] [page]
+c.html
+out.pdf

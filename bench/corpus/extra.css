@@ -1,0 +1,5 @@
+/* Appended by pdfkit (kit.stylesheets << ...) in the "stylesheets" case of bench/pdfkit/generate.rb. */
+body { background: #fffbe6; }
+h1 { color: #8a1c1c; border-bottom: 3px solid #8a1c1c; }
+h2 { color: #2b6a2b; }
+p { text-align: justify; }

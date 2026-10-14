@@ -1,0 +1,10 @@
+--footer-center
+[page]/[topage] [title] [section]
+--dump-outline
+out.outline.xml
+cover
+cover.html
+toc
+a.html
+b.html
+out.pdf

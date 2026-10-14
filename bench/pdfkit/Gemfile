@@ -1,0 +1,5 @@
+# Gems for the pdfkit integration run (bench/pdfkit/generate.rb), installed in wkbench:local.
+source "https://rubygems.org"
+
+gem "pdfkit", "0.8.7.3"
+gem "webrick", "1.9.2" # local HTTP server for the URL-source cases (not bundled since Ruby 3.0)

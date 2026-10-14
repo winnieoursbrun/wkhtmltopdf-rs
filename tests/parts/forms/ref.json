@@ -1,0 +1,112 @@
+{
+ "pdf_version": "1.4",
+ "page_count": 1,
+ "page_mode": "/UseOutlines",
+ "info": {
+  "/Title": "Form",
+  "/Creator": "wkhtmltopdf 0.12.6",
+  "/Producer": "Qt 4.8.7"
+ },
+ "outline": [
+  {
+   "level": 1,
+   "title": "Form",
+   "page": 1,
+   "y": 813.5
+  }
+ ],
+ "named_dests": [
+  "/__WKANCHOR_2"
+ ],
+ "acroform_fields": [
+  {
+   "name": "fullname",
+   "type": "/Tx",
+   "value": "Jane Doe",
+   "flags": 0,
+   "page": 1,
+   "rect": [61.5, 765.5, 172.5, 777.5],
+   "maxlen": 20
+  },
+  {
+   "name": "empty",
+   "type": "/Tx",
+   "value": null,
+   "flags": 0,
+   "page": 1,
+   "rect": [93.8, 740.8, 204.8, 752.8]
+  },
+  {
+   "name": "secret",
+   "type": "/Tx",
+   "value": "hunter2",
+   "flags": 8192,
+   "page": 1,
+   "rect": [85.5, 716.0, 196.5, 728.0],
+   "password": true
+  },
+  {
+   "name": "ro",
+   "type": "/Tx",
+   "value": "fixed",
+   "flags": 1,
+   "page": 1,
+   "rect": [88.5, 691.2, 199.5, 703.2],
+   "readonly": true
+  },
+  {
+   "name": "agree",
+   "type": "/Btn",
+   "value": null,
+   "flags": 0,
+   "page": 1,
+   "rect": [83.2, 596.0, 90.8, 603.5],
+   "appearance_state": "/Yes"
+  },
+  {
+   "name": "news",
+   "type": "/Btn",
+   "value": null,
+   "flags": 0,
+   "page": 1,
+   "rect": [158.2, 596.0, 165.8, 603.5]
+  },
+  {
+   "name": "comments",
+   "type": "/Tx",
+   "value": null,
+   "flags": 4096,
+   "page": 1,
+   "rect": [63.0, 619.2, 217.5, 654.5],
+   "multiline": true
+  }
+ ],
+ "pages": [
+  {
+   "n": 1,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [
+    {
+     "w": 10,
+     "h": 10,
+     "cs": "/DeviceRGB"
+    }
+   ],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 172,
+     "cs": 38,
+     "scn": 37
+    },
+    "non_gray_rgb": 8
+   }
+  }
+ ]
+}

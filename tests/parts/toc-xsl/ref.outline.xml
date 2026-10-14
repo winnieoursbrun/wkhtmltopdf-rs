@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<outline xmlns="http://wkhtmltopdf.org/outline">
+  <item title="Table of Contents" page="0" link="__WKANCHOR_m" backLink="__WKANCHOR_m">
+    <item title="Custom TOC heading" page="1" link="__WKANCHOR_o" backLink="__WKANCHOR_o"/>
+  </item>
+  <item title="Parts Doc" page="1" link="__WKANCHOR_0" backLink="__WKANCHOR_1">
+    <item title="Chapter One" page="2" link="__WKANCHOR_2" backLink="__WKANCHOR_3">
+      <item title="Section 1.1" page="2" link="__WKANCHOR_4" backLink="__WKANCHOR_5">
+        <item title="Subsection 1.1.1" page="2" link="__WKANCHOR_6" backLink="__WKANCHOR_7">
+          <item title="Deep 1.1.1.1" page="2" link="__WKANCHOR_8" backLink="__WKANCHOR_9"/>
+        </item>
+      </item>
+      <item title="Section 1.2" page="2" link="__WKANCHOR_a" backLink="__WKANCHOR_b"/>
+    </item>
+    <item title="Chapter Two" page="3" link="__WKANCHOR_c" backLink="__WKANCHOR_d">
+      <item title="Section 2.1" page="3" link="__WKANCHOR_e" backLink="__WKANCHOR_f">
+        <item title="Subsection 2.1.1" page="3" link="__WKANCHOR_g" backLink="__WKANCHOR_h"/>
+      </item>
+      <item title="Section 2.2" page="4" link="__WKANCHOR_i" backLink="__WKANCHOR_j"/>
+    </item>
+    <item title="Chapter Three" page="5" link="__WKANCHOR_k" backLink="__WKANCHOR_l"/>
+  </item>
+</outline>

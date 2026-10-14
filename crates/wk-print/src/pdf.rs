@@ -1,0 +1,653 @@
+//! PDF output. Stands in for `QPrinter` + the patched `QPdfEngine` as used
+//! by `PdfConverter` (`pdfconverter.cc`): page size and margins, one PDF
+//! page per page slice, link annotations, the outline, and the document
+//! information dictionary (`/Title`, `/Creator wkhtmltopdf 0.12.6`,
+//! `/Producer Qt 4.8.7`, `/CreationDate` in UTC, like the 0.12.6 binary).
+//!
+//! The display list recorded by the engine is replayed into krilla: real,
+//! subset text (with the source text of every glyph run), images (JPEG
+//! passed through), linear/radial/sweep gradients, clips, opacity.
+//! Not yet (TODO P2b/P5): box shadows, filters, blend modes, `--grayscale`,
+//! `--lowquality`, `--image-dpi`/`--image-quality`, `--no-pdf-compression`.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use anyrender::recording::RenderCommand;
+use anyrender::{Paint, Scene};
+use krilla::color::rgb;
+use krilla::configure::{ConfigurationBuilder, PdfVersion};
+use krilla::destination::XyzDestination;
+use krilla::geom::{Path, PathBuilder, Point, Rect, Size, Transform};
+use krilla::metadata::{DateTime, Metadata};
+use krilla::num::NormalizedF32;
+use krilla::page::PageSettings;
+use krilla::paint::{
+    Fill, FillRule, LinearGradient, RadialGradient, SpreadMethod, Stop, Stroke, SweepGradient,
+};
+use krilla::surface::Surface;
+use krilla::text::{Font, GlyphId, KrillaGlyph};
+use krilla::{Document, SerializeSettings};
+use kurbo::{Affine, BezPath, PathEl, Shape};
+use peniko::Color;
+use skrifa::MetadataProvider;
+use wk_webkit::{RenderedPage, RunText};
+
+use crate::paginate::PageSlice;
+
+/// Paper and margins, in points.
+#[derive(Debug, Clone, Copy)]
+pub struct PageSetup {
+    pub width: f32,
+    pub height: f32,
+    pub margin_top: f32,
+    pub margin_right: f32,
+    pub margin_bottom: f32,
+    pub margin_left: f32,
+}
+
+impl PageSetup {
+    pub fn printable_width(&self) -> f32 {
+        (self.width - self.margin_left - self.margin_right).max(1.0)
+    }
+
+    pub fn printable_height(&self) -> f32 {
+        (self.height - self.margin_top - self.margin_bottom).max(1.0)
+    }
+}
+
+/// One object's pages.
+pub struct DocPart<'a> {
+    pub page: &'a RenderedPage,
+    pub slices: &'a [PageSlice],
+}
+
+/// Where a link goes.
+#[derive(Debug, Clone)]
+pub enum LinkTarget {
+    Uri(String),
+    /// Page index in the output and position in points (top-left origin).
+    Page {
+        page: usize,
+        x: f32,
+        y: f32,
+    },
+}
+
+/// A link annotation; `rect` is in points, top-left origin.
+#[derive(Debug, Clone)]
+pub struct PdfLink {
+    pub page: usize,
+    pub rect: (f32, f32, f32, f32),
+    pub target: LinkTarget,
+}
+
+/// A bookmark.
+#[derive(Debug, Clone)]
+pub struct OutlineNode {
+    pub title: String,
+    pub page: usize,
+    pub x: f32,
+    pub y: f32,
+    pub children: Vec<OutlineNode>,
+}
+
+/// Document information.
+#[derive(Debug, Clone, Default)]
+pub struct DocInfo {
+    pub title: Option<String>,
+    pub creator: String,
+    pub producer: String,
+    /// Seconds since the Unix epoch (UTC).
+    pub creation_time: Option<u64>,
+}
+
+struct FontEntry {
+    font: Font,
+    rev_cmap: HashMap<u32, char>,
+    hmtx: Vec<f32>,
+}
+
+#[derive(Default)]
+struct Caches {
+    fonts: HashMap<(u64, u32), Option<FontEntry>>,
+    images: HashMap<u64, Option<krilla::image::Image>>,
+}
+
+fn tf(a: Affine) -> Transform {
+    let c = a.as_coeffs();
+    Transform::from_row(c[0] as f32, c[1] as f32, c[2] as f32, c[3] as f32, c[4] as f32, c[5] as f32)
+}
+
+fn to_path(p: &BezPath) -> Option<Path> {
+    let mut b = PathBuilder::new();
+    for el in p.elements() {
+        match *el {
+            PathEl::MoveTo(a) => b.move_to(a.x as f32, a.y as f32),
+            PathEl::LineTo(a) => b.line_to(a.x as f32, a.y as f32),
+            PathEl::QuadTo(a, c) => b.quad_to(a.x as f32, a.y as f32, c.x as f32, c.y as f32),
+            PathEl::CurveTo(a, c, d) => {
+                b.cubic_to(a.x as f32, a.y as f32, c.x as f32, c.y as f32, d.x as f32, d.y as f32)
+            }
+            PathEl::ClosePath => b.close(),
+        }
+    }
+    b.finish()
+}
+
+fn rect_path(x0: f32, y0: f32, x1: f32, y1: f32) -> Option<Path> {
+    to_path(&kurbo::Rect::new(f64::from(x0), f64::from(y0), f64::from(x1), f64::from(y1)).to_path(0.1))
+}
+
+fn norm(v: f32) -> NormalizedF32 {
+    NormalizedF32::new(v.clamp(0.0, 1.0)).unwrap_or(NormalizedF32::ONE)
+}
+
+fn rgb_of(c: Color) -> (rgb::Color, f32) {
+    let rgba = c.to_rgba8();
+    (rgb::Color::new(rgba.r, rgba.g, rgba.b), f32::from(rgba.a) / 255.0)
+}
+
+fn stops(g: &peniko::Gradient) -> Vec<Stop> {
+    g.stops
+        .iter()
+        .map(|s| {
+            let (c, a) = rgb_of(s.color.to_alpha_color());
+            Stop { offset: norm(s.offset), color: c.into(), opacity: norm(a) }
+        })
+        .collect()
+}
+
+fn spread(e: peniko::Extend) -> SpreadMethod {
+    match e {
+        peniko::Extend::Pad => SpreadMethod::Pad,
+        peniko::Extend::Repeat => SpreadMethod::Repeat,
+        peniko::Extend::Reflect => SpreadMethod::Reflect,
+    }
+}
+
+/// A krilla fill for an anyrender paint, or `None` when it cannot be
+/// expressed (images are handled separately).
+fn paint_fill(p: &Paint, brush_transform: Option<Affine>, alpha: f32, rule: peniko::Fill) -> Option<Fill> {
+    let rule = if rule == peniko::Fill::EvenOdd { FillRule::EvenOdd } else { FillRule::NonZero };
+    let transform = tf(brush_transform.unwrap_or(Affine::IDENTITY));
+    match p {
+        Paint::Solid(c) => {
+            let (col, a) = rgb_of(*c);
+            Some(Fill { paint: col.into(), opacity: norm(a * alpha), rule })
+        }
+        Paint::Gradient(g) => {
+            let st = stops(g);
+            if st.is_empty() {
+                return None;
+            }
+            let paint: krilla::paint::Paint = match &g.kind {
+                peniko::GradientKind::Linear(l) => LinearGradient {
+                    x1: l.start.x as f32,
+                    y1: l.start.y as f32,
+                    x2: l.end.x as f32,
+                    y2: l.end.y as f32,
+                    transform,
+                    spread_method: spread(g.extend),
+                    stops: st,
+                    anti_alias: false,
+                }
+                .into(),
+                peniko::GradientKind::Radial(r) => RadialGradient {
+                    fx: r.start_center.x as f32,
+                    fy: r.start_center.y as f32,
+                    fr: r.start_radius,
+                    cx: r.end_center.x as f32,
+                    cy: r.end_center.y as f32,
+                    cr: r.end_radius,
+                    transform,
+                    spread_method: spread(g.extend),
+                    stops: st,
+                    anti_alias: false,
+                }
+                .into(),
+                peniko::GradientKind::Sweep(s) => SweepGradient {
+                    cx: s.center.x as f32,
+                    cy: s.center.y as f32,
+                    start_angle: s.start_angle.to_degrees(),
+                    end_angle: s.end_angle.to_degrees(),
+                    transform,
+                    spread_method: spread(g.extend),
+                    stops: st,
+                    anti_alias: false,
+                }
+                .into(),
+            };
+            Some(Fill { paint, opacity: norm(alpha), rule })
+        }
+        _ => None,
+    }
+}
+
+fn font_entry<'a>(caches: &'a mut Caches, fd: &peniko::FontData) -> Option<&'a FontEntry> {
+    caches
+        .fonts
+        .entry((fd.data.id(), fd.index))
+        .or_insert_with(|| {
+            let bytes: Arc<Vec<u8>> = Arc::new(fd.data.data().to_vec());
+            let fref = skrifa::FontRef::from_index(&bytes, fd.index).ok()?;
+            let mut rev_cmap = HashMap::new();
+            for (cp, gid) in fref.charmap().mappings() {
+                if let Some(ch) = char::from_u32(cp) {
+                    let e = rev_cmap.entry(gid.to_u32()).or_insert(ch);
+                    if (ch as u32) < (*e as u32) {
+                        *e = ch;
+                    }
+                }
+            }
+            let loc = skrifa::instance::LocationRef::default();
+            let fm = fref.metrics(skrifa::instance::Size::unscaled(), loc);
+            let upem = f32::from(fm.units_per_em);
+            let gm = fref.glyph_metrics(skrifa::instance::Size::unscaled(), loc);
+            let n = u32::from(fm.glyph_count);
+            let hmtx =
+                (0..n).map(|g| gm.advance_width(skrifa::GlyphId::new(g)).unwrap_or(0.0) / upem).collect();
+            let font = Font::new(bytes.into(), fd.index)?;
+            Some(FontEntry { font, rev_cmap, hmtx })
+        })
+        .as_ref()
+}
+
+/// Glyph outlines as one path (text that must not be extractable, such as
+/// list bullets, which QtWebKit draws as shapes).
+fn glyph_outlines(fd: &peniko::FontData, size: f32, glyphs: &[anyrender::Glyph]) -> Option<Path> {
+    use skrifa::outline::{DrawSettings, OutlinePen};
+    struct Pen<'a> {
+        b: &'a mut PathBuilder,
+        dx: f32,
+        dy: f32,
+    }
+    impl OutlinePen for Pen<'_> {
+        fn move_to(&mut self, x: f32, y: f32) {
+            self.b.move_to(self.dx + x, self.dy - y);
+        }
+        fn line_to(&mut self, x: f32, y: f32) {
+            self.b.line_to(self.dx + x, self.dy - y);
+        }
+        fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
+            self.b.quad_to(self.dx + cx, self.dy - cy, self.dx + x, self.dy - y);
+        }
+        fn curve_to(&mut self, a: f32, b: f32, c: f32, d: f32, x: f32, y: f32) {
+            self.b.cubic_to(self.dx + a, self.dy - b, self.dx + c, self.dy - d, self.dx + x, self.dy - y);
+        }
+        fn close(&mut self) {
+            self.b.close();
+        }
+    }
+    let data = fd.data.data();
+    let fref = skrifa::FontRef::from_index(data, fd.index).ok()?;
+    let outlines = fref.outline_glyphs();
+    let mut b = PathBuilder::new();
+    for g in glyphs {
+        if let Some(o) = outlines.get(skrifa::GlyphId::new(g.id)) {
+            let settings = DrawSettings::unhinted(
+                skrifa::instance::Size::new(size),
+                skrifa::instance::LocationRef::default(),
+            );
+            let mut pen = Pen { b: &mut b, dx: g.x, dy: g.y };
+            let _ = o.draw(settings, &mut pen);
+        }
+    }
+    b.finish()
+}
+
+/// Bounding box of a command in scene coordinates, for page culling.
+fn bbox(cmd: &RenderCommand) -> Option<kurbo::Rect> {
+    match cmd {
+        RenderCommand::Fill(c) => Some(c.transform.transform_rect_bbox(c.shape.bounding_box())),
+        RenderCommand::Stroke(c) => Some(
+            c.transform.transform_rect_bbox(c.shape.bounding_box()).inflate(c.style.width, c.style.width),
+        ),
+        RenderCommand::GlyphRun(c) => {
+            // Cull text by baseline: a line belongs to exactly one page,
+            // otherwise clipped glyphs would still be extractable text on the
+            // neighbouring page.
+            let g = c.glyphs.first()?;
+            let p = c.transform * kurbo::Point::new(f64::from(g.x), f64::from(g.y));
+            Some(kurbo::Rect::new(p.x, p.y, p.x, p.y))
+        }
+        RenderCommand::BoxShadow(c) => Some(c.transform.transform_rect_bbox(c.rect)),
+        _ => None,
+    }
+}
+
+struct Replayer<'a> {
+    page: &'a RenderedPage,
+    caches: &'a mut Caches,
+}
+
+impl Replayer<'_> {
+    fn image(&mut self, img: &peniko::ImageBrush) -> Option<krilla::image::Image> {
+        let id = img.image.data.id();
+        let page = self.page;
+        self.caches
+            .images
+            .entry(id)
+            .or_insert_with(|| {
+                if let Some(src) = page.image_sources.get(&id) {
+                    if src.starts_with(&[0xff, 0xd8]) {
+                        if let Ok(i) = krilla::image::Image::from_jpeg(src.clone().into(), true) {
+                            return Some(i);
+                        }
+                    }
+                }
+                Some(krilla::image::Image::from_rgba8(
+                    img.image.data.data().to_vec(),
+                    img.image.width,
+                    img.image.height,
+                ))
+            })
+            .clone()
+    }
+
+    fn glyph_run(
+        &mut self,
+        surface: &mut Surface,
+        c: &anyrender::recording::GlyphRunCommand,
+        text: Option<&RunText>,
+    ) {
+        if c.glyphs.is_empty() {
+            return;
+        }
+        let Some(fill) = paint_fill(&c.brush, None, c.brush_alpha, peniko::Fill::NonZero) else { return };
+        let g0 = c.glyphs[0];
+        let size = c.font_size;
+        let mut t = c.transform;
+        if let Some(gt) = c.glyph_transform {
+            // Synthetic oblique: skew around the run origin.
+            let o = kurbo::Vec2::new(f64::from(g0.x), f64::from(g0.y));
+            t = t * Affine::translate(o) * gt * Affine::translate(-o);
+        }
+        let Some(text) = text else {
+            // No source text: draw the outlines (list bullets).
+            if let Some(p) = glyph_outlines(&c.font_data, size, &c.glyphs) {
+                surface.push_transform(&tf(t));
+                surface.set_stroke(None);
+                surface.set_fill(Some(fill));
+                surface.draw_path(&p);
+                surface.pop();
+            }
+            return;
+        };
+        let Some(fe) = font_entry(self.caches, &c.font_data) else { return };
+        let use_ranges = text.glyph_ranges.len() == c.glyphs.len();
+        let mut fallback = String::new();
+        let mut glyphs = Vec::with_capacity(c.glyphs.len());
+        for (i, g) in c.glyphs.iter().enumerate() {
+            let range = if use_ranges {
+                text.glyph_ranges[i].clone()
+            } else {
+                let s = fallback.len();
+                if let Some(ch) = fe.rev_cmap.get(&g.id) {
+                    fallback.push(*ch);
+                }
+                s..fallback.len()
+            };
+            let adv = match c.glyphs.get(i + 1) {
+                Some(n) => (n.x - g.x) / size,
+                None => fe.hmtx.get(g.id as usize).copied().unwrap_or(0.0),
+            };
+            glyphs.push(KrillaGlyph::new(
+                GlyphId::new(g.id),
+                adv,
+                0.0,
+                (g.y - g0.y) / size,
+                0.0,
+                range,
+                None,
+            ));
+        }
+        let s: &str = if use_ranges { &text.text } else { &fallback };
+        surface.set_stroke(None);
+        surface.set_fill(Some(fill));
+        let c6 = t.as_coeffs();
+        if c6[0] == 1.0 && c6[1] == 0.0 && c6[2] == 0.0 && c6[3] == 1.0 {
+            // Plain translation: position the run with the text matrix rather
+            // than `cm`, as Qt does, so text extractors see real positions.
+            let origin = Point::from_xy(g0.x + c6[4] as f32, g0.y + c6[5] as f32);
+            surface.draw_glyphs(origin, &glyphs, fe.font.clone(), s, size, false);
+        } else {
+            surface.push_transform(&tf(t));
+            surface.draw_glyphs(Point::from_xy(g0.x, g0.y), &glyphs, fe.font.clone(), s, size, false);
+            surface.pop();
+        }
+    }
+
+    /// Replay `scene` onto `surface`, restricted to the band `[y0, y1)`.
+    fn replay(&mut self, surface: &mut Surface, scene: &Scene, y0: f32, y1: f32) {
+        let (y0d, y1d) = (f64::from(y0), f64::from(y1));
+        let mut layers: Vec<usize> = vec![];
+        for (idx, cmd) in scene.commands.iter().enumerate() {
+            if let Some(b) = bbox(cmd) {
+                let is_text = matches!(cmd, RenderCommand::GlyphRun(_));
+                if b.y1 < y0d || b.y0 > y1d || (is_text && (b.y0 < y0d || b.y0 >= y1d)) {
+                    continue;
+                }
+            }
+            match cmd {
+                RenderCommand::PushLayer(c) => {
+                    let mut n = 0;
+                    if c.alpha < 1.0 {
+                        surface.push_opacity(norm(c.alpha));
+                        n += 1;
+                    }
+                    if let Some(p) = to_path(&c.clip).and_then(|p| p.transform(tf(c.transform))) {
+                        surface.push_clip_path(&p, &FillRule::NonZero);
+                        n += 1;
+                    }
+                    layers.push(n);
+                }
+                RenderCommand::PushClipLayer(c) => {
+                    if let Some(p) = to_path(&c.clip).and_then(|p| p.transform(tf(c.transform))) {
+                        surface.push_clip_path(&p, &FillRule::NonZero);
+                        layers.push(1);
+                    } else {
+                        layers.push(0);
+                    }
+                }
+                RenderCommand::PopLayer => {
+                    for _ in 0..layers.pop().unwrap_or(0) {
+                        surface.pop();
+                    }
+                }
+                RenderCommand::Fill(c) => match &c.brush {
+                    Paint::Image(img) => {
+                        let Some(kimg) = self.image(img) else { continue };
+                        let Some(clip) = to_path(&c.shape) else { continue };
+                        let Some(size) = Size::from_wh(img.image.width as f32, img.image.height as f32)
+                        else {
+                            continue;
+                        };
+                        surface.push_transform(&tf(c.transform));
+                        surface.push_clip_path(&clip, &FillRule::NonZero);
+                        surface.push_transform(&tf(c.brush_transform.unwrap_or(Affine::IDENTITY)));
+                        surface.draw_image(kimg, size);
+                        surface.pop();
+                        surface.pop();
+                        surface.pop();
+                    }
+                    brush => {
+                        let Some(fill) = paint_fill(brush, c.brush_transform, 1.0, c.fill) else { continue };
+                        let Some(p) = to_path(&c.shape) else { continue };
+                        surface.push_transform(&tf(c.transform));
+                        surface.set_fill(Some(fill));
+                        surface.set_stroke(None);
+                        surface.draw_path(&p);
+                        surface.pop();
+                    }
+                },
+                RenderCommand::Stroke(c) => {
+                    let Some(fill) = paint_fill(&c.brush, c.brush_transform, 1.0, peniko::Fill::NonZero)
+                    else {
+                        continue;
+                    };
+                    let Some(p) = to_path(&c.shape) else { continue };
+                    surface.push_transform(&tf(c.transform));
+                    surface.set_fill(None);
+                    surface.set_stroke(Some(Stroke {
+                        paint: fill.paint,
+                        width: c.style.width as f32,
+                        opacity: fill.opacity,
+                        dash: if c.style.dash_pattern.is_empty() {
+                            None
+                        } else {
+                            Some(krilla::paint::StrokeDash {
+                                array: c.style.dash_pattern.iter().map(|d| *d as f32).collect(),
+                                offset: c.style.dash_offset as f32,
+                            })
+                        },
+                        ..Default::default()
+                    }));
+                    surface.draw_path(&p);
+                    surface.set_stroke(None);
+                    surface.pop();
+                }
+                RenderCommand::GlyphRun(c) => {
+                    let text = self.page.recorder.texts.get(&idx);
+                    self.glyph_run(surface, c, text);
+                }
+                RenderCommand::BoxShadow(_) => {}
+            }
+        }
+        for n in layers.into_iter().rev() {
+            for _ in 0..n {
+                surface.pop();
+            }
+        }
+    }
+}
+
+/// Civil date from days since the Unix epoch (Howard Hinnant's algorithm).
+fn civil(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+fn date_time(secs: u64) -> DateTime {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    let (y, m, d) = civil(days);
+    DateTime::new(y.clamp(0, 9999) as u16)
+        .month(m as u8)
+        .day(d as u8)
+        .hour((rem / 3600) as u8)
+        .minute((rem % 3600 / 60) as u8)
+        .second((rem % 60) as u8)
+        .utc_offset_hour(0)
+        .utc_offset_minute(0)
+}
+
+fn outline_node(n: &OutlineNode) -> krilla::outline::OutlineNode {
+    let mut k = krilla::outline::OutlineNode::new(
+        n.title.clone(),
+        XyzDestination::new(n.page, Point::from_xy(n.x, n.y)),
+    );
+    for c in &n.children {
+        k.push_child(outline_node(c));
+    }
+    k
+}
+
+/// Write the PDF.
+pub fn write_pdf(
+    setup: &PageSetup,
+    parts: &[DocPart<'_>],
+    links: &[PdfLink],
+    outline: &[OutlineNode],
+    info: &DocInfo,
+) -> Result<Vec<u8>, String> {
+    let configuration =
+        ConfigurationBuilder::new().with_version(PdfVersion::Pdf14).finish().map_err(|e| format!("{e:?}"))?;
+    let settings =
+        SerializeSettings { xmp_metadata: false, enable_tagging: false, configuration, ..Default::default() };
+    let mut doc = Document::new_with(settings);
+    let mut caches = Caches::default();
+    let mut page_index = 0usize;
+    let page_settings = PageSettings::from_wh(setup.width, setup.height).ok_or("invalid page size")?;
+    for part in parts {
+        let s = part.page.pt_per_px;
+        let (ml, mt) = (setup.margin_left, setup.margin_top);
+        // Horizontal clip: everything that fits on the paper.
+        let (cx0, cx1) = (-ml / s, (setup.width - ml) / s);
+        for p in part.slices {
+            let mut page = doc.start_page_with(page_settings.clone());
+            for l in links.iter().filter(|l| l.page == page_index) {
+                let Some(rect) = Rect::from_ltrb(l.rect.0, l.rect.1, l.rect.2, l.rect.3) else { continue };
+                let target = match &l.target {
+                    LinkTarget::Uri(u) => {
+                        krilla::annotation::Target::Action(krilla::action::LinkAction::new(u.clone()).into())
+                    }
+                    LinkTarget::Page { page, x, y } => {
+                        krilla::annotation::Target::Destination(krilla::destination::Destination::Xyz(
+                            XyzDestination::new(*page, Point::from_xy(*x, *y)),
+                        ))
+                    }
+                };
+                page.add_annotation(krilla::annotation::Annotation::new_link(
+                    krilla::annotation::LinkAnnotation::new(rect, target),
+                    None,
+                ));
+            }
+            let mut surface = page.surface();
+            surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ml, mt));
+            let mut r = Replayer { page: part.page, caches: &mut caches };
+            let scene = &part.page.recorder.scene;
+            let mut dy = 0.0;
+            for band in [p.thead, Some((p.y0, p.y1)), p.tfoot] {
+                let Some((b0, b1)) = band else { continue };
+                surface.push_transform(&Transform::from_translate(0.0, dy - b0));
+                if let Some(clip) = rect_path(cx0, b0, cx1, b1) {
+                    surface.push_clip_path(&clip, &FillRule::NonZero);
+                    r.replay(&mut surface, scene, b0, b1);
+                    surface.pop();
+                }
+                surface.pop();
+                dy += b1 - b0;
+            }
+            surface.pop();
+            surface.finish();
+            page.finish();
+            page_index += 1;
+        }
+    }
+    if !outline.is_empty() {
+        let mut o = krilla::outline::Outline::new();
+        for n in outline {
+            o.push_child(outline_node(n));
+        }
+        doc.set_outline(o);
+    }
+    let mut meta = Metadata::new().creator(info.creator.clone()).producer(info.producer.clone());
+    if let Some(t) = &info.title {
+        meta = meta.title(t.clone());
+    }
+    if let Some(secs) = info.creation_time {
+        meta = meta.creation_date(date_time(secs));
+    }
+    doc.set_metadata(meta);
+    doc.finish().map_err(|e| format!("{e:?}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn civil_dates() {
+        assert_eq!(civil(0), (1970, 1, 1));
+        assert_eq!(civil(20_740), (2026, 10, 14));
+    }
+}

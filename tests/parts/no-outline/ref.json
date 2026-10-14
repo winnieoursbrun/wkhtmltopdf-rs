@@ -1,0 +1,102 @@
+{
+ "pdf_version": "1.4",
+ "page_count": 4,
+ "page_mode": null,
+ "info": {
+  "/Title": "Parts Doc",
+  "/Creator": "wkhtmltopdf 0.12.6",
+  "/Producer": "Qt 4.8.7"
+ },
+ "outline": [],
+ "named_dests": [
+  "/__WKANCHOR_2",
+  "/__WKANCHOR_4",
+  "/__WKANCHOR_6",
+  "/__WKANCHOR_8",
+  "/__WKANCHOR_a",
+  "/__WKANCHOR_c",
+  "/__WKANCHOR_e",
+  "/__WKANCHOR_g",
+  "/__WKANCHOR_i",
+  "/__WKANCHOR_k"
+ ],
+ "acroform_fields": null,
+ "pages": [
+  {
+   "n": 1,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 11,
+     "scn": 10
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 2,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 7,
+     "scn": 6
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 3,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 4,
+     "scn": 3
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 4,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 3,
+     "scn": 2
+    },
+    "non_gray_rgb": 0
+   }
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+[package]
+name = "wk-cli"
+description = "Command line parser and documentation outputters of wkhtmltopdf (port of src/shared)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+wk-settings.workspace = true

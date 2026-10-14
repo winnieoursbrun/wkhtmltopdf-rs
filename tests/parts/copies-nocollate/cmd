@@ -1,0 +1,7 @@
+--copies
+2
+--no-collate
+--footer-center
+[page]/[topage]
+two.html
+out.pdf

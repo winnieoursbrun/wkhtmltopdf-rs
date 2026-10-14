@@ -1,0 +1,22 @@
+<!DOCTYPE html><html><head><title>jQuery page</title>
+<script src="../vendor/jquery-3.7.1.min.js"></script>
+<script>
+$(function () {
+  $('#x').text('ok');
+  var rows = [];
+  for (var i = 1; i <= 3; i++) rows.push('<tr class="r"><td>' + i + '</td><td>item ' + i + '</td></tr>');
+  $('table tbody').append(rows.join(''));
+  $('#x').addClass('done').attr('data-n', $('table tbody tr').length);
+  $('.r:even').css('background-color', '#eee');
+  $('<p/>', { id: 'made', text: 'built by jQuery' }).appendTo('body');
+  $('#list').html('<li>a</li><li>b</li>');
+  $('#list li').each(function (i, el) { $(el).append(' #' + i); });
+  console.log('rows', $('tr.r').length, 'height', $('#x').height());
+  window.status = 'jq-done';
+});
+</script></head>
+<body><div id="x" class="done" data-n="3">ok</div>
+<table><tbody><tr class="r" style="background-color: rgb(238, 238, 238);"><td>1</td><td>item 1</td></tr><tr class="r"><td>2</td><td>item 2</td></tr><tr class="r" style="background-color: rgb(238, 238, 238);"><td>3</td><td>item 3</td></tr></tbody></table>
+<ul id="list"><li>a #0</li><li>b #1</li></ul>
+
+<p id="made">built by jQuery</p></body></html>

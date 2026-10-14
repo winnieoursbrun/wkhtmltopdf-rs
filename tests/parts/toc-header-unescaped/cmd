@@ -1,0 +1,7 @@
+--dump-outline
+out.outline.xml
+toc
+--toc-header-text
+Contents & Index
+doc.html
+out.pdf

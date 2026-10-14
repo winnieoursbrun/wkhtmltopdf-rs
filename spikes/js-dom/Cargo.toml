@@ -1,0 +1,33 @@
+[package]
+name = "js-dom"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone spike: keep it out of the root workspace.
+[workspace]
+
+# P4 feasibility: boa_engine 0.22 driving a blitz-dom 0.3 document.
+[[bin]]
+name = "jsdom-spike"
+path = "src/main.rs"
+
+# Same pipeline without Boa (parse + resolve + serialize), to measure the binary size delta.
+[[bin]]
+name = "baseline"
+path = "src/baseline.rs"
+
+[dependencies]
+blitz-dom = { version = "=0.3.0-beta.3", default-features = false, features = ["woff", "floats", "svg"] }
+blitz-html = { version = "=0.3.0-beta.3" }
+blitz-traits = { version = "=0.3.0-beta.3" }
+parley = { version = "0.12", default-features = false, features = ["std"] }
+markup5ever = { version = "0.40" }
+url = { version = "2" }
+boa_engine = { version = "0.22", default-features = false, features = ["annex-b"] }
+boa_gc = { version = "0.22" }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 16

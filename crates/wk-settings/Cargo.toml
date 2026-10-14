@@ -1,0 +1,10 @@
+[package]
+name = "wk-settings"
+description = "Settings model of wkhtmltopdf (port of src/lib/*settings*, reflect)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<outline xmlns="http://wkhtmltopdf.org/outline">
+  <item title="" page="0" link="" backLink=""/>
+  <item title="Table of Contents" page="1" link="__WKANCHOR_c" backLink="__WKANCHOR_c">
+    <item title="Table of Contents" page="2" link="__WKANCHOR_e" backLink="__WKANCHOR_e"/>
+  </item>
+  <item title="Doc A" page="2" link="__WKANCHOR_0" backLink="__WKANCHOR_1">
+    <item title="Alpha chapter" page="3" link="__WKANCHOR_2" backLink="__WKANCHOR_3">
+      <item title="Alpha section" page="3" link="__WKANCHOR_4" backLink="__WKANCHOR_5"/>
+    </item>
+  </item>
+  <item title="Doc B" page="3" link="__WKANCHOR_6" backLink="__WKANCHOR_7">
+    <item title="Beta chapter" page="4" link="__WKANCHOR_8" backLink="__WKANCHOR_9">
+      <item title="Beta section on page 2" page="5" link="__WKANCHOR_a" backLink="__WKANCHOR_b"/>
+    </item>
+  </item>
+</outline>

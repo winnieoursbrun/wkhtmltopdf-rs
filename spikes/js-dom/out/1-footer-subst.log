@@ -1,0 +1,7 @@
+spike: page=pages/1-footer-subst.html url_query="page=2&topage=5&section=Intro"
+spike: time ms: parse=21.9 realm+prelude=19.6 scripts+events=1.0 wait(virtual 200 ms)=0.2 final-layout=8.5 serialize=0.0 total=52.2
+spike: forced layouts during JS=0 (0.0 ms) wrappers=4 mutations=3 created=0 queries=0 innerHTML-sets=0 document.write=0 timers-fired=0 pending-timers=0
+spike: wait: waited 200 virtual ms; final window.status=""
+spike: expect "<td class=\"section\">Intro</td>": PASS
+spike: expect "<span class=\"page\">2</span>": PASS
+spike: expect "<span class=\"topage\">5</span>": PASS

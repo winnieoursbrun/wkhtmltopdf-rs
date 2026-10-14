@@ -1,0 +1,26 @@
+=== page 1 ===
+BrandMono web font — Facture 0142
+Sans regular: àâäéèêëîïôöùûüç ÀÉÈÇ œŒ æÆ € £ ß ñ — « guillemets » “quotes” ‘single’ … ½ ° ± × ÷ ©
+
+Sans bold: àâäéèêëîïôöùûüç ÀÉÈÇ œŒ æÆ € £ ß ñ — « guillemets » “quotes” ‘single’ … ½ ° ± × ÷ ©
+
+Sans italic (synthetic): àâäéèêëîïôöùûüç ÀÉÈÇ œŒ æÆ € £ ß ñ — « guillemets » “quotes” ‘single’ … ½ ° ± × ÷ ©
+
+Serif regular: àâäéèêëîïôöùûüç ÀÉÈÇ œŒ æÆ € £ ß ñ — « guillemets » “quotes” ‘single’ … ½ ° ± × ÷ ©
+
+Serif bold: àâäéèêëîïôöùûüç ÀÉÈÇ œŒ æÆ € £ ß ñ — « guillemets » “quotes” ‘single’ … ½ ° ± × ÷ ©
+
+Mono: 0123456789 iIl1| O0 {}[]() => -> àâäéèêëîïôöùûüç ÀÉÈÇ œŒ æÆ € £ ß ñ — « guillemets » “quotes”
+‘single’ … ½ ° ± × ÷ ©
+Small 8px: Noël où câblage naïve câblage à déjà pour déjà règlement été déjà électrique être matériel. Suite règlement été système des prestation été câblage bâtiment électrique cœur.
+
+
+
+
+Big 28px: Ça déménage !
+Underlined text
+
+Struck text
+
+L E T T E R S PA C I N G U P P E RC A S E
+

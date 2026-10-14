@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html><head><title>500 rows</title></head>
+<body><table id="t"><thead><tr><th>#</th><th>Name</th><th>Amount</th></tr></thead><tbody></tbody></table>
+<script>
+var t0 = Date.now();
+var tbody = document.querySelector('#t tbody');
+for (var i = 0; i < 500; i++) {
+  var tr = document.createElement('tr');
+  tr.className = i % 2 ? 'odd' : 'even';
+  var cells = [String(i + 1), 'Customer ' + i, (i * 13.37).toFixed(2)];
+  for (var c = 0; c < cells.length; c++) {
+    var td = document.createElement('td');
+    td.appendChild(document.createTextNode(cells[c]));
+    if (c === 2) td.style.textAlign = 'right';
+    tr.appendChild(td);
+  }
+  tbody.appendChild(tr);
+}
+var total = 0, rows = tbody.childNodes;
+for (var k = 0; k < rows.length; k++) total += parseFloat(rows[k].lastChild.textContent);
+var p = document.createElement('p');
+p.id = 'total';
+p.textContent = 'Total: ' + total.toFixed(2) + ' (' + rows.length + ' rows)';
+document.body.appendChild(p);
+console.log('built in ' + (Date.now() - t0) + ' ms');
+</script>
+</body></html>

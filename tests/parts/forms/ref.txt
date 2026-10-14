@@ -1,0 +1,26 @@
+Form
+Text: Jane
+      JaneDoe
+           Doe
+
+Empty text:
+
+Password: •••••••
+          *******
+Read-only: fixed
+           fixed
+Untyped: default type
+
+         Line one
+         Line two
+Area:
+
+Checked:     ✓   Unchecked:
+
+Radio:      red     green
+
+Select: M
+
+
+Send
+

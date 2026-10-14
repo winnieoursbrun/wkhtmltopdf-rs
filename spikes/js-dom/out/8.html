@@ -1,0 +1,9 @@
+<!DOCTYPE html><html><head><title>write</title>
+<script>var early = document.getElementById('late');</script>
+</head><body data-inner="ran" data-early="[object Object]">
+<p>a</p>
+<script>document.write('<p id="w1">written 1</p>'); document.write('<p id="w2">written 2</p><script>document.body.setAttribute("data-inner", "ran")<\/script>');</script><p id="w1">written 1</p><p id="w2">written 2</p><script>document.body.setAttribute("data-inner", "ran")</script>
+<p id="late">b</p>
+<script>document.body.setAttribute('data-early', String(early));</script>
+
+</body></html>

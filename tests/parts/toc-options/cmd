@@ -1,0 +1,13 @@
+--dump-outline
+out.outline.xml
+toc
+--toc-header-text
+Contents
+--toc-level-indentation
+3em
+--disable-toc-links
+--toc-text-size-shrink
+0.5
+--disable-dotted-lines
+doc.html
+out.pdf

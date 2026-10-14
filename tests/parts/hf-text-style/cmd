@@ -1,0 +1,28 @@
+--margin-top
+30mm
+--margin-bottom
+25mm
+--header-line
+--footer-line
+--header-spacing
+8
+--footer-spacing
+4
+--header-font-name
+DejaVu Serif
+--header-font-size
+16
+--footer-font-name
+DejaVu Sans Mono
+--footer-font-size
+7
+--header-left
+Styled left
+--header-center
+Styled header
+--header-right
+[page]
+--footer-right
+p[page] of [topage]
+doc.html
+out.pdf

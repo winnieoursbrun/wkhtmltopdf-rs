@@ -1,0 +1,15 @@
+[package]
+name = "wk-loader"
+description = "Resource loading (port of src/lib/multipageloader)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+wk-settings.workspace = true
+url.workspace = true
+data-url.workspace = true
+ureq.workspace = true
+base64.workspace = true

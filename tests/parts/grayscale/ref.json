@@ -1,0 +1,44 @@
+{
+ "pdf_version": "1.4",
+ "page_count": 1,
+ "page_mode": "/UseOutlines",
+ "info": {
+  "/Title": "Colors",
+  "/Creator": "wkhtmltopdf 0.12.6",
+  "/Producer": "Qt 4.8.7"
+ },
+ "outline": [
+  {
+   "level": 1,
+   "title": "Red heading",
+   "page": 1,
+   "y": 813.5
+  }
+ ],
+ "named_dests": [
+  "/__WKANCHOR_2"
+ ],
+ "acroform_fields": null,
+ "pages": [
+  {
+   "n": 1,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 6,
+     "cs": 10,
+     "scn": 9
+    },
+    "non_gray_rgb": 0
+   }
+  }
+ ]
+}

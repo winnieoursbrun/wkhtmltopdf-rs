@@ -1,0 +1,98 @@
+{
+ "pdf_version": "1.4",
+ "page_count": 3,
+ "page_mode": "/UseOutlines",
+ "info": {
+  "/Title": "Object a",
+  "/Creator": "wkhtmltopdf 0.12.6",
+  "/Producer": "Qt 4.8.7"
+ },
+ "outline": [
+  {
+   "level": 1,
+   "title": "Object a heading",
+   "page": 1,
+   "y": 813.5
+  },
+  {
+   "level": 1,
+   "title": "Object b heading",
+   "page": 2,
+   "y": 813.5
+  },
+  {
+   "level": 1,
+   "title": "Object c heading",
+   "page": 3,
+   "y": 813.5
+  }
+ ],
+ "named_dests": [
+  "/__WKANCHOR_2",
+  "/__WKANCHOR_6",
+  "/__WKANCHOR_a"
+ ],
+ "acroform_fields": null,
+ "pages": [
+  {
+   "n": 1,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 4,
+     "cs": 5,
+     "scn": 4
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 2,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 6,
+     "cs": 6,
+     "scn": 5
+    },
+    "non_gray_rgb": 1
+   }
+  },
+  {
+   "n": 3,
+   "size": [595.0, 842.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "SCN": 6,
+     "cs": 5,
+     "scn": 4
+    },
+    "non_gray_rgb": 1
+   }
+  }
+ ]
+}

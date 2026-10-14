@@ -1,0 +1,55 @@
+                                                    1/4
+Chapter One
+Intro paragraph of chapter one.
+
+Section 1.1
+Text of section 1.1.
+
+Subsection 1.1.1
+
+Text of subsection 1.1.1.
+
+Deep 1.1.1.1
+
+Fourth level text.
+
+Section 1.2
+Text of section 1.2.
+
+
+
+
+                                  6 of 9 (from 6)
+                                                  2/4
+Chapter Two
+Chapter two starts on page 2.
+
+Section 2.1
+Text of section 2.1.
+
+Subsection 2.1.1
+Text of subsection 2.1.1.
+
+
+
+
+                                7 of 9 (from 6)
+                                                                  3/4
+Page 3 has no heading at the top; section values carry forward.
+
+Section 2.2
+Text of section 2.2 on page 3.
+
+
+
+
+                                             8 of 9 (from 6)
+                                  4/4
+Chapter Three
+Last page.
+
+
+
+
+                9 of 9 (from 6)
+

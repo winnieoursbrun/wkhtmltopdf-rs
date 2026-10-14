@@ -1,0 +1,26 @@
+[package]
+name = "wkhtmltopdf"
+description = "Pure-Rust drop-in replacement for wkhtmltopdf 0.12.6 (port of src/pdf)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "wkhtmltopdf_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wkhtmltopdf"
+path = "src/main.rs"
+
+[dependencies]
+wk-cli.workspace = true
+wk-settings.workspace = true
+wk-converter.workspace = true
+wk-loader.workspace = true
+
+[dev-dependencies]
+pdf-extract = "0.12"
+lopdf = "0.42"

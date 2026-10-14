@@ -1,0 +1,20 @@
+<!DOCTYPE html><html><head><title>chart</title>
+<script src="../vendor/chart-4.4.4.umd.js"></script></head>
+<body><div style="width:600px"><canvas id="c" width="600" height="300" style="display: block; box-sizing: border-box; height: 300px; width: 600px;"></canvas></div>
+<script>
+var ctx = document.getElementById('c').getContext('2d');
+console.log('getContext(2d) ->', ctx === null ? 'null' : typeof ctx);
+try {
+  var chart = new Chart(document.getElementById('c'), {
+    type: 'bar',
+    data: { labels: ['Q1', 'Q2', 'Q3', 'Q4'], datasets: [{ label: 'Revenue', data: [12, 19, 3, 5] }] },
+    options: { animation: false, responsive: false }
+  });
+  window.status = chart.ctx ? 'chart-ok' : 'chart-no-context';
+} catch (e) {
+  console.log('Chart failed: ' + e);
+  window.status = 'chart-failed';
+}
+</script>
+
+</body></html>

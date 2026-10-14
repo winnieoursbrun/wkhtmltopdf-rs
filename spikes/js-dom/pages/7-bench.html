@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><head><title>bench</title></head><body><pre id="r"></pre>
+<script>
+function bench(name, fn) { var t = Date.now(); fn(); var ms = Date.now() - t; console.log(name + ': ' + ms + ' ms'); }
+var g = 0;
+bench('global-var loop 1M', function () { for (g = 0; g < 1000000; g++) {} });
+bench('local loop 10M', function () { var s = 0; for (var i = 0; i < 10000000; i++) s += i; return s; });
+bench('function calls 1M', function () { function f(x) { return x + 1; } var s = 0; for (var i = 0; i < 1000000; i++) s = f(s); });
+bench('array push+sum 1M', function () { var a = []; for (var i = 0; i < 1000000; i++) a.push(i); var s = 0; for (var j = 0; j < a.length; j++) s += a[j]; });
+bench('string build 100k', function () { var p = []; for (var i = 0; i < 100000; i++) p.push('<td>' + i + '</td>'); return p.join('').length; });
+bench('object props 1M', function () { var o = { a: 1, b: 2 }; for (var i = 0; i < 1000000; i++) { o.a = o.b + i; } });
+bench('DOM createElement+append 10k', function () { var d = document.createElement('div'); for (var i = 0; i < 10000; i++) d.appendChild(document.createElement('span')); });
+bench('DOM getAttribute 100k', function () { var e = document.getElementById('r'); for (var i = 0; i < 100000; i++) e.getAttribute('id'); });
+bench('DOM childNodes walk (10k kids) x10', function () { var d = document.createElement('div'); for (var i = 0; i < 10000; i++) d.appendChild(document.createTextNode('x')); for (var k = 0; k < 10; k++) { var c = d.childNodes; for (var j = 0; j < c.length; j++) c[j]; } });
+bench('DOM firstChild/nextSibling walk (10k) x10', function () { var d = document.createElement('div'); for (var i = 0; i < 10000; i++) d.appendChild(document.createTextNode('x')); for (var k = 0; k < 10; k++) for (var n = d.firstChild; n; n = n.nextSibling) {} });
+</script></body></html>

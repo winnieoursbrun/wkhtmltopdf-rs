@@ -1,0 +1,9 @@
+Loading pages (1/6)
+[>                                                           ] 0%[======>                                                     ] 10%Error: Failed to load http://nonexist.html/, with network status code 3 and http status code 0 - Host nonexist.html not found
+Warning: Failed loading page http://nonexist.html (ignored)
+Counting pages (2/6)
+[============================================================] Object 1 of 1Resolving links (4/6)                                                       
+[============================================================] Object 1 of 1Loading headers and footers (5/6)                                           
+Printing pages (6/6)
+[>                                                           ] Preparing[============================================================] Page 1 of 1Done                                                                      
+Exit with code 1 due to network error: HostNotFoundError

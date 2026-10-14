@@ -1,0 +1,19 @@
+[package]
+name = "wk-converter"
+description = "PDF conversion pipeline (port of src/lib/pdfconverter, utilities)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+wk-settings.workspace = true
+wk-cli.workspace = true
+wk-loader.workspace = true
+wk-webkit.workspace = true
+wk-print.workspace = true
+wk-fonts.workspace = true
+url.workspace = true
+data-url.workspace = true
+parley.workspace = true

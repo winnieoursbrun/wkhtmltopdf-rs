@@ -1,0 +1,163 @@
+{
+ "pdf_version": "1.4",
+ "page_count": 4,
+ "page_mode": "/UseOutlines",
+ "info": {
+  "/Title": "Parts Doc",
+  "/Creator": "wkhtmltopdf 0.12.6",
+  "/Producer": "Qt 4.8.7"
+ },
+ "outline": [
+  {
+   "level": 1,
+   "title": "Chapter One",
+   "page": 1,
+   "y": 391.5
+  },
+  {
+   "level": 2,
+   "title": "Section 1.1",
+   "page": 1,
+   "y": 333.8
+  },
+  {
+   "level": 3,
+   "title": "Subsection 1.1.1",
+   "page": 1,
+   "y": 282.8
+  },
+  {
+   "level": 4,
+   "title": "Deep 1.1.1.1",
+   "page": 1,
+   "y": 234.0
+  },
+  {
+   "level": 2,
+   "title": "Section 1.2",
+   "page": 1,
+   "y": 187.5
+  },
+  {
+   "level": 1,
+   "title": "Chapter Two",
+   "page": 2,
+   "y": 391.5
+  },
+  {
+   "level": 2,
+   "title": "Section 2.1",
+   "page": 2,
+   "y": 333.8
+  },
+  {
+   "level": 3,
+   "title": "Subsection 2.1.1",
+   "page": 2,
+   "y": 282.8
+  },
+  {
+   "level": 2,
+   "title": "Section 2.2",
+   "page": 3,
+   "y": 369.0
+  },
+  {
+   "level": 1,
+   "title": "Chapter Three",
+   "page": 4,
+   "y": 391.5
+  }
+ ],
+ "named_dests": [
+  "/__WKANCHOR_2",
+  "/__WKANCHOR_4",
+  "/__WKANCHOR_6",
+  "/__WKANCHOR_8",
+  "/__WKANCHOR_a",
+  "/__WKANCHOR_c",
+  "/__WKANCHOR_e",
+  "/__WKANCHOR_g",
+  "/__WKANCHOR_i",
+  "/__WKANCHOR_k"
+ ],
+ "acroform_fields": null,
+ "pages": [
+  {
+   "n": 1,
+   "size": [595.0, 420.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 12,
+     "scn": 11
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 2,
+   "size": [595.0, 420.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 8,
+     "scn": 7
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 3,
+   "size": [595.0, 420.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 5,
+     "scn": 4
+    },
+    "non_gray_rgb": 0
+   }
+  },
+  {
+   "n": 4,
+   "size": [595.0, 420.0],
+   "rotate": 0,
+   "links": [],
+   "fonts": [
+    "DejaVuSans",
+    "DejaVuSans-Bold"
+   ],
+   "images": [],
+   "colors": {
+    "ops": {
+     "CS": 1,
+     "cs": 4,
+     "scn": 3
+    },
+    "non_gray_rgb": 0
+   }
+  }
+ ]
+}
