@@ -104,13 +104,16 @@ pub struct TextItem {
     pub text: String,
 }
 
-/// A line (`QPainter::drawLine` with the default pen), in points.
+/// A horizontal line (`QPainter::drawLine` with the default pen), in
+/// points. Qt's default pen is cosmetic (width 0): QPdfEngine writes it as
+/// a filled outline `width` thick (0.1 device pixel), extended by half that
+/// width at both ends, which viewers draw as a faint hairline.
 #[derive(Debug, Clone, Copy)]
 pub struct LineItem {
     pub x0: f32,
-    pub y0: f32,
     pub x1: f32,
-    pub y1: f32,
+    pub y: f32,
+    pub width: f32,
 }
 
 /// Where a link goes.
@@ -806,19 +809,15 @@ pub fn write_pdf(
             draw_band(&mut surface, band, width, &mut caches, opts);
         }
         for l in &p.lines {
+            let h = l.width / 2.0;
             let mut b = PathBuilder::new();
-            b.move_to(l.x0, l.y0);
-            b.line_to(l.x1, l.y1);
+            if let Some(rect) = Rect::from_xywh(l.x0 - h, l.y - h, l.x1 - l.x0 + l.width, l.width) {
+                b.push_rect(rect);
+            }
             if let Some(path) = b.finish() {
-                surface.set_fill(None);
-                surface.set_stroke(Some(Stroke {
-                    paint: rgb::Color::new(0, 0, 0).into(),
-                    // Qt's default pen is cosmetic (width 0, a hairline).
-                    width: 0.0,
-                    ..Default::default()
-                }));
-                surface.draw_path(&path);
                 surface.set_stroke(None);
+                surface.set_fill(Some(Fill { paint: rgb::Color::new(0, 0, 0).into(), ..Default::default() }));
+                surface.draw_path(&path);
             }
         }
         for t in &p.texts {

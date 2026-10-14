@@ -58,9 +58,10 @@ const PHASES: [&str; 7] = [
 pub const CREATOR: &str = "wkhtmltopdf 0.12.6";
 /// `Producer` written by Qt's PDF engine.
 pub const PRODUCER: &str = "Qt 4.8.7";
-/// `PdfConverter::millimeterToPointMultiplier` (device pixels per mm at
-/// 96 dpi, despite its name).
-const MM_TO_POINT_MULTIPLIER: f64 = 3.779527559;
+/// `PdfConverter::millimeterToPointMultiplier` (points per mm).
+/// `calculateHeaderHeight` divides a height in device pixels by it, so a
+/// measured header reserves 4/3 of its printed height at 96 dpi.
+const MM_TO_POINT_MULTIPLIER: f64 = 2.83464567;
 
 /// Process streams of a conversion.
 pub struct ConvertIo<'a> {
@@ -303,6 +304,27 @@ struct Paper {
 }
 
 impl Paper {
+    /// QPrinter's geometry in whole device pixels at `dpi`: the paper rect
+    /// is the paper size in points scaled and rounded, the page rect is
+    /// the paper rect less each margin rounded (A4 at 96 dpi is 793 × 1123
+    /// px; 10 mm margins are 38 px, so the body starts at 28.5 pt and is
+    /// 717 px wide, as in the reference PDFs). `margins` are top, right,
+    /// bottom, left in points; the result keeps the PDF page size in points.
+    fn snapped(width: f64, height: f64, margins: [f64; 4], dpi: i32) -> Paper {
+        let k = f64::from(dpi.max(1)) / 72.0;
+        let px = |pt: f64| (pt * k).round();
+        let (w, h) = (px(width), px(height));
+        let [t, r, b, l] = margins.map(px);
+        Paper {
+            width: width as f32,
+            height: height as f32,
+            top: (t / k) as f32,
+            left: (l / k) as f32,
+            right: (width - (w - r) / k) as f32,
+            bottom: (height - (h - b) / k) as f32,
+        }
+    }
+
     fn printable_width(&self) -> f32 {
         (self.width - self.left - self.right).max(1.0)
     }
@@ -478,19 +500,21 @@ impl Converter<'_, '_> {
             let Some(mut pages) = pages else { return false };
             let (pw, ph) = paper_size(&self.g);
             let unit = |v: f64, u| v * points_per_unit(u, self.g.dpi);
-            let printable_w = (pw
-                - unit(self.g.margin.left.value, self.g.margin.left.unit)
-                - unit(self.g.margin.right.value, self.g.margin.right.unit))
-            .max(1.0) as f32;
-            // `calculateHeaderHeight`: the measuring printer gets the body
-            // height without the printing shrink, one device pixel per CSS
-            // pixel, divided by 3.78 px/mm. Verified on tests/parts
-            // (hf-html-static: a 77.6 px body reserves 21.5 mm where the
-            // printed header is 46.6 pt tall; this model gives 20.5 mm).
+            let right = unit(self.g.margin.right.value, self.g.margin.right.unit);
+            let left = unit(self.g.margin.left.value, self.g.margin.left.unit);
+            let printable_w = Paper::snapped(pw, ph, [0.0, right, 0.0, left], self.g.dpi).printable_width();
+            let dev_per_pt = f64::from(self.g.dpi.max(1)) / 72.0;
+            // `calculateHeaderHeight`: the body height printed on a test
+            // printer (same shrink as the page), in whole device pixels
+            // (QRect, truncated), divided by millimeterToPointMultiplier
+            // (points per mm). Verified with the 0.12.6 binary on bodies of
+            // 10 to 400 px: a 77 px body prints 61 px tall and reserves
+            // 61 / 2.835 mm = 81 px (hf-html-static), a 100 px body 107 px.
             let mut measure = |i: Option<usize>| -> Option<f64> {
                 let p = pages.get_mut(i?)?.as_mut()?;
                 let r = p.render(printable_w, ph as f32);
-                Some(f64::from(r.body_height) / MM_TO_POINT_MULTIPLIER)
+                let printed = (f64::from(r.body_height * r.pt_per_px) * dev_per_pt + 1e-6).floor();
+                Some(printed / MM_TO_POINT_MULTIPLIER)
             };
             for o in objs.iter_mut() {
                 if let Some(h) = measure(o.measure_header) {
@@ -550,14 +574,12 @@ impl Converter<'_, '_> {
         // Margins are in the left margin's unit (measured heights are mm
         // values interpreted in that unit, like upstream).
         let ppu = points_per_unit(m.left.unit, self.g.dpi);
-        let paper = Paper {
-            width: paper_w as f32,
-            height: paper_h as f32,
-            top: (max_header * ppu) as f32,
-            right: (m.right.value * ppu) as f32,
-            bottom: (max_footer * ppu) as f32,
-            left: (m.left.value * ppu) as f32,
-        };
+        let paper = Paper::snapped(
+            paper_w,
+            paper_h,
+            [max_header * ppu, m.right.value * ppu, max_footer * ppu, m.left.value * ppu],
+            self.g.dpi,
+        );
 
         // painter->begin(printer): the output is opened before printing.
         let mut output = if self.g.out == "-" || self.g.out.is_empty() {
@@ -938,7 +960,10 @@ impl Converter<'_, '_> {
                         if let Some(h) = o.headers.get(pi) {
                             let s = hf_slices.get(&(d, true, pi)).expect("header slice");
                             let spacing = mm_to_pt(ps.header.spacing);
-                            let body = h.body_height * h.pt_per_px;
+                            // translate(0, -elementLocation(body).height()):
+                            // whole device pixels (a 77 px body at 0.8 is 61).
+                            let dev = self.g.dpi.max(1) as f32 / 72.0;
+                            let body = (h.body_height * h.pt_per_px * dev + 1e-3).floor() / dev;
                             let origin = (paper.left, paper.top - spacing - body);
                             push_hf_band(
                                 &mut op,
@@ -1042,11 +1067,19 @@ impl Converter<'_, '_> {
         let px = |pt: f32| pt * dpi / 72.0;
         let pt = |px: f32| px * 72.0 / dpi;
         let x_left = paper.left;
+        // printer->height(): the printable height in whole device pixels.
+        let h_px = px(h).round();
         for (hf, is_header) in [(&ps.header, true), (&ps.footer, false)] {
-            let spacing = mm_to_pt(hf.spacing);
-            let line_y = if is_header { paper.top - spacing } else { paper.top + h + spacing };
+            let sp = px(mm_to_pt(hf.spacing));
+            // drawLine(int, int, int, int): the spacing is truncated.
+            let line_y = if is_header { -sp.trunc() } else { (h_px + sp).trunc() };
             if hf.line {
-                op.lines.push(LineItem { x0: x_left, y0: line_y, x1: x_left + w, y1: line_y });
+                op.lines.push(LineItem {
+                    x0: x_left,
+                    x1: x_left + w,
+                    y: paper.top + pt(line_y),
+                    width: pt(0.1),
+                });
             }
             let face = faces
                 .entry(hf.font_name.clone())
@@ -1058,16 +1091,23 @@ impl Converter<'_, '_> {
             let Some(face) = face else { continue };
             let size = hf.font_size.max(1) as f32;
             let (a, de) = face.ascent_descent(size);
-            // QFontMetrics in whole device pixels; height() = ascent + descent + 1.
-            let (ascent, descent) = (pt(px(a).round()), pt(px(de).round()));
-            let dy = ascent + descent + pt(1.0);
-            let baseline = if is_header {
+            // FreeType metrics in whole device pixels (ascender ceiled,
+            // descender floored), and dy = the "M" bounding rect height =
+            // ascent + descent. The QRect coordinates are ints (truncated).
+            // Verified on tests/parts: 16 px DejaVu Sans (15 + 4) puts the
+            // baseline 4 px above the body, 21.33 px DejaVu Serif with 8 mm
+            // spacing (20 + 6) 36 px above it.
+            let ceil = |v: f32| (v - 1e-3).ceil();
+            let (ascent, descent) = (ceil(px(a)), ceil(px(de)));
+            let dy = ascent + descent;
+            let baseline_px = if is_header {
                 // QRect(0, -dy - spacing, w, h), AlignTop.
-                paper.top - spacing - dy + ascent
+                (-dy - sp).trunc() + ascent
             } else {
                 // QRect(0, 0, w, h + dy + spacing), AlignBottom.
-                paper.top + h + dy + spacing - dy + ascent
+                (h_px + dy + sp).trunc() - descent
             };
+            let baseline = paper.top + pt(baseline_px);
             for (text, align) in [(&hf.left, 0), (&hf.center, 1), (&hf.right, 2)] {
                 if text.is_empty() {
                     continue;
