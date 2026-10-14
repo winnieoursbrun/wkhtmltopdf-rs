@@ -236,10 +236,15 @@ impl DocumentMutator<'_> {
         let node = &mut self.doc.nodes[node_id];
         node.insert_damage(ALL_DAMAGE);
         node.mark_ancestors_dirty();
+        let parent = node.parent;
         match node.text_data_mut() {
             Some(data) => {
                 data.content += text;
                 self.mutations_occurred |= node_is_in_document;
+                // wkhtmltopdf-rs: the parser appends a `<style>`'s text in
+                // chunks (it splits at newlines); re-process the sheet so it
+                // is not left with the first chunk only.
+                self.maybe_record_node(parent);
                 Ok(())
             }
             None => Err(AppendTextErr::NotTextNode),
