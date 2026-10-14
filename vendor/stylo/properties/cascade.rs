@@ -999,6 +999,8 @@ impl<'a> Cascade<'a> {
                 }
                 #[cfg(feature = "gecko")]
                 self.constrain_font_size_if_needed(&mut context.builder);
+                #[cfg(feature = "servo")]
+                Self::constrain_to_minimum_font_size(&mut context.builder);
             },
             XTextScale => {
                 #[cfg(feature = "gecko")]
@@ -1437,6 +1439,26 @@ impl<'a> Cascade<'a> {
         };
 
         context.builder.mutate_font().set_font_size(new_size);
+    }
+
+    /// wkhtmltopdf-rs: QtWebKit's `MinimumFontSize` setting raises any
+    /// computed font size below it, so `em` lengths follow (see
+    /// [`set_minimum_font_size`]).
+    #[cfg(feature = "servo")]
+    fn constrain_to_minimum_font_size(builder: &mut StyleBuilder) {
+        use crate::values::computed::Length;
+        use crate::values::generics::NonNegative;
+        let min = f32::from_bits(MINIMUM_FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed));
+        if min <= 0.0 {
+            return;
+        }
+        let mut size = builder.get_font().clone_font_size();
+        if size.computed_size.0.px() >= min {
+            return;
+        }
+        size.computed_size = NonNegative(Length::new(min));
+        size.used_size = NonNegative(Length::new(min));
+        builder.mutate_font().set_font_size(size);
     }
 
     /// Some properties, plus setting font-size itself, may make us go out of
@@ -2701,4 +2723,15 @@ fn substitute_all(
     for attr in &seen.attr {
         run_one(VarType::Attr((*attr).clone()));
     }
+}
+
+/// wkhtmltopdf-rs: the minimum font size in CSS px (`f32` bits; 0 = none).
+#[cfg(feature = "servo")]
+static MINIMUM_FONT_SIZE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// wkhtmltopdf-rs: set QtWebKit's `MinimumFontSize` (`--minimum-font-size`) for
+/// the documents styled next; `px <= 0` disables it.
+#[cfg(feature = "servo")]
+pub fn set_minimum_font_size(px: f32) {
+    MINIMUM_FONT_SIZE.store(px.max(0.0).to_bits(), std::sync::atomic::Ordering::Relaxed);
 }

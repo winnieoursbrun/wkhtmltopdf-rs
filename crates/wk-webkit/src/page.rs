@@ -50,6 +50,8 @@ pub struct WebSettings {
     pub zoom: f32,
     /// Smart shrinking (`--enable/disable-smart-shrinking`).
     pub smart_shrinking: bool,
+    /// `--viewport-size`: what media queries see (0×0 when unset).
+    pub viewport: Option<(u32, u32)>,
 }
 
 impl Default for WebSettings {
@@ -64,6 +66,7 @@ impl Default for WebSettings {
             user_style_sheet: None,
             zoom: 1.0,
             smart_shrinking: true,
+            viewport: None,
         }
     }
 }
@@ -94,10 +97,9 @@ pub struct Geometry {
     /// Forced breaks (`break-before/after: page`).
     pub forced: Vec<f32>,
     pub tables: Vec<TableInfo>,
-    /// Where painted content starts (line boxes, replaced elements, boxes
-    /// with a border, padding or background): a page starts at the first of
-    /// them, so the margins at the top of a page are truncated like
-    /// WebKit's paginated layout does.
+    /// Where boxes start (element boxes other than the root, line boxes):
+    /// a page starts at the first of them, so the margins at the top of a
+    /// page are truncated like WebKit's paginated layout does.
     pub content_starts: Vec<f32>,
     /// Line boxes of each inline formatting context, top to bottom (for
     /// `orphans`/`widows`, which the 0.12.6 binary does not apply by
@@ -199,6 +201,9 @@ impl WebPage {
         fetcher: &mut dyn Fetcher,
     ) -> WebPage {
         crate::profile::install();
+        style::properties::cascade::set_minimum_font_size(settings.minimum_font_size as f32);
+        let (vw, vh) = settings.viewport.unwrap_or((0, 0));
+        crate::profile::set_media_viewport(vw as f32, vh as f32);
         let net = QueueNet::default();
         let media = if settings.print_media_type { MediaType::print() } else { MediaType::screen() };
         let config = DocumentConfig {
@@ -657,20 +662,12 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
                 g.forced.push(bottom);
             }
             avoid_inside = !matches!(b.break_inside, BreakWithin::Auto);
-            if !matches!(t.as_str(), "html" | "body") && bottom > top {
-                let l = node.final_layout();
-                let bg = styles.get_background();
-                let has_bg = !bg.background_color.resolve_to_absolute(&styles.clone_color()).is_transparent()
-                    || bg
-                        .background_image
-                        .0
-                        .iter()
-                        .any(|i| !matches!(i, style::values::computed::Image::None));
-                // A table's collapsed borders are not in its box's border
-                // widths (they are grid gutters), so a table always counts.
-                if l.border.top > 0.0 || l.padding.top > 0.0 || has_bg || t == "table" {
-                    g.content_starts.push(top);
-                }
+            // A page starts at the first box edge at or after the cut: the
+            // margins there are truncated, empty boxes with a height are not
+            // (QtWebKit keeps a 30px empty div at the top of page 1 but
+            // drops the body's margin).
+            if t != "html" && bottom > top {
+                g.content_starts.push(top);
             }
             if b.display.is_none() {
                 return;

@@ -13,7 +13,23 @@
 //! nesting, then each declaration is kept, dropped, renamed or has its value
 //! converted. Unknown at-rules and selectors are copied unchanged.
 
+use std::sync::Mutex;
+
 use blitz_dom::css_rewrite::CssSource;
+
+/// The viewport media queries see: `--viewport-size`, or 0×0 by default (the
+/// 0.12.6 binary matches `max-width: 0px` and never `min-width: 1px`).
+static MEDIA_VIEWPORT: Mutex<(f32, f32)> = Mutex::new((0.0, 0.0));
+
+/// The headless screen of the patched Qt (`device-width`/`device-height`).
+const DEVICE: (f32, f32) = (1366.0, 768.0);
+
+/// Set the viewport media queries are evaluated against (per page load).
+pub fn set_media_viewport(width: f32, height: f32) {
+    if let Ok(mut v) = MEDIA_VIEWPORT.lock() {
+        *v = (width, height);
+    }
+}
 
 /// Rewrite `css` (a stylesheet or a declaration list).
 pub fn rewrite(css: &str, source: CssSource) -> String {
@@ -146,7 +162,14 @@ fn rule_list(css: &str, out: &mut String) {
             match name.as_str() {
                 // Unknown to WebKit 534: the whole block is ignored.
                 "supports" => {}
-                "media" | "document" | "-moz-document" => {
+                "media" => {
+                    out.push_str("@media ");
+                    out.push_str(&media_prelude(&css[name_end..p]));
+                    out.push('{');
+                    rule_list(inner, out);
+                    out.push('}');
+                }
+                "document" | "-moz-document" => {
                     out.push_str(&css[i..=p]);
                     rule_list(inner, out);
                     out.push('}');
@@ -173,6 +196,110 @@ fn rule_list(css: &str, out: &mut String) {
         out.push('}');
         i = (end + 1).min(s.len());
     }
+}
+
+/// Evaluate the size features of a media query list (`width`, `height`,
+/// `device-*`, `orientation`, `aspect-ratio` and their min/max forms) against
+/// QtWebKit's media viewport, leaving the rest to stylo: a true feature is
+/// removed from its query, a false one turns the query into `not all`.
+fn media_prelude(prelude: &str) -> String {
+    let (vw, vh) = MEDIA_VIEWPORT.lock().map(|v| *v).unwrap_or((0.0, 0.0));
+    let queries: Vec<String> = split_args(prelude)
+        .into_iter()
+        .map(|q| {
+            let mut negated = false;
+            let mut parts: Vec<String> = Vec::new();
+            let mut verdict = true;
+            let s = q.as_bytes();
+            let mut i = 0;
+            let mut words: Vec<String> = Vec::new();
+            while i < s.len() {
+                if s[i] == b'(' {
+                    let end = find_top(s, i + 1, b")");
+                    let group = &q[i + 1..end.min(q.len())];
+                    match evaluate_feature(group, vw, vh) {
+                        Some(true) => {}
+                        Some(false) => verdict = false,
+                        None => words.push(format!("({group})")),
+                    }
+                    i = end + 1;
+                } else if s[i].is_ascii_whitespace() {
+                    i += 1;
+                } else {
+                    let end = q[i..].find(|c: char| c.is_ascii_whitespace() || c == '(').map_or(q.len(), |p| i + p);
+                    words.push(q[i..end].to_string());
+                    i = end;
+                }
+            }
+            for w in words {
+                let l = w.to_ascii_lowercase();
+                if l == "not" && parts.is_empty() {
+                    negated = true;
+                } else if l == "only" || l == "and" {
+                } else {
+                    parts.push(w);
+                }
+            }
+            if !verdict {
+                return if negated { "all".to_string() } else { "not all".to_string() };
+            }
+            if parts.is_empty() {
+                return if negated { "not all".to_string() } else { "all".to_string() };
+            }
+            let body = parts.join(" and ");
+            if negated { format!("not {body}") } else { body }
+        })
+        .collect();
+    queries.join(", ")
+}
+
+/// `Some(result)` for a size feature, `None` for anything else.
+fn evaluate_feature(group: &str, vw: f32, vh: f32) -> Option<bool> {
+    let (name, value) = group.split_once(':')?;
+    let name = name.trim().to_ascii_lowercase();
+    let value = value.trim().to_ascii_lowercase();
+    let (prefix, feature) = match name.strip_prefix("min-") {
+        Some(f) => ("min", f.to_string()),
+        None => match name.strip_prefix("max-") {
+            Some(f) => ("max", f.to_string()),
+            None => ("", name.clone()),
+        },
+    };
+    let length = |v: &str| -> Option<f32> {
+        let v = v.trim();
+        let num = |suf: &str| v.strip_suffix(suf).and_then(|n| n.trim().parse::<f32>().ok());
+        num("px")
+            .or_else(|| num("em").map(|e| e * 16.0))
+            .or_else(|| num("rem").map(|e| e * 16.0))
+            .or_else(|| num("pt").map(|e| e * 96.0 / 72.0))
+            .or_else(|| num("cm").map(|e| e * 96.0 / 2.54))
+            .or_else(|| num("mm").map(|e| e * 96.0 / 25.4))
+            .or_else(|| num("in").map(|e| e * 96.0))
+            .or_else(|| v.parse::<f32>().ok().filter(|n| *n == 0.0))
+    };
+    let ratio = |v: &str| -> Option<f32> {
+        let (a, b) = v.split_once('/')?;
+        Some(a.trim().parse::<f32>().ok()? / b.trim().parse::<f32>().ok()?)
+    };
+    let cmp = |actual: f32, wanted: f32| match prefix {
+        "min" => actual >= wanted,
+        "max" => actual <= wanted,
+        _ => actual == wanted,
+    };
+    Some(match feature.as_str() {
+        "width" => cmp(vw, length(&value)?),
+        "height" => cmp(vh, length(&value)?),
+        "device-width" => cmp(DEVICE.0, length(&value)?),
+        "device-height" => cmp(DEVICE.1, length(&value)?),
+        "aspect-ratio" => cmp(if vh > 0.0 { vw / vh } else { 0.0 }, ratio(&value)?),
+        "device-aspect-ratio" => cmp(DEVICE.0 / DEVICE.1, ratio(&value)?),
+        "orientation" if prefix.is_empty() => match value.as_str() {
+            "portrait" => vh >= vw,
+            "landscape" => vw > vh,
+            _ => return None,
+        },
+        _ => return None,
+    })
 }
 
 /// Rewrite a declaration list (`a: b; c: d`).
@@ -743,6 +870,15 @@ mod tests {
         assert_eq!(sheet("@supports (x:y){a{color:red}}b{c:d}"), "b{c:d}");
         assert_eq!(sheet("@media print{a{transform:none;color:red}}"), "@media print{a{color:red}}");
         assert_eq!(sheet("@import url(a.css);a{b:c}"), "@import url(a.css);a{b:c}");
+    }
+
+    #[test]
+    fn media_size_features_use_the_qtwebkit_viewport() {
+        // The default 0x0 viewport (other tests may not change it).
+        assert_eq!(sheet("@media (max-width: 0px){a{b:c}}"), "@media all{a{b:c}}");
+        assert_eq!(sheet("@media screen and (min-width: 600px){a{b:c}}"), "@media not all{a{b:c}}");
+        assert_eq!(sheet("@media print, (min-device-width: 1300px){a{b:c}}"), "@media print, all{a{b:c}}");
+        assert_eq!(sheet("@media only screen and (color){a{b:c}}"), "@media screen and (color){a{b:c}}");
     }
 
     #[test]

@@ -36,3 +36,8 @@ statement  3  0.52  # follows page 2
 statement  4  0.88  # follows page 2
 webkit2012  *  0.94
 webkit2012b *  0.90
+imagedpi   *  0.91  # --image-dpi 100
+media      *  0.98  # media queries see a 0x0 viewport
+media-viewport * 0.98  # --viewport-size 900x700
+minfont    *  0.97  # --minimum-font-size 12
+tables     *  0.95

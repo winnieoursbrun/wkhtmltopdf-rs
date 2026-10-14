@@ -293,6 +293,33 @@ fn corpus_webkit2012b() {
     check("webkit2012b");
 }
 
+/// `--image-dpi 100` (tests/corpus/imagedpi.args): the PNG shown 84pt wide is
+/// scaled down to 116x87 pixels like the reference, the JPEGs are embedded
+/// unchanged (400x300).
+#[test]
+fn image_dpi_scales_down_non_jpeg_images() {
+    let html = std::fs::read(common::corpus().join("imagedpi.html")).unwrap();
+    let dims = |pdf: &[u8]| {
+        let doc = lopdf::Document::load_mem(pdf).unwrap();
+        let mut v: Vec<(i64, i64)> = doc
+            .objects
+            .values()
+            .filter_map(|o| o.as_stream().ok())
+            .filter(|s| s.dict.get(b"Subtype").and_then(|t| t.as_name()).ok() == Some(b"Image"))
+            .map(|s| {
+                let n = |k: &[u8]| s.dict.get(k).and_then(|o| o.as_i64()).unwrap_or(0);
+                (n(b"Width"), n(b"Height"))
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    let reference = std::fs::read(common::corpus().join("ref/imagedpi.pdf")).unwrap();
+    let got = common::ours(&html, &common::page_args("imagedpi"));
+    assert_eq!(dims(&got), dims(&reference));
+    assert!(dims(&got).contains(&(116, 87)));
+}
+
 #[test]
 fn similarity_ratio() {
     let w = |s: &str| s.split_whitespace().map(str::to_string).collect::<Vec<_>>();

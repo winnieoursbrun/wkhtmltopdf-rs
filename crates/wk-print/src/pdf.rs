@@ -44,6 +44,9 @@ pub struct PageSetup {
     pub margin_right: f32,
     pub margin_bottom: f32,
     pub margin_left: f32,
+    /// `--image-dpi`: raster images (other than JPEG, embedded as is) drawn at a
+    /// higher resolution are scaled down to it, like Qt's PDF engine.
+    pub image_dpi: u32,
 }
 
 impl PageSetup {
@@ -111,7 +114,7 @@ struct FontEntry {
 #[derive(Default)]
 struct Caches {
     fonts: HashMap<(u64, u32), Option<FontEntry>>,
-    images: HashMap<u64, Option<krilla::image::Image>>,
+    images: HashMap<(u64, u32, u32), Option<krilla::image::Image>>,
 }
 
 fn tf(a: Affine) -> Transform {
@@ -319,28 +322,47 @@ fn bbox(cmd: &RenderCommand) -> Option<kurbo::Rect> {
 struct Replayer<'a> {
     page: &'a RenderedPage,
     caches: &'a mut Caches,
+    image_dpi: u32,
 }
 
 impl Replayer<'_> {
-    fn image(&mut self, img: &peniko::ImageBrush) -> Option<krilla::image::Image> {
+    /// The PDF image for `img` drawn with `transform` (image pixels to CSS px).
+    /// JPEG sources are embedded as they are; other images drawn above
+    /// `--image-dpi` are scaled down to it (smooth), as the 0.12.6 binary does
+    /// (a 400×300 PNG shown 84pt wide becomes 116×87 with `--image-dpi 100`).
+    fn image(&mut self, img: &peniko::ImageBrush, transform: Affine) -> Option<krilla::image::Image> {
         let id = img.image.data.id();
         let page = self.page;
+        let jpeg = page.image_sources.get(&id).filter(|src| src.starts_with(&[0xff, 0xd8])).cloned();
+        let (w, h) = (img.image.width, img.image.height);
+        let (mut tw, mut th) = (w, h);
+        if jpeg.is_none() && self.image_dpi > 0 {
+            let pt = f64::from(page.pt_per_px);
+            let shown_w = { let [a, b, _, _, _, _] = transform.as_coeffs(); (a * f64::from(w)).hypot(b * f64::from(w)) } * pt / 72.0;
+            let shown_h = { let [_, _, c, d, _, _] = transform.as_coeffs(); (c * f64::from(h)).hypot(d * f64::from(h)) } * pt / 72.0;
+            let dpi = f64::from(self.image_dpi);
+            let (cw, ch) = ((shown_w * dpi).floor() as u32, (shown_h * dpi).floor() as u32);
+            if cw < w || ch < h {
+                tw = cw.clamp(1, w);
+                th = ch.clamp(1, h);
+            }
+        }
         self.caches
             .images
-            .entry(id)
+            .entry((id, tw, th))
             .or_insert_with(|| {
-                if let Some(src) = page.image_sources.get(&id) {
-                    if src.starts_with(&[0xff, 0xd8]) {
-                        if let Ok(i) = krilla::image::Image::from_jpeg(src.clone().into(), true) {
-                            return Some(i);
-                        }
+                if let Some(src) = jpeg {
+                    if let Ok(i) = krilla::image::Image::from_jpeg(src.to_vec().into(), false) {
+                        return Some(i);
                     }
                 }
-                Some(krilla::image::Image::from_rgba8(
-                    img.image.data.data().to_vec(),
-                    img.image.width,
-                    img.image.height,
-                ))
+                let data = img.image.data.data().to_vec();
+                if (tw, th) == (w, h) {
+                    return Some(krilla::image::Image::from_rgba8(data, w, h));
+                }
+                let full = image::RgbaImage::from_raw(w, h, data)?;
+                let small = image::imageops::resize(&full, tw, th, image::imageops::FilterType::Triangle);
+                Some(krilla::image::Image::from_rgba8(small.into_raw(), tw, th))
             })
             .clone()
     }
@@ -457,7 +479,8 @@ impl Replayer<'_> {
                 }
                 RenderCommand::Fill(c) => match &c.brush {
                     Paint::Image(img) => {
-                        let Some(kimg) = self.image(img) else { continue };
+                        let to_px = c.transform * c.brush_transform.unwrap_or(Affine::IDENTITY);
+                        let Some(kimg) = self.image(img, to_px) else { continue };
                         let Some(clip) = to_path(&c.shape) else { continue };
                         let Some(size) = Size::from_wh(img.image.width as f32, img.image.height as f32)
                         else {
@@ -603,7 +626,7 @@ pub fn write_pdf(
             }
             let mut surface = page.surface();
             surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ml, mt));
-            let mut r = Replayer { page: part.page, caches: &mut caches };
+            let mut r = Replayer { page: part.page, caches: &mut caches, image_dpi: setup.image_dpi };
             let scene = &part.page.recorder.scene;
             let mut dy = 0.0;
             for band in [p.thead, Some((p.y0, p.y1)), p.tfoot] {

@@ -117,8 +117,18 @@ fn looks_like_html_and_not_a_url(s: &str) -> bool {
     before_query.contains('<') || s.to_ascii_lowercase().starts_with("data:")
 }
 
-fn web_settings(o: &PdfObject, user_css: Option<String>) -> WebSettings {
+/// `--viewport-size WxH`: split on `x`, the first and last parts as integers;
+/// applied only when valid and not empty (`QSize::isValid && !isEmpty`).
+fn viewport_size(s: &str) -> Option<(u32, u32)> {
+    let parts: Vec<&str> = s.split('x').collect();
+    let w = parts.first()?.trim().parse::<i64>().ok()?;
+    let h = parts.last()?.trim().parse::<i64>().ok()?;
+    (w > 0 && h > 0).then_some((w as u32, h as u32))
+}
+
+fn web_settings(o: &PdfObject, viewport: Option<(u32, u32)>, user_css: Option<String>) -> WebSettings {
     WebSettings {
+        viewport,
         print_media_type: o.load.print_media_type,
         background: o.web.background,
         load_images: o.web.load_images,
@@ -286,7 +296,7 @@ fn run(
                 break;
             }
             // Ignored failure: an empty page is printed.
-            let ws = web_settings(o.settings, None);
+            let ws = web_settings(o.settings, viewport_size(&g.viewport_size), None);
             let mut f = PageFetcher {
                 loader: &mut loader,
                 index: i,
@@ -306,7 +316,11 @@ fn run(
             reply.content_type.as_deref(),
             &o.settings.web.default_encoding,
         );
-        let ws = web_settings(o.settings, user_style_sheet(&o.settings.web.user_style_sheet));
+        let ws = web_settings(
+            o.settings,
+            viewport_size(&g.viewport_size),
+            user_style_sheet(&o.settings.web.user_style_sheet),
+        );
         let page = {
             let mut f = PageFetcher {
                 loader: &mut loader,
@@ -348,6 +362,7 @@ fn run(
         margin_right: unit(m.right.value),
         margin_bottom: unit(m.bottom.value),
         margin_left: unit(m.left.value),
+        image_dpi: g.image_dpi.max(0) as u32,
     };
 
     // painter->begin(printer): the output is opened before printing.
