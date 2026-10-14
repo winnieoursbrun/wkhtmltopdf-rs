@@ -149,8 +149,10 @@ impl NetHandler for ResourceHandler<StylesheetHandler> {
         // NOTE(Nico): I don't *think* external stylesheets should have HTML entities escaped
         // let escaped_css = html_escape::decode_html_entities(css);
 
+        // wkhtmltopdf-rs: author sheets go through the embedder's CSS rewrite.
+        let css = crate::css_rewrite::rewrite(css, crate::css_rewrite::CssSource::Sheet);
         let sheet = Stylesheet::from_str(
-            css,
+            &css,
             self.data.source_url.clone().into(),
             Origin::Author,
             ServoArc::new(self.data.guard.wrap(MediaList::empty())),
@@ -266,8 +268,10 @@ impl NetHandler for ResourceHandler<NestedStylesheetHandler> {
         // NOTE(Nico): I don't *think* external stylesheets should have HTML entities escaped
         // let escaped_css = html_escape::decode_html_entities(css);
 
+        // wkhtmltopdf-rs: author sheets go through the embedder's CSS rewrite.
+        let css = crate::css_rewrite::rewrite(css, crate::css_rewrite::CssSource::Sheet);
         let sheet = ServoArc::new(Stylesheet::from_str(
-            css,
+            &css,
             UrlExtraData(self.data.url.clone()),
             Origin::Author,
             self.data.media.clone(),

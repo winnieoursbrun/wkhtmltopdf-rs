@@ -283,13 +283,12 @@ fn corpus_medium() {
 }
 
 #[test]
-#[ignore = "WebKit-2012 profile probe: ellipsis, small-caps and the ignored/prefixed properties of docs/webkit2012-profile.md are not all reproduced yet"]
+#[ignore = "WebKit-2012 profile probe: `text-overflow: ellipsis` and `font-variant: small-caps` text are not reproduced (docs/webkit2012-profile.md)"]
 fn corpus_webkit2012() {
     check("webkit2012");
 }
 
 #[test]
-#[ignore = "WebKit-2012 profile probe: -webkit-box and @supports are not reproduced yet (docs/webkit2012-profile.md)"]
 fn corpus_webkit2012b() {
     check("webkit2012b");
 }

@@ -15,9 +15,9 @@
 //! - `@media screen` unless `--print-media-type`;
 //! - page backgrounds are transparent unless the CSS sets one.
 //!
-//! Not yet reproduced (TODO P2b): `--minimum-font-size`, `--viewport-size`,
-//! unprefixed `transform` being ignored by QtWebKit 2.2, `-webkit-` prefixed
-//! properties, `orphans`/`widows`.
+//! - author CSS goes through the WebKit-2012 profile (`profile.rs`,
+//!   `docs/webkit2012-profile.md`): what QtWebKit 2.2 ignored is dropped,
+//!   `-webkit-` properties it honoured are mapped to standard ones.
 //! JavaScript does not run yet (P4): external scripts are requested (their
 //! load errors count like upstream) but not executed.
 
@@ -198,6 +198,7 @@ impl WebPage {
         font_ctx: FontContext,
         fetcher: &mut dyn Fetcher,
     ) -> WebPage {
+        crate::profile::install();
         let net = QueueNet::default();
         let media = if settings.print_media_type { MediaType::print() } else { MediaType::screen() };
         let config = DocumentConfig {
@@ -214,7 +215,8 @@ impl WebPage {
             doc.add_user_agent_stylesheet(&extra);
         }
         if let Some(css) = &settings.user_style_sheet {
-            doc.add_user_agent_stylesheet(css);
+            // A user sheet is parsed by WebKit too: same profile as author CSS.
+            doc.add_user_agent_stylesheet(&crate::profile::rewrite(css, blitz_dom::css_rewrite::CssSource::Sheet));
         }
         let mut page = WebPage { doc, net, settings, bodies: HashMap::new(), url };
         page.load_resources(fetcher);

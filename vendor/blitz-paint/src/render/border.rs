@@ -259,6 +259,11 @@ impl ElementCx<'_, '_> {
 
                 // Dashed and dotted edges are drawn immediately as their own
                 // (clipped) shapes rather than being batched with the solid edges.
+                // wkhtmltopdf-rs: QtWebKit 2.2 strokes a dotted border on a box
+                // with rounded corners as a solid line (dashed stays dashed).
+                BorderStyle::Dotted if self.frame.border_radii.average() > 0.0 => {
+                    borders.push((color, self.frame.border_edge_shape(edge)));
+                }
                 BorderStyle::Dotted => self.draw_dotted_border_edge(scene, edge, color),
                 BorderStyle::Dashed => self.draw_dashed_border_edge(scene, edge, color),
 
@@ -581,20 +586,21 @@ impl ElementCx<'_, '_> {
             OutlineStyle::BorderStyle(style) => style,
         };
 
-        let path = match style {
-            BorderStyle::None | BorderStyle::Hidden => return,
-            BorderStyle::Solid => self.frame.outline(),
-
-            // TODO: Implement other border styles
-            BorderStyle::Inset
-            | BorderStyle::Groove
-            | BorderStyle::Outset
-            | BorderStyle::Ridge
-            | BorderStyle::Dotted
-            | BorderStyle::Dashed
-            | BorderStyle::Double => self.frame.outline(),
-        };
-
-        scene.fill(Fill::NonZero, self.transform, color, None, &path);
+        if matches!(style, BorderStyle::None | BorderStyle::Hidden) {
+            return;
+        }
+        // wkhtmltopdf-rs: QtWebKit 2.2 draws outlines as plain rectangles (no
+        // border-radius) outside the border box, `outline-offset` away from it.
+        let width = self.frame.outline_width;
+        if width <= 0.0 {
+            return;
+        }
+        let offset = outline.outline_offset.to_f64_px() * self.scale;
+        let inner = self.frame.border_box.inflate(offset, offset);
+        let outer = inner.inflate(width, width);
+        let mut path = outer.to_path(0.1);
+        path.extend(inner.to_path(0.1));
+        let _ = Fill::NonZero;
+        scene.fill(Fill::EvenOdd, self.transform, color, None, &path);
     }
 }

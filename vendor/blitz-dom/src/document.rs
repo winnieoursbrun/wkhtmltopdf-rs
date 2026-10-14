@@ -1154,6 +1154,12 @@ impl BaseDocument {
     }
 
     pub fn make_stylesheet(&self, css: impl AsRef<str>, origin: Origin) -> DocumentStyleSheet {
+        // wkhtmltopdf-rs: author sheets go through the embedder's CSS rewrite.
+        let css = if origin == Origin::UserAgent {
+            std::borrow::Cow::Borrowed(css.as_ref())
+        } else {
+            crate::css_rewrite::rewrite(css.as_ref(), crate::css_rewrite::CssSource::Sheet)
+        };
         let data = Stylesheet::from_str(
             css.as_ref(),
             self.url.url_extra_data(),

@@ -33,6 +33,7 @@ pub(crate) enum Corner {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(clippy::enum_variant_names, reason = "Use CSS standard terminology")]
 pub(crate) enum CssBoxKind {
+    #[allow(dead_code)] // wkhtmltopdf-rs: see CssBox::outline
     OutlineBox,
     BorderBox,
     PaddingBox,

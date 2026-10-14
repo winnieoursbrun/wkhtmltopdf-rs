@@ -196,6 +196,7 @@ impl CssBox {
     }
 
     /// Construct a bezpath drawing the outline
+    #[allow(dead_code)] // wkhtmltopdf-rs: outlines are drawn as rectangles (render/border.rs)
     pub fn outline(&self) -> BezPath {
         let mut path = BezPath::new();
 
