@@ -72,6 +72,7 @@ parley_engine = { path = "vendor/parley_engine" }
 [profile.release]
 lto = true
 codegen-units = 1
+strip = true
 
 # Disk is scarce on the development machine: no debug info for dependencies.
 [profile.dev]

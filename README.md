@@ -1,13 +1,116 @@
 # wkhtmltopdf-rs
 
+[![CI](https://github.com/winnieoursbrun/wkhtmltopdf-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/winnieoursbrun/wkhtmltopdf-rs/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/winnieoursbrun/wkhtmltopdf-rs?include_prereleases)](https://github.com/winnieoursbrun/wkhtmltopdf-rs/releases)
+[![License: LGPL v3](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue.svg)](LICENSE)
+
 A pure-Rust, single-binary reimplementation of `wkhtmltopdf` 0.12.6 (with patched Qt), meant as a
-drop-in replacement behind the `pdfkit` Ruby gem. No Qt, no WebKit, no browser process.
+drop-in replacement behind the [`pdfkit`](https://github.com/pdfkit/pdfkit) Ruby gem (and any other
+wrapper that shells out to `wkhtmltopdf`). No Qt, no WebKit, no headless browser: the web engine
+that QtWebKit provided is rebuilt from Rust components (html5ever, Stylo, Taffy, Parley, Boa,
+krilla). One static binary, embedded fonts, runs on a bare `alpine` or `scratch`-like image.
 
-The target is the observable behaviour of the released 0.12.6 binary, down to its quirks. See
-[`DESIGN.md`](DESIGN.md) for the architecture and compatibility levels, and
-[`docs/upstream-spec.md`](docs/upstream-spec.md) for the behaviour being reproduced.
+> **Status: alpha.** It renders real-world invoice/report pages with the same page count and text
+> as wkhtmltopdf 0.12.6, and every pdfkit scenario we test behaves the same. Rendering is close but
+> not pixel-identical. See [Known divergences](#known-divergences) before putting it in production.
 
-## Status
+> **Built with [Claude](https://claude.com/claude-code).** This port was designed, written, tested
+> and benchmarked by Claude (Anthropic) in Claude Code, under the direction of its maintainer.
+
+## Why
+
+wkhtmltopdf is archived and ships a 2012 QtWebKit. Many Rails apps still depend on it through
+pdfkit or wicked_pdf. This project keeps the exact command-line contract (all 122 options, the same
+help texts, error messages, exit codes and progress output) so those apps can swap the binary
+without touching code, and gets a much faster, smaller, memory-safe binary in exchange.
+
+```sh
+# pdfkit
+PDFKit.configure { |c| c.wkhtmltopdf = "/usr/local/bin/wkhtmltopdf" }   # just point it at this binary
+# CLI, same as before
+wkhtmltopdf --page-size A4 --header-html header.html toc input.html out.pdf
+```
+
+## Performance
+
+Measured with `bench/run.sh` on the same machine, both binaries native linux/arm64 in the same
+container (4 vCPU, hyperfine, 10 runs after 3 warmups). Original: official `wkhtmltopdf 0.12.6.1
+(with patched qt)` package. Full report: [`bench/results/LATEST.md`](bench/results/LATEST.md).
+
+| Scenario | wkhtmltopdf 0.12.6 | wkhtmltopdf-rs | Speed-up | Peak RSS orig → rs |
+|---|---:|---:|---:|---:|
+| `--version` (process startup) | 3.1 ms | 0.4 ms | **8×** | 17.7 → 2.0 MiB |
+| Small page, pdfkit defaults | 281.8 ms | 5.9 ms | **48×** | 38.5 → 14.5 MiB |
+| Medium page (4 pages), pdfkit defaults | 282.9 ms | 16.4 ms | **17×** | 40.7 → 15.9 MiB |
+| Large invoice (30 pages), pdfkit defaults | 660.9 ms | 260.7 ms | **2.5×** | 58.6 → 49.1 MiB |
+| Large invoice, `--javascript-delay 0` | 431.7 ms | 256.8 ms | **1.7×** | 58.1 → 49.1 MiB |
+| Header/footer HTML + TOC + outline (8 pages) | 961.3 ms | 202.6 ms | **4.7×** | 46.6 → 32.8 MiB |
+| jQuery page, `--javascript-delay 200` | 305.5 ms | 147.9 ms | **2.1×** | 47.7 → 29.4 MiB |
+| Cover + TOC + 3 pages | 735.9 ms | 21.3 ms | **35×** | 42.1 → 17.3 MiB |
+| Batch: 20 × medium page, sequential | 5.85 s | 0.32 s | **18.5×** | 43.6 → 16.0 MiB |
+
+Part of the gap on small pages is the original's default 200 ms `--javascript-delay`, which it
+really sleeps. The port honours the same delay on a virtual clock: timers and `Date` advance
+deterministically, so no wall-clock time is spent waiting (see [Known divergences](#known-divergences)).
+The `--javascript-delay 0` rows compare pure engine cost.
+
+## Compatibility with wkhtmltopdf 0.12.6
+
+"Iso" is measured at three levels against the real 0.12.6 binary ([`DESIGN.md`](DESIGN.md)):
+**L1** byte-identical process behaviour, **L2** same document structure and text, **L3** visually
+equivalent pages. Every number below is produced by tests in this repository.
+
+| Level | What is compared | Result |
+|---|---|---|
+| L1 | CLI: `--help`, `--extended-help`, `--manpage`, `--htmldoc`, `--readme`, `--license`, `--version`, argument errors (stdout, stderr, exit code, byte for byte) | **23 / 23 (100 %)** |
+| L1 | Conversions: progress output, warnings, load errors and exit codes (stderr + exit code, byte for byte) | **13 / 13 (100 %)** |
+| L1 | pdfkit gem 0.8.7.3: same outcome (PDF or the same exception) for 16 real-world call patterns | **16 / 16 (100 %)** |
+| L2 | Same page count and page size (22 benchmark cases + 12 corpus documents + 22 document-parts cases + 13 JavaScript cases) | **69 / 69 (100 %)** |
+| L2 | Extracted text, word-level similarity (mean over the 22 benchmark cases) | **99.7 %** (21 cases ≥ 99 %) |
+| L2 | Outline, links, named destinations, TOC entries, header/footer text (`tests/parts`) | **22 / 22** |
+| L3 | Visual similarity, mean per-page SSIM at 96 dpi (22 benchmark cases) | **0.92** (16 cases ≥ 0.85) |
+
+How to read L3: the port uses a different layout engine than QtWebKit 2.2, so pixel identity is a
+non-goal. Text sits on average 1–3 pt lower than in the original, and some tall table rows break at
+a different place, which costs SSIM even when the content is identical. Per-page side-by-side
+images are produced by `bench/run.sh --visual`.
+
+Test suite: 182 tests (`cargo test --workspace`), run on Linux, macOS and Windows in CI, plus a
+parity job that replays the fixtures captured from the original binary.
+
+## Install
+
+Download a binary from the [releases](https://github.com/winnieoursbrun/wkhtmltopdf-rs/releases)
+(static Linux musl for x86_64 and aarch64, macOS x86_64 and arm64, Windows x86_64), or build it:
+
+```sh
+cargo build --release -p wkhtmltopdf   # target/release/wkhtmltopdf
+```
+
+The binary prints `wkhtmltopdf 0.12.6 (with patched qt)` for `--version`, like the original, because
+wrappers test that string to enable the patched-Qt features (headers, footers, TOC, outline).
+
+## Known divergences
+
+Deliberate:
+
+- **Virtual clock.** `--javascript-delay` and timers run on a virtual clock: a timer set for longer
+  than the delay never fires, and a `--window-status` that never comes ends the wait after 60 s
+  of virtual time (the original waits forever).
+- `[date]` and `[time]` header/footer variables are in UTC.
+- Custom `--xsl-style-sheet` TOCs run on an XSLT 1.0 subset (the default TOC is native).
+- `document.write` after the load event is ignored.
+
+Not yet matched:
+
+- QtWebKit's pagination of tall table rows (one page of `tests/corpus/statement` differs).
+- A4 landscape pages with long tables can break one row differently (pdfkit `options_a4` case).
+- `<select>` boxes are not drawn; canvas is painted as vectors where the original rasterises it.
+- `-webkit-text-stroke`, a float placed before a collapsing margin, flex/grid text extraction order
+  in the WebKit-2012 profile.
+- `--image-quality`, `--lowquality`, `--cache-dir` and client certificates have no effect.
+
+## Implementation status
 
 | Phase | Scope | State |
 |---|---|---|
@@ -16,7 +119,7 @@ The target is the observable behaviour of the released 0.12.6 binary, down to it
 | P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | **Done**: text and HTML headers/footers with every variable, cover/TOC/page objects with per-object options, default and custom-XSL TOCs, outline and `--dump-outline`, named-destination links, `--page-offset`, forms, copies/collate, grayscale, including the upstream quirks of spec §10. `tests/parts`: 22 of 22 reference cases pass at L2 (`parts.rs`). Deviations: see below the table |
 | P4 — JavaScript | Boa, DOM bindings, `--javascript-delay`, `--window-status` | **Done** (`crates/wk-js`): scripts run in document order with a script-pausing parser, `document.write`, events, timers and `Date` on a virtual clock, `--window-status`, `--run-script`, `window.print()`, `--debug-javascript`, dialogs, the slow-script budget, XMLHttpRequest over the loader, canvas 2D painted as vector. `warn` and `info_b` reproduce exactly; `tests/js` (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution, …) is at L2 parity on 13/13 cases. Gaps: see below the table |
 | P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: QtWebKit's table-row pagination struts (statement page 2), `<select>` boxes, canvas painted as vector where the reference rasterises it |
-| P6 — release | Static musl builds, pdfkit test suite | Not started |
+| P6 — release | Static musl builds, pdfkit test suite | **Alpha**: static musl/macOS/Windows release builds, pdfkit integration run, benchmark and visual parity reports (`bench/`) |
 
 P4 gaps: timers fire on a virtual clock that stops at the end of the wait, so a timer set
 during loading for more than `--javascript-delay` never fires (upstream's load time lets some of
@@ -61,7 +164,7 @@ Vendored crates (`vendor/`, wired through `[patch.crates-io]`), each change mark
 | `parley` 0.12.0 | `line-height: normal` rounds ascent and descent up (QtWebKit/FreeType); glyph runs expose their cluster range |
 | `parley_engine` 0.12.0 | QtWebKit's text measurement: linear 26.6 advances, "spaces + word" segments rounded to whole pixels |
 
-## Build and test
+## Build and test (development)
 
 ```sh
 cargo build --release          # target/release/wkhtmltopdf

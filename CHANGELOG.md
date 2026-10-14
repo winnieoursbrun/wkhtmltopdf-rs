@@ -43,5 +43,5 @@ First public pre-release. Not a drop-in replacement yet: see the status table in
 
 -
 
-[Unreleased]: https://github.com/OWNER/wkhtmltopdf-rs/compare/v0.1.0-alpha.1...HEAD
-[0.1.0-alpha.1]: https://github.com/OWNER/wkhtmltopdf-rs/releases/tag/v0.1.0-alpha.1
+[Unreleased]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/releases/tag/v0.1.0-alpha.1
