@@ -214,6 +214,9 @@ struct FontEntry {
 struct Caches {
     fonts: HashMap<(u64, u32), Option<FontEntry>>,
     images: HashMap<(u64, u32, u32), Option<krilla::image::Image>>,
+    /// Culling box ([`bbox`]) of every command of a scene, keyed by the
+    /// scene's address: computed once, not once per page and band.
+    bboxes: HashMap<usize, std::rc::Rc<[Option<kurbo::Rect>]>>,
 }
 
 fn tf(a: Affine) -> Transform {
@@ -436,6 +439,8 @@ fn bbox(cmd: &RenderCommand) -> Option<kurbo::Rect> {
 
 struct Replayer<'a> {
     page: &'a RenderedPage,
+    /// [`bbox`] of each command of the page's scene.
+    bboxes: &'a [Option<kurbo::Rect>],
     caches: &'a mut Caches,
     image_dpi: u32,
     gray: bool,
@@ -585,7 +590,7 @@ impl Replayer<'_> {
         let (y0d, y1d) = (f64::from(y0), f64::from(y1));
         let mut layers: Vec<usize> = vec![];
         for (idx, cmd) in scene.commands.iter().enumerate() {
-            if let Some(b) = bbox(cmd) {
+            if let Some(b) = self.bboxes[idx] {
                 let is_text = matches!(cmd, RenderCommand::GlyphRun(_));
                 if b.y1 < y0d || b.y0 > y1d || (is_text && (b.y0 < y0d || b.y0 >= y1d)) {
                     continue;
@@ -735,8 +740,14 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
     let (ox, oy) = band.origin;
     let (cx0, cx1) = (-ox / s, (paper_w - ox) / s);
     surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ox, oy));
-    let mut r = Replayer { page: band.page, caches, gray: opts.grayscale, image_dpi: opts.image_dpi };
     let scene = &band.page.recorder.scene;
+    let bboxes = caches
+        .bboxes
+        .entry(scene as *const Scene as usize)
+        .or_insert_with(|| scene.commands.iter().map(bbox).collect())
+        .clone();
+    let mut r =
+        Replayer { page: band.page, bboxes: &bboxes, caches, gray: opts.grayscale, image_dpi: opts.image_dpi };
     let p = band.slice;
     let mut dy = 0.0;
     for b in [p.thead, Some((p.y0, p.y1)), p.tfoot] {
