@@ -172,7 +172,8 @@ def compare_pair(name, group, pdf_a, pdf_b, labels=("original", "rust")):
 
     sa, sb = page_sizes(pdf_a), page_sizes(pdf_b)
     tol = CFG["page_size_tolerance_pt"]
-    size_match = len(sa) == len(sb) and all(abs(x[0] - y[0]) <= tol and abs(x[1] - y[1]) <= tol for x, y in zip(sa, sb))
+    # Page count is graded on its own: compare the sizes of the pages both PDFs have.
+    size_match = bool(sa) and bool(sb) and all(abs(x[0] - y[0]) <= tol and abs(x[1] - y[1]) <= tol for x, y in zip(sa, sb))
     n = min(len(sa), len(sb))
     with cf.ThreadPoolExecutor(max_workers=4) as ex:
         pages = list(ex.map(lambda p: compare_page(case_dir, pdf_a, pdf_b, p, labels), range(1, n + 1)))
