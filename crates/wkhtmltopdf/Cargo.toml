@@ -32,3 +32,4 @@ dlmalloc = ["dep:dlmalloc"]
 pdf-extract = "0.12"
 lopdf = "0.42"
 hayro = "0.8.0"
+url.workspace = true

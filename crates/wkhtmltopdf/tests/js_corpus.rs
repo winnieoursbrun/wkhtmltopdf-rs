@@ -23,6 +23,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use support::paths;
 use support::pdftext::{page_sizes, ratio, words_by_page};
 
 const MIN_SIMILARITY: f64 = 0.95;
@@ -48,12 +49,12 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// The arguments of `case` in `cases.tsv`, `{DIR}` resolved to `dir`.
-fn case_args(case: &str, dir: &str) -> Vec<String> {
+fn case_args(case: &str, dir: &Path) -> Vec<String> {
     let cases = fs::read_to_string(corpus().join("cases.tsv")).unwrap();
     for line in cases.lines() {
         let mut parts = line.split('\t');
         if parts.next() == Some(case) {
-            let mut v: Vec<String> = parts.map(|a| a.replace("{DIR}", dir)).collect();
+            let mut v: Vec<String> = parts.map(|a| paths::substitute_dir(a, dir)).collect();
             v.push("out.pdf".into());
             return v;
         }
@@ -70,7 +71,7 @@ fn check_env(case: &str, env: &[(&str, &str)]) {
     let _ = fs::remove_dir_all(&dir);
     copy_dir(&corpus(), &dir);
     let canon = fs::canonicalize(&dir).unwrap();
-    let args = case_args(case, &canon.display().to_string());
+    let args = case_args(case, &canon);
     let o = Command::new(env!("CARGO_BIN_EXE_wkhtmltopdf"))
         .args(&args)
         .current_dir(&dir)
@@ -80,9 +81,7 @@ fn check_env(case: &str, env: &[(&str, &str)]) {
         .envs(env.iter().copied())
         .output()
         .expect("run wkhtmltopdf");
-    let stderr = String::from_utf8_lossy(&o.stderr)
-        .replace(&canon.display().to_string(), "/wk/js")
-        .replace(&dir.display().to_string(), "/wk/js");
+    let stderr = paths::replace_dir(&String::from_utf8_lossy(&o.stderr), &dir, "/wk/js");
     let got = fs::read(dir.join("out.pdf")).unwrap_or_default();
     let _ = fs::remove_dir_all(&dir);
 

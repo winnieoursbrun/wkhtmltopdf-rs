@@ -32,6 +32,9 @@
 //! `missing_page*` and `badhost` need name resolution to fail for
 //! `nonexist.html` / `nonexistent.invalid` (true without network too).
 
+#[path = "support/paths.rs"]
+mod paths;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -89,7 +92,6 @@ fn run_all() -> Vec<Outcome> {
     fs::create_dir_all(&dir).unwrap();
     fs::copy(fixtures_dir().join("a.html"), dir.join("a.html")).unwrap();
     fs::copy(inputs_dir().join("b.html"), dir.join("b.html")).unwrap();
-    let canon = fs::canonicalize(&dir).unwrap();
     let mut out = Vec::new();
     for (name, args, stdin) in cases() {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_wkhtmltopdf"));
@@ -106,9 +108,7 @@ fn run_all() -> Vec<Outcome> {
             child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
         }
         let o = child.wait_with_output().unwrap();
-        let stderr = String::from_utf8_lossy(&o.stderr)
-            .replace(&canon.display().to_string(), "/wk/conv")
-            .replace(&dir.display().to_string(), "/wk/conv");
+        let stderr = paths::replace_dir(&String::from_utf8_lossy(&o.stderr), &dir, "/wk/conv");
         let want_stderr = fs::read_to_string(fixtures_dir().join(format!("{name}.stderr"))).unwrap();
         let want_rc =
             fs::read_to_string(fixtures_dir().join(format!("{name}.rc"))).unwrap().trim().parse().unwrap();
