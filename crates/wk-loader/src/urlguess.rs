@@ -25,6 +25,14 @@ fn has_schema(s: &str) -> bool {
 
 fn file_url(path: &Path) -> String {
     let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    // `QUrl::fromLocalFile`. On Unix the path is kept as typed (not percent-encoded), which is
+    // how upstream prints it in messages. Windows paths (`C:\…`, `\\?\C:\…`) need the URL
+    // form `file:///C:/…`.
+    if cfg!(windows) {
+        if let Ok(u) = url::Url::from_file_path(&abs) {
+            return u.to_string();
+        }
+    }
     format!("file://{}", abs.display())
 }
 
@@ -88,7 +96,12 @@ mod tests {
     fn existing_file_becomes_file_url() {
         let here = std::env::current_dir().unwrap().join("Cargo.toml");
         assert!(here.exists());
-        assert_eq!(guess_url_from_string("Cargo.toml"), format!("file://{}", here.display()));
+        let want = if cfg!(windows) {
+            url::Url::from_file_path(&here).unwrap().to_string()
+        } else {
+            format!("file://{}", here.display())
+        };
+        assert_eq!(guess_url_from_string("Cargo.toml"), want);
     }
 
     #[test]
