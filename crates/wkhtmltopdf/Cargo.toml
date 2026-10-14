@@ -22,9 +22,11 @@ wk-converter.workspace = true
 wk-loader.workspace = true
 # Heap profiler, only with `--features dhat-heap` (docs/perf.md).
 dhat = { version = "0.3", optional = true }
+dlmalloc = { version = "0.2", features = ["global"], optional = true }
 
 [features]
 dhat-heap = ["dep:dhat"]
+dlmalloc = ["dep:dlmalloc"]
 
 [dev-dependencies]
 pdf-extract = "0.12"

@@ -11,6 +11,10 @@ use wk_cli::Streams;
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+#[cfg(all(feature = "dlmalloc", not(feature = "dhat-heap")))]
+#[global_allocator]
+static ALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
+
 #[cfg(unix)]
 fn os_bytes(a: std::ffi::OsString) -> Vec<u8> {
     use std::os::unix::ffi::OsStringExt;
