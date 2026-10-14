@@ -67,6 +67,8 @@ impl Atomic {
         Atomic { starts: v.into_iter().map(|(s, _)| s).collect(), max_ends }
     }
 
+    // `!(y < end)` on purpose: the same comparison as the linear scan it replaced, NaN included.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn is_safe(&self, y: f32) -> bool {
         let n = self.starts.partition_point(|&s| s < y);
         n == 0 || !(y < self.max_ends[n - 1])

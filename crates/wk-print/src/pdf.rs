@@ -15,8 +15,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use anyrender::recording::RenderCommand;
 use anyrender::Paint;
+use anyrender::recording::RenderCommand;
 use krilla::color::rgb;
 use krilla::configure::{ConfigurationBuilder, PdfVersion};
 use krilla::destination::XyzDestination;
@@ -756,8 +756,13 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
             std::rc::Rc::new(v)
         })
         .clone();
-    let mut r =
-        Replayer { page: band.page, bboxes: &bboxes, caches, gray: opts.grayscale, image_dpi: opts.image_dpi };
+    let mut r = Replayer {
+        page: band.page,
+        bboxes: &bboxes,
+        caches,
+        gray: opts.grayscale,
+        image_dpi: opts.image_dpi,
+    };
     let p = band.slice;
     let mut dy = 0.0;
     for b in [p.thead, Some((p.y0, p.y1)), p.tfoot] {
