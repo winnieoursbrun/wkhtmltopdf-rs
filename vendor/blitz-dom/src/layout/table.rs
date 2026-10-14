@@ -43,6 +43,10 @@ pub struct TableTreeWrapper<'a, 'doc> {
 pub struct TableContext {
     pub style: taffy::Style<Atom>,
     pub cells: Vec<TableCell>,
+    /// wkhtmltopdf-rs: the distinct grid item styles of the cells (`TableCell::style`
+    /// indexes it). Cells of a column usually share one style; storing a full
+    /// `taffy::Style` per cell cost ~1.2 KB a cell.
+    cell_styles: Vec<taffy::Style<Atom>>,
     /// Absolutely positioned descendants of the table's row groups and rows (and of the
     /// table itself). They take no part in the table grid.
     pub oof_children: Vec<(NodeId, taffy::Position)>,
@@ -82,7 +86,155 @@ pub struct TableCell {
     /// wkhtmltopdf-rs: the resolved collapsed borders of the cell's edges (top,
     /// right, bottom, left), in the collapsing border model
     pub collapsed: Option<[CollapsedEdge; 4]>,
-    style: taffy::Style<Atom>,
+    /// wkhtmltopdf-rs: index of the cell's grid item style in `TableContext::cell_styles`
+    /// (the style's `grid_row` is left out: see `grid_row_start`)
+    style: u32,
+    /// wkhtmltopdf-rs: the grid line the cell's row starts at (`grid-row: <line> / span
+    /// <rowspan>`)
+    grid_row_start: i16,
+}
+
+/// wkhtmltopdf-rs: interns the grid item styles of a table's cells. A style is compared
+/// with the last style of the cell's column and the last style added (O(1) per cell),
+/// which catches the repeated styles of a table's rows.
+#[derive(Default)]
+struct CellStyleInterner {
+    styles: Vec<taffy::Style<Atom>>,
+    last_by_column: Vec<u32>,
+}
+
+impl CellStyleInterner {
+    fn intern(&mut self, style: taffy::Style<Atom>, column: u16) -> u32 {
+        let column = column as usize;
+        if column >= self.last_by_column.len() {
+            self.last_by_column.resize(column + 1, u32::MAX);
+        }
+        let candidates = [self.last_by_column[column], (self.styles.len() as u32).wrapping_sub(1)];
+        let index = candidates
+            .into_iter()
+            .find(|&i| self.styles.get(i as usize) == Some(&style))
+            .unwrap_or_else(|| {
+                self.styles.push(style);
+                self.styles.len() as u32 - 1
+            });
+        self.last_by_column[column] = index;
+        index
+    }
+
+    fn finish(mut self) -> Vec<taffy::Style<Atom>> {
+        self.styles.shrink_to_fit();
+        self.styles
+    }
+}
+
+/// wkhtmltopdf-rs: a cell's grid item style: its interned style plus its own row placement.
+pub struct CellStyle<'a> {
+    base: &'a taffy::Style<Atom>,
+    grid_row_start: i16,
+    rowspan: u16,
+}
+
+impl taffy::CoreStyle for CellStyle<'_> {
+    type CustomIdent = Atom;
+
+    #[inline(always)]
+    fn box_generation_mode(&self) -> taffy::BoxGenerationMode {
+        self.base.box_generation_mode()
+    }
+    #[inline(always)]
+    fn is_block(&self) -> bool {
+        self.base.is_block()
+    }
+    #[inline(always)]
+    fn is_compressible_replaced(&self) -> bool {
+        self.base.is_compressible_replaced()
+    }
+    #[inline(always)]
+    fn is_replaced(&self) -> bool {
+        self.base.is_replaced()
+    }
+    #[inline(always)]
+    fn box_sizing(&self) -> taffy::BoxSizing {
+        self.base.box_sizing()
+    }
+    #[inline(always)]
+    fn direction(&self) -> taffy::Direction {
+        self.base.direction()
+    }
+    #[inline(always)]
+    fn overflow(&self) -> taffy::Point<taffy::Overflow> {
+        self.base.overflow()
+    }
+    #[inline(always)]
+    fn scrollbar_width(&self) -> f32 {
+        self.base.scrollbar_width()
+    }
+    #[inline(always)]
+    fn position(&self) -> taffy::Position {
+        self.base.position()
+    }
+    #[inline(always)]
+    fn inset(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
+        self.base.inset()
+    }
+    #[inline(always)]
+    fn is_containing_block(&self) -> taffy::ContainingBlockClaims {
+        self.base.is_containing_block()
+    }
+    #[inline(always)]
+    fn size(&self) -> taffy::Size<taffy::Dimension> {
+        self.base.size()
+    }
+    #[inline(always)]
+    fn min_size(&self) -> taffy::Size<taffy::LengthPercentageAuto> {
+        self.base.min_size()
+    }
+    #[inline(always)]
+    fn max_size(&self) -> taffy::Size<taffy::LengthPercentageAuto> {
+        self.base.max_size()
+    }
+    #[inline(always)]
+    fn aspect_ratio(&self) -> Option<f32> {
+        self.base.aspect_ratio()
+    }
+    #[inline(always)]
+    fn margin(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
+        self.base.margin()
+    }
+    #[inline(always)]
+    fn padding(&self) -> taffy::Rect<taffy::LengthPercentage> {
+        self.base.padding()
+    }
+    #[inline(always)]
+    fn border(&self) -> taffy::Rect<taffy::LengthPercentage> {
+        self.base.border()
+    }
+    #[inline(always)]
+    fn contain(&self) -> taffy::Contain {
+        self.base.contain()
+    }
+}
+
+impl taffy::GridItemStyle for CellStyle<'_> {
+    #[inline(always)]
+    fn grid_row(&self) -> taffy::Line<taffy::GridPlacement<Atom>> {
+        taffy::Line {
+            start: style_helpers::line(self.grid_row_start),
+            end: style_helpers::span(self.rowspan),
+        }
+    }
+    #[inline(always)]
+    fn grid_column(&self) -> taffy::Line<taffy::GridPlacement<Atom>> {
+        taffy::GridItemStyle::grid_column(self.base)
+    }
+    #[inline(always)]
+    fn align_self(&self) -> Option<taffy::AlignSelf> {
+        taffy::GridItemStyle::align_self(self.base)
+    }
+    #[inline(always)]
+    fn justify_self(&self) -> Option<taffy::AlignSelf> {
+        taffy::GridItemStyle::justify_self(self.base)
+    }
 }
 
 /// wkhtmltopdf-rs: one resolved collapsed border (CSS 2.1 §17.6.2.1).
@@ -281,6 +433,7 @@ pub(crate) fn build_table_context(
     table_root_node_id: NodeId,
 ) -> (TableContext, Vec<NodeId>) {
     let mut cells: Vec<TableCell> = Vec::new();
+    let mut cell_styles = CellStyleInterner::default();
     let mut oof_children: Vec<(NodeId, taffy::Position)> = Vec::new();
     let mut rows: Vec<TableRow> = Vec::new();
     let mut row = 0u16;
@@ -364,6 +517,7 @@ pub(crate) fn build_table_context(
                 &mut column_sizes,
                 &mut first_cell_border,
                 &mut percent_columns,
+                &mut cell_styles,
             );
         }
     }
@@ -469,7 +623,7 @@ pub(crate) fn build_table_context(
 
     if border_collapse == BorderCollapse::Collapse {
         let [top, right, bottom, left] =
-            collapse_borders(doc, table_root_node_id, &mut cells, &rows, num_columns);
+            collapse_borders(doc, table_root_node_id, &mut cells, &mut cell_styles, &rows, num_columns);
         style.border = taffy::Rect {
             left: style_helpers::length(left),
             right: style_helpers::length(right),
@@ -485,11 +639,13 @@ pub(crate) fn build_table_context(
         .collect();
     let root_node = &mut doc.nodes[table_root_node_id];
     root_node.children = children;
+    cells.shrink_to_fit();
 
     (
         TableContext {
             style,
             cells,
+            cell_styles: cell_styles.finish(),
             oof_children,
             rows,
             columns,
@@ -512,6 +668,7 @@ fn collapse_borders(
     doc: &mut BaseDocument,
     table_id: NodeId,
     cells: &mut [TableCell],
+    cell_styles: &mut CellStyleInterner,
     rows: &[TableRow],
     num_columns: u16,
 ) -> [f32; 4] {
@@ -636,14 +793,18 @@ fn collapse_borders(
         }
         results.push((sides, halves));
     }
+    // The cells' styles get their border halves: intern them again.
+    let old_styles = std::mem::take(cell_styles).styles;
     for (cell, (sides, halves)) in cells.iter_mut().zip(results) {
         cell.collapsed = Some(sides);
-        cell.style.border = taffy::Rect {
+        let mut style = old_styles[cell.style as usize].clone();
+        style.border = taffy::Rect {
             top: style_helpers::length(halves[0]),
             right: style_helpers::length(halves[1]),
             bottom: style_helpers::length(halves[2]),
             left: style_helpers::length(halves[3]),
         };
+        cell.style = cell_styles.intern(style, cell.column);
         doc.nodes[cell.node_id].collapsed_border.set(Some(halves));
     }
     outer
@@ -740,6 +901,7 @@ fn collect_table_cells(
     columns: &mut Vec<TrackSizingFunction>,
     first_cell_border: &mut Option<ServoArc<Border>>,
     percent_columns: &mut Vec<(u16, f32, f32)>,
+    cell_styles: &mut CellStyleInterner,
 ) {
     let node = &mut doc.nodes[node_id];
 
@@ -790,6 +952,7 @@ fn collect_table_cells(
                     columns,
                     first_cell_border,
                     percent_columns,
+                    cell_styles,
                 );
             }
             doc.nodes[node_id].children = children;
@@ -831,6 +994,7 @@ fn collect_table_cells(
                     columns,
                     first_cell_border,
                     percent_columns,
+                    cell_styles,
                 );
             }
             doc.nodes[node_id].children = children;
@@ -932,10 +1096,9 @@ fn collect_table_cells(
                 start: style_helpers::auto(),
                 end: style_helpers::span(colspan),
             };
-            style.grid_row = taffy::Line {
-                start: style_helpers::line(*row as i16),
-                end: style_helpers::span(rowspan),
-            };
+            // The row placement is `CellStyle::grid_row`, from `grid_row_start` and
+            // `rowspan`: it differs on every row, which would defeat the interning.
+            let grid_row_start = *row as i16;
             if rowspan == 1 && style.size.height.tag() == taffy::CompactLength::LENGTH_TAG {
                 if let Some(row) = rows.last_mut() {
                     row.is_constrained = true;
@@ -970,7 +1133,8 @@ fn collect_table_cells(
                 rowspan,
                 collapsed: None,
                 spec_width,
-                style,
+                style: cell_styles.intern(style, col),
+                grid_row_start,
             });
 
             cursor.place(colspan, rowspan);
@@ -1069,7 +1233,7 @@ impl taffy::LayoutGridContainer for TableTreeWrapper<'_, '_> {
         Self: 'a;
 
     type GridItemStyle<'a>
-        = &'a taffy::Style<Atom>
+        = CellStyle<'a>
     where
         Self: 'a;
 
@@ -1078,7 +1242,12 @@ impl taffy::LayoutGridContainer for TableTreeWrapper<'_, '_> {
     }
 
     fn get_grid_child_style(&self, child_node_id: taffy::NodeId) -> Self::GridItemStyle<'_> {
-        &self.ctx.cells[usize::from(child_node_id)].style
+        let cell = &self.ctx.cells[usize::from(child_node_id)];
+        CellStyle {
+            base: &self.ctx.cell_styles[cell.style as usize],
+            grid_row_start: cell.grid_row_start,
+            rowspan: cell.rowspan,
+        }
     }
 
     fn set_detailed_grid_info(
