@@ -219,7 +219,7 @@ struct Caches {
     images: HashMap<(u64, u32, u32), Option<krilla::image::Image>>,
     /// Culling box ([`bbox`]) of every command of a display list, keyed by
     /// its address: computed once, not once per page and band.
-    bboxes: HashMap<usize, std::rc::Rc<[Option<kurbo::Rect>]>>,
+    bboxes: HashMap<usize, std::rc::Rc<Vec<Option<kurbo::Rect>>>>,
 }
 
 fn tf(a: Affine) -> Transform {
@@ -353,8 +353,7 @@ fn font_entry<'a>(caches: &'a mut Caches, fd: &peniko::FontData) -> Option<&'a F
         .fonts
         .entry((fd.data.id(), fd.index))
         .or_insert_with(|| {
-            let bytes: Arc<Vec<u8>> = Arc::new(fd.data.data().to_vec());
-            let fref = skrifa::FontRef::from_index(&bytes, fd.index).ok()?;
+            let fref = skrifa::FontRef::from_index(fd.data.data(), fd.index).ok()?;
             let mut rev_cmap = HashMap::new();
             for (cp, gid) in fref.charmap().mappings() {
                 if let Some(ch) = char::from_u32(cp) {
@@ -371,7 +370,9 @@ fn font_entry<'a>(caches: &'a mut Caches, fd: &peniko::FontData) -> Option<&'a F
             let n = u32::from(fm.glyph_count);
             let hmtx =
                 (0..n).map(|g| gm.advance_width(skrifa::GlyphId::new(g)).unwrap_or(0.0) / upem).collect();
-            let font = Font::new(bytes.into(), fd.index)?;
+            // krilla shares the blob's bytes: no copy of the font file per face.
+            let data: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(fd.data.clone());
+            let font = Font::new(data.into(), fd.index)?;
             Some(FontEntry { font, rev_cmap, hmtx })
         })
         .as_ref()
@@ -747,7 +748,13 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
     let bboxes = caches
         .bboxes
         .entry(commands as *const DisplayList as usize)
-        .or_insert_with(|| commands.iter().map(|c| bbox(&c.get())).collect())
+        .or_insert_with(|| {
+            // Sized up front and shared as is: collecting into an `Rc<[_]>` built a
+            // doubling `Vec` first, then copied it.
+            let mut v = Vec::with_capacity(commands.len());
+            v.extend(commands.iter().map(|c| bbox(&c.get())));
+            std::rc::Rc::new(v)
+        })
         .clone();
     let mut r =
         Replayer { page: band.page, bboxes: &bboxes, caches, gray: opts.grayscale, image_dpi: opts.image_dpi };
