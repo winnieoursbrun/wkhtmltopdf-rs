@@ -502,6 +502,18 @@ impl WebPage {
     /// Lay out for printing on a printable area of `printable_w_pt` ×
     /// `printable_h_pt` points, paint, and collect pagination data.
     pub fn render(&mut self, printable_w_pt: f32, printable_h_pt: f32) -> RenderedPage {
+        self.render_inner(printable_w_pt, printable_h_pt, false)
+    }
+
+    /// [`render`](Self::render) for a page printed once and then dropped: the text layouts
+    /// are handed over to the painter, which frees each one as soon as its text is painted,
+    /// so they do not add up with the display list being recorded (the memory peak of a
+    /// conversion).
+    pub fn render_final(mut self, printable_w_pt: f32, printable_h_pt: f32) -> RenderedPage {
+        self.render_inner(printable_w_pt, printable_h_pt, true)
+    }
+
+    fn render_inner(&mut self, printable_w_pt: f32, printable_h_pt: f32, release_text: bool) -> RenderedPage {
         let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
         let (min_shrink, max_shrink) =
             if self.settings.smart_shrinking { (MIN_SHRINK, MAX_SHRINK) } else { (1.0, 1.0) };
@@ -524,7 +536,11 @@ impl WebPage {
         let doc_h = geometry.doc_height.ceil().max(1.0) as u32;
         let mut recorder = Recorder::default();
         blitz_paint::canvas::set_pictures(self.canvases.clone());
+        if release_text {
+            blitz_paint::inline_layouts::set(self.doc.take_inline_layouts());
+        }
         blitz_paint::paint_scene(&mut recorder, &mut self.doc, 1.0, layout_w as u32, doc_h, 0, 0);
+        blitz_paint::inline_layouts::clear();
         blitz_paint::canvas::clear_pictures();
 
         if std::env::var_os("WKHTMLTOPDF_DEBUG_LAYOUT").is_some() {

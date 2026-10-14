@@ -861,9 +861,11 @@ impl ElementCx<'_, '_> {
 
     fn draw_inline_layout(&self, scene: &mut impl PaintScene, pos: Point) {
         if self.node.flags.is_inline_root() {
-            let text_layout = self.element
-                .inline_layout_data
-                .as_ref()
+            // wkhtmltopdf-rs: a layout handed over to the painter is dropped once painted.
+            let released = crate::inline_layouts::take(self.node.id);
+            let text_layout = released
+                .as_deref()
+                .or(self.element.inline_layout_data.as_deref())
                 .unwrap_or_else(|| {
                     panic!("Tried to render node marked as inline root that does not have an inline layout: {:?}", self.node);
                 });
@@ -1015,19 +1017,21 @@ impl ElementCx<'_, '_> {
                 + item_layout.border.left);
 
             // Align the marker with the baseline of the first line of text in the list item
-            let y_offset = if let Some((text_layout, first_text_line)) = &self
-                .element
-                .inline_layout_data
-                .as_ref()
-                .and_then(|text_layout| Some((text_layout, text_layout.layout.lines().next()?)))
-            {
-                (first_text_line.metrics().baseline
-                    - layout.lines().next().unwrap().metrics().baseline)
-                    / layout.scale()
-                    + text_layout.block_offset
-            } else {
-                0.0
-            };
+            // wkhtmltopdf-rs: the item's layout may have been handed over to the painter
+            // (`crate::inline_layouts`); the marker is painted before the item's text.
+            let y_offset = crate::inline_layouts::with(self.node.id, |released| {
+                if let Some((text_layout, first_text_line)) = released
+                    .or(self.element.inline_layout_data.as_deref())
+                    .and_then(|text_layout| Some((text_layout, text_layout.layout.lines().next()?)))
+                {
+                    (first_text_line.metrics().baseline
+                        - layout.lines().next().unwrap().metrics().baseline)
+                        / layout.scale()
+                        + text_layout.block_offset
+                } else {
+                    0.0
+                }
+            });
 
             let pos = Point {
                 x: pos.x + x_offset as f64,

@@ -15,6 +15,8 @@ mod text;
 pub mod run_text;
 // wkhtmltopdf-rs: canvas content recorded by script.
 pub mod canvas;
+// wkhtmltopdf-rs: inline layouts freed as their text is painted.
+pub mod inline_layouts;
 
 use std::collections::HashMap;
 

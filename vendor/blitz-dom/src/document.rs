@@ -570,6 +570,19 @@ impl BaseDocument {
         &self.nodes
     }
 
+    /// wkhtmltopdf-rs: move every inline layout out of the document, by inline root. Once
+    /// done, the document can no longer be laid out: meant for a last paint that hands the
+    /// layouts to the painter (`blitz_paint::inline_layouts`), which frees each one as soon
+    /// as its text is painted.
+    pub fn take_inline_layouts(
+        &mut self,
+    ) -> HashMap<NodeId, Box<crate::node::TextLayout>> {
+        self.nodes
+            .iter_mut()
+            .filter_map(|(id, node)| Some((id, node.element_data_mut()?.take_inline_layout()?)))
+            .collect()
+    }
+
     pub fn id(&self) -> usize {
         self.id
     }

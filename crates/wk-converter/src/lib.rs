@@ -516,8 +516,9 @@ impl Converter<'_, '_> {
             // 10 to 400 px: a 77 px body prints 61 px tall and reserves
             // 61 / 2.835 mm = 81 px (hf-html-static), a 100 px body 107 px.
             let mut measure = |i: Option<usize>| -> Option<f64> {
-                let p = pages.get_mut(i?)?.as_mut()?;
-                let r = p.render(printable_w, ph as f32);
+                // Each measured page is printed once: render_final frees its text as painted.
+                let p = pages.get_mut(i?)?.take()?;
+                let r = p.render_final(printable_w, ph as f32);
                 let printed = (f64::from(r.body_height * r.pt_per_px) * dev_per_pt + 1e-6).floor();
                 Some(printed / MM_TO_POINT_MULTIPLIER)
             };
@@ -637,8 +638,10 @@ impl Converter<'_, '_> {
                 continue;
             }
             self.pf.progress_changed(((d + 1) * 100 / tot) as i32, &format!("Object {} of {}", d + 1, tot));
-            let Some(page) = o.page.as_mut() else { continue };
-            let rendered = page.render(paper.printable_width(), paper.printable_height());
+            let Some(page) = o.page.take() else { continue };
+            // The page's DOM (styles, layout, parley layouts) is dropped once rendered:
+            // only its URL key (`o.url`) is used from here on.
+            let rendered = page.render_final(paper.printable_width(), paper.printable_height());
             o.slices = wk_print::paginate(&rendered.geometry, paper.printable_height() / rendered.pt_per_px);
             o.page_count = if o.settings.pages_count { o.slices.len() } else { 0 };
             page_count += o.page_count;
@@ -658,7 +661,6 @@ impl Converter<'_, '_> {
             }
             o.outline_doc = Some(outline.documents.len() - 1);
             o.rendered = Some(rendered);
-            o.page = None;
         }
         let copies = self.g.copies.max(1) as usize;
         let mut actual_pages = page_count * copies;
@@ -727,14 +729,14 @@ impl Converter<'_, '_> {
                     }
                     let Some(i) = o.loader_index else { continue };
                     o.skip = toc_loader.resources[i].skip;
-                    o.page = pages[i].take();
-                    let Some(page) = o.page.as_mut() else { continue };
+                    let Some(page) = pages[i].take() else { continue };
                     if o.skip {
+                        o.page = Some(page);
                         continue;
                     }
                     // handleTocPage
-                    let rendered = page.render(paper.printable_width(), paper.printable_height());
                     o.title = page.title().map(|t| collapse_ws(&t)).unwrap_or_default();
+                    let rendered = page.render_final(paper.printable_width(), paper.printable_height());
                     o.slices =
                         wk_print::paginate(&rendered.geometry, paper.printable_height() / rendered.pt_per_px);
                     let pc = if o.settings.pages_count { o.slices.len() } else { 0 };
@@ -757,7 +759,6 @@ impl Converter<'_, '_> {
                     toc_changed |= changed;
                     o.local_links.extend(back_links(back));
                     o.rendered = Some(rendered);
-                    o.page = None;
                 }
                 actual_pages = page_count * copies;
                 toc_loader.clear_resources();
@@ -859,9 +860,9 @@ impl Converter<'_, '_> {
             }
             let Some(pages) = pages else { return false };
             for (p, &(d, is_header)) in pages.into_iter().zip(&hf_owner) {
-                let Some(mut p) = p else { continue };
+                let Some(p) = p else { continue };
                 // The header page is printed with zero vertical margins.
-                let r = p.render(paper.printable_width(), paper.height);
+                let r = p.render_final(paper.printable_width(), paper.height);
                 if is_header {
                     objs[d].headers.push(r);
                 } else {
