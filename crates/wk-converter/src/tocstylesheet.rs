@@ -1,8 +1,7 @@
 //! Default XSLT style sheet of the table of contents. Ports upstream
 //! `src/lib/tocstylesheet.cc` (`dumpDefaultTOCStyleSheet`).
 //!
-//! Lives in the binary crate for P1 because only `--dump-default-toc-xsl`
-//! needs it; it moves to `wk-converter` with the TOC generator (P3).
+//! Used by `--dump-default-toc-xsl` and by the TOC objects (`toc.rs`).
 
 use wk_settings::TableOfContent;
 use wk_settings::qt::number_g;

@@ -11,5 +11,7 @@ pub mod paint;
 
 pub use blitz_paint::run_text::RunText;
 pub use net::Fetcher;
-pub use page::{Anchors, Geometry, Heading, LinkBox, RenderedPage, TableInfo, WebPage, WebSettings};
+pub use page::{
+    Anchors, FormElement, Geometry, Heading, LinkBox, RenderedPage, TableInfo, WebPage, WebSettings,
+};
 pub use paint::Recorder;
