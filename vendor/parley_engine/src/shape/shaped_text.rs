@@ -181,6 +181,18 @@ impl ShapedText {
         self.normalized_coords.clear();
     }
 
+    /// wkhtmltopdf-rs: release the spare capacity of the buffers (a finished layout keeps
+    /// its shaped text for painting; a short text otherwise holds 4-element minimum
+    /// capacities and the speculative `reserve`).
+    pub fn shrink_to_fit(&mut self) {
+        self.runs.shrink_to_fit();
+        self.characters.shrink_to_fit();
+        self.shaped_clusters.shrink_to_fit();
+        self.glyphs.shrink_to_fit();
+        self.fonts.shrink_to_fit();
+        self.normalized_coords.shrink_to_fit();
+    }
+
     /// Get a [`ShapedSlice`] of the run at `run_index`.
     pub fn run_slice(&self, run_index: u32) -> ShapedSlice<'_> {
         let run = &self.runs[run_index as usize];

@@ -1125,6 +1125,10 @@ pub(crate) fn build_inline_layout_into(
     }
 
     text_layout.text = builder.build_into(&mut text_layout.layout);
+    // wkhtmltopdf-rs: the layout lives as long as the document; drop the builder's spare
+    // capacity (a table cell holds a few runs in 4-element minimum allocations).
+    text_layout.text.shrink_to_fit();
+    text_layout.layout.shrink_to_fit();
     return;
 
     fn build_inline_layout_recursive(

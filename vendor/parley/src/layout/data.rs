@@ -289,6 +289,19 @@ impl<B: Brush> LayoutData<B> {
         self.alignment = None;
     }
 
+    /// wkhtmltopdf-rs: release the spare capacity of the buffers.
+    pub(crate) fn shrink_to_fit(&mut self) {
+        self.styles.shrink_to_fit();
+        self.style_metrics.shrink_to_fit();
+        self.inline_boxes.shrink_to_fit();
+        self.shaped_text.shrink_to_fit();
+        self.runs.shrink_to_fit();
+        self.items.shrink_to_fit();
+        self.lines.shrink_to_fit();
+        self.line_items.shrink_to_fit();
+        self.aligned_subtree_offsets.shrink_to_fit();
+    }
+
     /// Push an inline box to the list of items
     pub(crate) fn push_inline_box(&mut self, index: usize, bidi_level: BidiLevel) {
         self.items.push(LayoutItem {

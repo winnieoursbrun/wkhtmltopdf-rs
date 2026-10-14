@@ -823,6 +823,9 @@ impl LayoutPassState<'_> {
                 last_line_alignment,
             },
         );
+        // wkhtmltopdf-rs: the lines are kept for painting; drop the line breaker's spare
+        // capacity (most table cells have a single line in a 4-line allocation).
+        inline_layout.layout.shrink_to_fit();
 
         // Parley lays out empty text as a single strut-height line (text-editor semantics),
         // but a line box containing no text, inline boxes or other in-flow content is a

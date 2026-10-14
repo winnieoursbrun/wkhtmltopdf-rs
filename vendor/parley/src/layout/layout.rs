@@ -56,6 +56,12 @@ impl<B: Brush> Layout<B> {
         self.data.clear();
     }
 
+    /// wkhtmltopdf-rs: releases the spare capacity of the layout's buffers, for layouts kept
+    /// alive after they are built and broken into lines. Changes no result.
+    pub fn shrink_to_fit(&mut self) {
+        self.data.shrink_to_fit();
+    }
+
     /// Returns the scale factor provided when creating the layout.
     pub fn scale(&self) -> f32 {
         self.data.scale
