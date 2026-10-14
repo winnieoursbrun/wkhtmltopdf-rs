@@ -276,6 +276,10 @@ fn is_slow_script(err: &JsError) -> bool {
 /// does for 0.12.6 (`undefined:0 <message>`, only with `--debug-javascript`),
 /// and a stopped slow script like `shouldInterruptJavaScript`.
 pub(crate) fn report_error(err: &JsError, ctx: &mut Context) {
+    // Development aid: the full error with Boa's backtrace.
+    if std::env::var_os("WKHTMLTOPDF_DEBUG_JS").is_some() {
+        eprintln!("[wk-js] uncaught: {err}");
+    }
     if is_slow_script(err) {
         if with_host(|h| h.stop_slow_scripts) {
             warning("A slow script was stopped");

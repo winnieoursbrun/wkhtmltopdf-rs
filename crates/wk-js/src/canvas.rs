@@ -32,6 +32,12 @@ use peniko::{ColorStop, Fill, Gradient, ImageAlphaType, ImageBrush, ImageData, I
 use crate::dom::{arg_str, get_attr, id_of, local, opt_id};
 use crate::host::with_host;
 
+/// QtWebKit rasterises canvases, so canvas text is not text in the
+/// reference PDFs. Canvas glyphs are painted as outlines (no text layer),
+/// which keeps text extraction (L2) identical; the source text is still
+/// recorded and can be published by flipping this.
+const CANVAS_TEXT_EXTRACTABLE: bool = false;
+
 /// Recorded content of one `<canvas>`.
 #[derive(Default)]
 pub struct CanvasState {
@@ -499,7 +505,9 @@ pub(crate) fn canvas_text(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> J
                     run.synthesis().skew().map(|a| Affine::skew(f64::from(a.to_radians().tan()), 0.0)),
                     glyphs.into_iter(),
                 );
-                c.texts.insert(index, RunText { text: run_text, glyph_ranges: ranges, node_id: id });
+                if CANVAS_TEXT_EXTRACTABLE {
+                    c.texts.insert(index, RunText { text: run_text, glyph_ranges: ranges, node_id: id });
+                }
             }
         }
     });

@@ -1,0 +1,12 @@
+Warning: file:///wk/js/debugjs.html:4 head script
+Warning: file:///wk/js/debugjs.html:6 helper called with 21
+Warning: file:///wk/js/debugjs.html:4 helper returned 42
+Warning: file:///wk/js/debugjs.html:15 1 paragraph(s) parsed
+Warning: undefined:0 ReferenceError: Can't find variable: missingFunction
+Warning: file:///wk/js/debugjs.html:16 DOMContentLoaded
+Warning: file:///wk/js/debugjs.html:13 body onload
+Warning: Javascript alert: loaded
+Warning: file:///wk/js/debugjs.html:19 load listener
+Warning: file:///wk/js/debugjs.html:22 timer at 100 ms
+Warning: Javascript confirm: continue? (answered yes)
+Warning: Javascript prompt: your name? (answered nobody)

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>jQuery 1.12.4</title>
+<script src="vendor/jquery-1.12.4.min.js"></script>
+<style>
+  body { font-family: 'DejaVu Sans'; font-size: 11pt; }
+  .hl { background: #ffe9a8; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #888; padding: 2px 6px; }
+</style>
+<script>
+$(function () {
+  $('#version').text('jQuery ' + $.fn.jquery);
+  var $list = $('<ul/>', { id: 'items' });
+  $.each(['alpha', 'beta', 'gamma', 'delta'], function (i, v) {
+    $list.append($('<li/>').text((i + 1) + '. ' + v).addClass(i % 2 ? 'odd' : 'even'));
+  });
+  $('#target').append($list);
+  $('#items li.odd').css('font-weight', 'bold');
+  $('#items li:first').addClass('hl');
+  $('#count').html('<b>' + $('#items li').length + '</b> items, ' + $('.even').length + ' even');
+  var rows = [['Apples', 3, 1.2], ['Pears', 5, 0.8], ['Plums', 12, 0.25]];
+  var $tb = $('#prices tbody');
+  var total = 0;
+  $.each(rows, function (_, r) {
+    total += r[1] * r[2];
+    $tb.append('<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + (r[1] * r[2]).toFixed(2) + '</td></tr>');
+  });
+  $('#total').text('Total: ' + total.toFixed(2));
+  $('#hidden').hide();
+  $('#shown').show().attr('data-state', 'visible');
+  $('#attr').text('data-state=' + $('#shown').attr('data-state') + ', data()=' + $('#shown').data('state'));
+  $('#width').text('box width during load: ' + $('#box').width());
+  var classes = [];
+  $('#items li').each(function () { classes.push(this.className); });
+  $('#classes').text(classes.join(' '));
+  $('#items').on('custom', function (e, arg) { $('#event').text('custom event: ' + arg); }).trigger('custom', ['fired']);
+  $('#closest').text('closest table id: ' + $('#prices td:first').closest('table').attr('id'));
+  $('#filter').text('filtered: ' + $('#items li').filter(function (i) { return i > 1; }).map(function () { return $(this).text(); }).get().join(', '));
+  $('<p id="late">Inserted with insertAfter</p>').insertAfter('#total');
+  $('#wrapme').wrap('<div class="wrapped"></div>');
+  $('#wrapinfo').text('wrapped parent class: ' + $('#wrapme').parent().attr('class'));
+  $('#remove').remove();
+  $('#ser').text('serialized: ' + $('#form').serialize());
+});
+</script></head>
+<body>
+<h1 id="version">jQuery not loaded</h1>
+<div id="target"></div>
+<p id="count"></p>
+<table id="prices"><thead><tr><th>Fruit</th><th>Qty</th><th>Price</th></tr></thead><tbody></tbody></table>
+<p id="total"></p>
+<p id="hidden">This paragraph is hidden by jQuery.</p>
+<p id="shown" style="display:none">This paragraph is shown by jQuery.</p>
+<p id="attr"></p>
+<div id="box" style="background:#ddeeff">box</div>
+<p id="width"></p>
+<p id="classes"></p>
+<p id="event"></p>
+<p id="closest"></p>
+<p id="filter"></p>
+<span id="wrapme">wrapped span</span>
+<p id="wrapinfo"></p>
+<p id="remove">This paragraph is removed.</p>
+<form id="form"><input name="a" value="1"><input name="b" value="x y"><select name="c"><option>one</option><option selected>two</option></select></form>
+<p id="ser"></p>
+</body></html>

@@ -471,8 +471,11 @@ fn text_content_get(this: &JsValue, _: &[JsValue], _: &mut Context) -> JsResult<
 
 fn text_content_set(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let id = id_of(this)?;
+    // `null` empties; `undefined` becomes the string "undefined", like
+    // QtWebKit 2.2 (verified: the footer substitution script writes
+    // "undefined" for a missing variable).
     let v = args.get_or_undefined(0);
-    let text = if v.is_null_or_undefined() { String::new() } else { v.to_string(ctx)?.to_std_string_escaped() };
+    let text = if v.is_null() { String::new() } else { v.to_string(ctx)?.to_std_string_escaped() };
     with_host(|h| {
         let is_char = matches!(
             h.doc.get_node(id).map(|n| &n.data),

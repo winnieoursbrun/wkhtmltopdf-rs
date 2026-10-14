@@ -322,6 +322,8 @@
     map.item = function (i) { return map[i] || null; };
     map.removeNamedItem = function (n) { el.removeAttribute(n); };
     map.setNamedItem = function (a) { el.setAttribute(a.name, a.value); };
+    // Named access (`attributes.onsubmit`, jQuery 1.x support tests).
+    map.forEach(function (a) { if (!(a.name in map)) map[a.name] = a; });
     return map;
   });
   P.Element.hasAttributes = function () { return this.getAttributeNames().length > 0; };

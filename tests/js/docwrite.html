@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>document.write</title>
+<style>body { font-family: 'DejaVu Sans'; font-size: 11pt; }</style>
+<script>document.write('<style>.w { color: #a00; }</style>');</script>
+</head>
+<body>
+<p>Before the first write.</p>
+<script>
+document.write('<p class="w">Written paragraph one.</p>');
+document.write('<p class="w">Written paragraph two, with <b>bold</b>.</p>');
+</script>
+<p>Between the writes.</p>
+<script>
+document.write('<ul>');
+for (var i = 1; i <= 3; i++) document.write('<li>written item ' + i + '</li>');
+document.write('</ul>');
+document.write('<scr' + 'ipt>document.write("<p>Written by a written script.</p>");</scr' + 'ipt>');
+document.writeln('<p id="seen">Elements before this script: ' + document.getElementsByTagName('p').length + '</p>');
+</script>
+<p>After the writes.</p>
+</body></html>

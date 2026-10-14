@@ -709,6 +709,20 @@ struct ElementCx<'dom, 'a> {
     custom_widget_scene: Option<&'a Scene>,
 }
 
+/// wkhtmltopdf-rs: the whole-pixel advance of a space in the marker's font.
+fn marker_space_width(layout: &parley::Layout<blitz_dom::node::TextBrush>) -> f32 {
+    use skrifa::MetadataProvider;
+    let Some(run) = layout.lines().next().and_then(|l| l.runs().next()) else { return 0.0 };
+    let font = run.font();
+    let Ok(f) = skrifa::FontRef::from_index(font.data.as_ref(), font.index) else { return 0.0 };
+    let Some(gid) = f.charmap().map(' ') else { return 0.0 };
+    let adv = f
+        .glyph_metrics(skrifa::instance::Size::new(run.font_size()), skrifa::instance::LocationRef::default())
+        .advance_width(gid)
+        .unwrap_or(0.0);
+    adv.round()
+}
+
 /// Converts parley BoundingBox into peniko Rect
 fn convert_rect(rect: &parley::BoundingBox) -> kurbo::Rect {
     peniko::kurbo::Rect::new(rect.x0, rect.y0, rect.x1, rect.y1)
@@ -973,7 +987,15 @@ impl ElementCx<'_, '_> {
             // Outside markers are placed outside the list item's border box
             // (`pos` is the origin of its content box)
             let item_layout = self.node.final_layout();
-            let x_offset = -(layout.full_width() / layout.scale()
+            // wkhtmltopdf-rs: WebKit draws a string marker as `1. ` and
+            // ends it one space width before the item text (verified with
+            // wkhtmltopdf 0.12.6: `1` at x=23 for text at x=48, 16px DejaVu
+            // Sans); parley's line width leaves out the trailing space.
+            let marker_width = match marker {
+                Marker::String(_) => layout.full_width() + 2.0 * marker_space_width(layout),
+                Marker::Char(_) => layout.full_width(),
+            };
+            let x_offset = -(marker_width / layout.scale()
                 + x_padding
                 + item_layout.padding.left
                 + item_layout.border.left);
