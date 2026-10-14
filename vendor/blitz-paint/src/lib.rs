@@ -13,6 +13,8 @@ mod render;
 mod sizing;
 mod text;
 pub mod run_text;
+// wkhtmltopdf-rs: canvas content recorded by script.
+pub mod canvas;
 
 use std::collections::HashMap;
 

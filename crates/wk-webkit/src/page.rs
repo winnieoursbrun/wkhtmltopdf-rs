@@ -17,11 +17,15 @@
 //!
 //! - author CSS goes through the WebKit-2012 profile (`profile.rs`,
 //!   `docs/webkit2012-profile.md`): what QtWebKit 2.2 ignored is dropped,
-//!   `-webkit-` properties it honoured are mapped to standard ones.
-//! JavaScript does not run yet (P4): external scripts are requested (their
-//! load errors count like upstream) but not executed.
+//!   `-webkit-` properties it honoured are mapped to standard ones; media
+//!   queries see `--viewport-size` (0×0 by default); `--minimum-font-size`
+//!   raises computed font sizes.
+//!
+//! JavaScript (P4) runs in `scripting.rs` when the document has scripts;
+//! documents without any take the static path below (no realm is created).
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use blitz_dom::{BaseDocument, DocumentConfig, MediaType, Node, NodeId, local_name};
@@ -52,6 +56,21 @@ pub struct WebSettings {
     pub smart_shrinking: bool,
     /// `--viewport-size`: what media queries see (0×0 when unset).
     pub viewport: Option<(u32, u32)>,
+    /// `--javascript-delay` (ms, virtual clock).
+    pub javascript_delay: u32,
+    /// `--window-status` (main pages only).
+    pub window_status: String,
+    /// `--run-script` (main pages only).
+    pub run_script: Vec<String>,
+    /// `--debug-javascript`.
+    pub debug_javascript: bool,
+    /// `--stop-slow-scripts` / `--no-stop-slow-scripts`.
+    pub stop_slow_scripts: bool,
+    /// `navigator.userAgent` (the loader's `User-Agent`).
+    pub user_agent: String,
+    /// `--enable-forms`: inputs and text areas are painted white (their
+    /// values become form fields), like `beginPrintObject` does.
+    pub produce_forms: bool,
 }
 
 impl Default for WebSettings {
@@ -67,6 +86,14 @@ impl Default for WebSettings {
             zoom: 1.0,
             smart_shrinking: true,
             viewport: None,
+            javascript_delay: 200,
+            window_status: String::new(),
+            run_script: Vec::new(),
+            debug_javascript: false,
+            stop_slow_scripts: true,
+            user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/534.34 (KHTML, like Gecko) wkhtmltopdf Safari/534.34"
+                .into(),
+            produce_forms: false,
         }
     }
 }
@@ -124,6 +151,8 @@ pub struct Heading {
     pub text: String,
     pub x: f32,
     pub y: f32,
+    pub w: f32,
+    pub h: f32,
 }
 
 /// Named anchors for internal links, in document px.
@@ -156,6 +185,25 @@ pub struct RenderedPage {
     /// Original encoded bytes of raster images, by image blob id (JPEG
     /// passthrough).
     pub image_sources: HashMap<u64, Arc<Vec<u8>>>,
+    /// Height of the `<body>` box in CSS px (header/footer measuring).
+    pub body_height: f32,
+    /// `input` elements, then `textarea` elements, in document order.
+    pub form_elements: Vec<FormElement>,
+}
+
+/// An `input` or `textarea` element (source of `--enable-forms` fields).
+#[derive(Debug, Clone)]
+pub struct FormElement {
+    /// Border box in document px.
+    pub rect: kurbo::Rect,
+    pub is_textarea: bool,
+    /// The `type` attribute as written (empty when absent).
+    pub input_type: String,
+    pub name: String,
+    pub value: String,
+    pub checked: bool,
+    pub readonly: bool,
+    pub maxlength: Option<i32>,
 }
 
 /// A loaded page.
@@ -165,20 +213,27 @@ pub struct WebPage {
     settings: WebSettings,
     /// Bodies of loaded resources by URL (for JPEG passthrough).
     bodies: HashMap<String, Arc<Vec<u8>>>,
+    /// Values of password inputs, which are displayed as bullets.
+    password_values: HashMap<NodeId, String>,
     pub url: Url,
+    /// Canvas content recorded by script.
+    canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
 }
 
 fn tag(node: &Node) -> &str {
     node.element_data().map(|e| &*e.name.local).unwrap_or("")
 }
 
-fn ua_css(settings: &WebSettings) -> String {
+pub(crate) fn ua_css(settings: &WebSettings) -> String {
     let mut css = String::new();
     if settings.enable_javascript {
         css.push_str("noscript { display: none !important; }\n");
     }
     if !settings.background {
         css.push_str("* { background-color: transparent !important; background-image: none !important; }\n");
+    }
+    if settings.produce_forms {
+        css.push_str("input, textarea { color: white !important; }\n");
     }
     css
 }
@@ -192,7 +247,14 @@ struct Unit {
 }
 
 impl WebPage {
-    /// Parse `html` and load its sub-resources through `fetcher`.
+    /// Parse `html`, load its sub-resources through `fetcher`, and run its
+    /// scripts when JavaScript is enabled (the whole `QWebFrame::load` up to
+    /// wkhtmltopdf's `loadDone`, including the `--javascript-delay` wait).
+    ///
+    /// This is also the entry point for header/footer HTML: load the page
+    /// with its query string in `url` (`?page=1&topage=3…`, read by the
+    /// substitution script through `location.search`), with
+    /// `run_script`/`window_status` left empty, then [`render`](Self::render).
     pub fn load(
         html: &str,
         url: Url,
@@ -204,6 +266,9 @@ impl WebPage {
         style::properties::cascade::set_minimum_font_size(settings.minimum_font_size as f32);
         let (vw, vh) = settings.viewport.unwrap_or((0, 0));
         crate::profile::set_media_viewport(vw as f32, vh as f32);
+        if settings.enable_javascript && crate::scripting::needs_js(html) {
+            return crate::scripting::load(html, url, settings, font_ctx, fetcher);
+        }
         let net = QueueNet::default();
         let media = if settings.print_media_type { MediaType::print() } else { MediaType::screen() };
         let config = DocumentConfig {
@@ -214,18 +279,79 @@ impl WebPage {
             media_type: Some(media),
             ..Default::default()
         };
-        let mut doc = HtmlDocument::from_html(html, config).into_inner();
+        // QtWebKit parses every `text/html` document with its HTML parser,
+        // whatever its DOCTYPE or root namespace; blitz-html would switch to
+        // its XML parser on an XHTML DOCTYPE, an XML declaration or an
+        // `xmlns` on `<html>` (then `<ol/>` would be an empty list, as in no
+        // browser). A leading empty comment defeats the sniffing.
+        let sniff_proof = format!("<!---->{html}");
+        let mut doc = HtmlDocument::from_html(&sniff_proof, config).into_inner();
         let extra = ua_css(&settings);
         if !extra.is_empty() {
             doc.add_user_agent_stylesheet(&extra);
         }
         if let Some(css) = &settings.user_style_sheet {
             // A user sheet is parsed by WebKit too: same profile as author CSS.
-            doc.add_user_agent_stylesheet(&crate::profile::rewrite(css, blitz_dom::css_rewrite::CssSource::Sheet));
+            doc.add_user_agent_stylesheet(&crate::profile::rewrite(
+                css,
+                blitz_dom::css_rewrite::CssSource::Sheet,
+            ));
         }
-        let mut page = WebPage { doc, net, settings, bodies: HashMap::new(), url };
+        let mut page = WebPage {
+            doc,
+            net,
+            settings,
+            bodies: HashMap::new(),
+            password_values: HashMap::new(),
+            url,
+            canvases: HashMap::new(),
+        };
+        page.mask_passwords();
         page.load_resources(fetcher);
         page
+    }
+
+    /// A page loaded with scripts (`scripting.rs`): password values are
+    /// masked on the final DOM, after the scripts ran.
+    pub(crate) fn from_parts(
+        doc: BaseDocument,
+        net: QueueNet,
+        settings: WebSettings,
+        bodies: HashMap<String, Arc<Vec<u8>>>,
+        url: Url,
+        canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
+    ) -> WebPage {
+        let mut page = WebPage { doc, net, settings, bodies, password_values: HashMap::new(), url, canvases };
+        page.mask_passwords();
+        page
+    }
+
+    /// QtWebKit displays the value of `input[type=password]` as bullets.
+    fn mask_passwords(&mut self) {
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if tag(n) == "input"
+                && n.attr(local_name!("type")).is_some_and(|t| t.eq_ignore_ascii_case("password"))
+            {
+                if let Some(v) = n.attr(local_name!("value")).filter(|v| !v.is_empty()) {
+                    found.push((id, v.to_string()));
+                }
+            }
+        }
+        let mut m = self.doc.mutate();
+        for (id, v) in &found {
+            let bullets = "\u{2022}".repeat(v.chars().count());
+            m.set_attribute(
+                *id,
+                blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("value")),
+                &bullets,
+            );
+        }
+        drop(m);
+        self.password_values.extend(found);
     }
 
     /// The document `<title>`.
@@ -374,7 +500,9 @@ impl WebPage {
         let geometry = collect_geometry(&self.doc);
         let doc_h = geometry.doc_height.ceil().max(1.0) as u32;
         let mut recorder = Recorder::default();
+        blitz_paint::canvas::set_pictures(self.canvases.clone());
         blitz_paint::paint_scene(&mut recorder, &mut self.doc, 1.0, layout_w as u32, doc_h, 0, 0);
+        blitz_paint::canvas::clear_pictures();
 
         if std::env::var_os("WKHTMLTOPDF_DEBUG_LAYOUT").is_some() {
             self.debug_layout();
@@ -396,6 +524,8 @@ impl WebPage {
         }
         let (links, headings, anchors) = self.collect_links(&recorder);
         let image_sources = self.image_sources();
+        let body_height = self.body_height();
+        let form_elements = self.form_elements();
         RenderedPage {
             recorder,
             geometry,
@@ -405,7 +535,69 @@ impl WebPage {
             layout_width: layout_w,
             pt_per_px,
             image_sources,
+            body_height,
+            form_elements,
         }
+    }
+
+    /// Height of the first `<body>` element's box (`elementLocation(body)`).
+    fn body_height(&self) -> f32 {
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            if tag(n) == "body" {
+                return n.final_layout().size.height;
+            }
+            stack.extend(n.children.iter().rev().copied());
+        }
+        0.0
+    }
+
+    /// `findAllElements("input")` then `findAllElements("textarea")`.
+    fn form_elements(&self) -> Vec<FormElement> {
+        let mut order = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            order.push(id);
+            stack.extend(n.children.iter().rev().copied());
+        }
+        let mut out = Vec::new();
+        for want in ["input", "textarea"] {
+            for &id in &order {
+                let n = self.doc.get_node(id).expect("node");
+                if tag(n) != want {
+                    continue;
+                }
+                let pos = n.absolute_position(0.0, 0.0);
+                let l = n.final_layout();
+                let attr = |a| n.attr(a).map(str::to_string);
+                out.push(FormElement {
+                    rect: kurbo::Rect::new(
+                        f64::from(pos.x),
+                        f64::from(pos.y),
+                        f64::from(pos.x + l.size.width),
+                        f64::from(pos.y + l.size.height),
+                    ),
+                    is_textarea: want == "textarea",
+                    input_type: attr(local_name!("type")).unwrap_or_default(),
+                    name: attr(local_name!("name")).unwrap_or_default(),
+                    // QWebElement::toPlainText() of a textarea is empty in
+                    // QtWebKit 2.2: its content is dropped (verified).
+                    value: if want == "textarea" {
+                        String::new()
+                    } else if let Some(v) = self.password_values.get(&id) {
+                        v.clone()
+                    } else {
+                        attr(local_name!("value")).unwrap_or_default()
+                    },
+                    checked: n.attr(local_name!("checked")).is_some(),
+                    readonly: n.attr(local_name!("readonly")).is_some(),
+                    maxlength: n.attr(local_name!("maxlength")).map(|v| v.trim().parse().unwrap_or(0)),
+                });
+            }
+        }
+        out
     }
 
     fn set_viewport(&mut self, w: f32, h: f32) {
@@ -531,11 +723,20 @@ impl WebPage {
                     }
                 }
                 if let Some(level) = t.strip_prefix('h').and_then(|d| d.parse::<u32>().ok()) {
-                    if (1..=6).contains(&level) {
+                    // `findAllElements("h1,…,h9")`: h7–h9 are taken literally.
+                    if (1..=9).contains(&level) && t.len() == 2 {
                         let text = n.text_content().replace(['\n', '\r', '\t'], " ");
                         let text = text.split(' ').filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
                         if !text.is_empty() {
-                            headings.push(Heading { level, text, x: pos.x, y: pos.y });
+                            let l = n.final_layout();
+                            headings.push(Heading {
+                                level,
+                                text,
+                                x: pos.x,
+                                y: pos.y,
+                                w: l.size.width,
+                                h: l.size.height,
+                            });
                         }
                     }
                 }
@@ -572,7 +773,7 @@ impl WebPage {
     }
 }
 
-fn is_image_url(url: &Url) -> bool {
+pub(crate) fn is_image_url(url: &Url) -> bool {
     let p = url.path().to_ascii_lowercase();
     [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".ico"].iter().any(|e| p.ends_with(e))
 }
@@ -717,11 +918,13 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
         collect_cell_edges(doc, node, &mut cell_edges);
         let thead = thead.map(|(a, b)| {
             let a = if a - top < 8.0 { top } else { a };
-            let next = cell_edges.iter().map(|e| e.0).filter(|&t| t >= b - 0.01).fold(f32::INFINITY, f32::min);
+            let next =
+                cell_edges.iter().map(|e| e.0).filter(|&t| t >= b - 0.01).fold(f32::INFINITY, f32::min);
             (a, if next.is_finite() { next } else { b })
         });
         let tfoot = tfoot.map(|(a, b)| {
-            let prev = cell_edges.iter().map(|e| e.1).filter(|&t| t <= a + 0.01).fold(f32::NEG_INFINITY, f32::max);
+            let prev =
+                cell_edges.iter().map(|e| e.1).filter(|&t| t <= a + 0.01).fold(f32::NEG_INFINITY, f32::max);
             let b = if bottom - b < 8.0 { bottom } else { b };
             (if prev.is_finite() { prev } else { a }, b)
         });

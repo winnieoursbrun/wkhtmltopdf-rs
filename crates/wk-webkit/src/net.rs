@@ -17,6 +17,9 @@ pub trait Fetcher {
     fn create(&mut self, url: &Url) -> usize;
     /// Complete a request: the body, or `None` when it failed.
     fn finish(&mut self, id: usize) -> Option<Vec<u8>>;
+    /// `ResourceObject::warning` from the page itself (JavaScript dialogs,
+    /// console messages, stopped slow scripts).
+    fn warning(&mut self, _message: &str) {}
 }
 
 pub(crate) struct Queued {

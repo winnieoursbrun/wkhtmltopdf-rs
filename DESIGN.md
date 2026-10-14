@@ -59,9 +59,10 @@ Rules:
 - **No C/C++ engines, no browser process.** Allowed native code: `ring` (rustls crypto), linked
   statically. Fonts are discovered by scanning directories (no fontconfig) and the binary embeds a
   fallback font set so it renders on a bare container.
-- **Determinism.** JS timers run on a virtual clock driven by the converter (`--javascript-delay`
-  advances it), so output does not depend on machine speed — except `--no-stop-slow-scripts`,
-  which keeps a wall-clock budget like upstream.
+- **Determinism.** JS timers and `Date` run on a virtual clock driven by the page load
+  (`--javascript-delay` advances it), so output does not depend on machine speed. The slow-script
+  interrupt (`--stop-slow-scripts`, default) is a loop-iteration budget (~10 s of Boa), not a
+  wall-clock one; `--no-stop-slow-scripts` removes it.
 - **Static release build.** `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets,
   plus macOS for development.
 

@@ -7,6 +7,7 @@ members = [
     "crates/wk-fonts",
     "crates/wk-loader",
     "crates/wk-webkit",
+    "crates/wk-js",
     "crates/wk-print",
     "crates/wk-converter",
 ]
@@ -24,6 +25,7 @@ wk-settings = { path = "crates/wk-settings" }
 wk-fonts = { path = "crates/wk-fonts" }
 wk-loader = { path = "crates/wk-loader" }
 wk-webkit = { path = "crates/wk-webkit" }
+wk-js = { path = "crates/wk-js" }
 wk-print = { path = "crates/wk-print" }
 wk-converter = { path = "crates/wk-converter" }
 
@@ -45,6 +47,10 @@ data-url = { version = "0.3" }
 encoding_rs = { version = "0.8" }
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip", "socks-proxy"] }
 base64 = { version = "0.22" }
+# JavaScript (versions validated by spikes/js-dom): no Intl/Temporal, like QtWebKit 2.2.
+boa_engine = { version = "0.22", default-features = false, features = ["annex-b"] }
+boa_gc = { version = "0.22" }
+html5ever = { version = "0.40" }
 
 [patch.crates-io]
 # Servo-mode stylo with page-break-*/break-* enabled (vendor/stylo/properties/*.toml).

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>window.status timer chain</title>
+<style>body { font-family: 'DejaVu Sans'; font-size: 11pt; }</style>
+</head>
+<body>
+<h1>Timer chain</h1>
+<ol id="log"></ol>
+<script>
+function log(msg) {
+  var li = document.createElement('li');
+  li.appendChild(document.createTextNode(msg));
+  document.getElementById('log').appendChild(li);
+}
+var step = 0;
+function next() {
+  step++;
+  log('step ' + step);
+  if (step < 5) {
+    setTimeout(next, 100);
+  } else {
+    log('done after ' + step + ' steps');
+    window.status = 'ready';
+  }
+}
+setTimeout(next, 100);
+var ticks = 0;
+var iv = setInterval(function () {
+  ticks++;
+  if (ticks === 3) { clearInterval(iv); log('interval stopped after 3 ticks'); }
+}, 150);
+var never = setTimeout(function () { log('cancelled timer ran'); }, 50);
+clearTimeout(never);
+</script>
+</body></html>

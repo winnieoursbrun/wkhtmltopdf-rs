@@ -1,0 +1,13 @@
+footer-subst	--log-level	warn	file://{DIR}/footer-subst.html?page=2&topage=5&frompage=1&section=Introduction&doctitle=JS%20Corpus
+jquery3	--log-level	warn	--enable-local-file-access	jquery3.html
+jquery1	--log-level	warn	--enable-local-file-access	jquery1.html
+chart2	--log-level	warn	--enable-local-file-access	chart2.html
+window-status	--log-level	warn	--window-status	ready	window-status.html
+docwrite	--log-level	warn	docwrite.html
+runscript	--log-level	warn	--run-script	document.getElementById('target').textContent='Replaced by run-script';	--run-script	document.getElementById('order').textContent+=' run-script';	runscript.html
+debugjs	--log-level	warn	--debug-javascript	debugjs.html
+print	--log-level	warn	--run-script	alert("run-script after print")	print.html
+nojs	--log-level	warn	--disable-javascript	nojs.html
+xhr	--log-level	warn	--debug-javascript	--enable-local-file-access	xhr.html
+canvas	--log-level	warn	canvas.html
+slow	--log-level	warn	--debug-javascript	slow.html

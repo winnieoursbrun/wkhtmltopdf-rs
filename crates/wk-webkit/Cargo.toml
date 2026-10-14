@@ -10,6 +10,8 @@ publish = false
 [dependencies]
 wk-fonts.workspace = true
 wk-loader.workspace = true
+wk-js.workspace = true
+html5ever.workspace = true
 blitz-dom.workspace = true
 blitz-html.workspace = true
 blitz-traits.workspace = true

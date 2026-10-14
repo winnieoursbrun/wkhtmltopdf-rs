@@ -1,13 +1,15 @@
 //! PDF output. Stands in for `QPrinter` + the patched `QPdfEngine` as used
-//! by `PdfConverter` (`pdfconverter.cc`): page size and margins, one PDF
-//! page per page slice, link annotations, the outline, and the document
+//! by `PdfConverter` (`pdfconverter.cc`): one PDF page per output page with
+//! its bands (content slice, HTML header/footer), header/footer texts and
+//! lines, named destinations (`addAnchor`), link annotations (`addLink`,
+//! `addHyperlink`), the outline, `QPrinter::GrayScale`, and the document
 //! information dictionary (`/Title`, `/Creator wkhtmltopdf 0.12.6`,
 //! `/Producer Qt 4.8.7`, `/CreationDate` in UTC, like the 0.12.6 binary).
 //!
 //! The display list recorded by the engine is replayed into krilla: real,
 //! subset text (with the source text of every glyph run), images (JPEG
 //! passed through), linear/radial/sweep gradients, clips, opacity.
-//! Not yet (TODO P2b/P5): box shadows, filters, blend modes, `--grayscale`,
+//! Not yet (TODO P2b/P5): box shadows, filters, blend modes,
 //! `--lowquality`, `--image-dpi`/`--image-quality`, `--no-pdf-compression`.
 
 use std::collections::HashMap;
@@ -44,9 +46,6 @@ pub struct PageSetup {
     pub margin_right: f32,
     pub margin_bottom: f32,
     pub margin_left: f32,
-    /// `--image-dpi`: raster images (other than JPEG, embedded as is) drawn at a
-    /// higher resolution are scaled down to it, like Qt's PDF engine.
-    pub image_dpi: u32,
 }
 
 impl PageSetup {
@@ -59,36 +58,136 @@ impl PageSetup {
     }
 }
 
-/// One object's pages.
-pub struct DocPart<'a> {
+/// A band of a rendered document drawn on a page: the main content slice,
+/// or the first page of an HTML header/footer.
+pub struct Band<'a> {
     pub page: &'a RenderedPage,
-    pub slices: &'a [PageSlice],
+    pub slice: &'a PageSlice,
+    /// Top-left corner of the band on the paper, in points (top-left origin).
+    pub origin: (f32, f32),
+}
+
+/// A font face for text items (header/footer text).
+#[derive(Clone)]
+pub struct FontFace {
+    pub data: Arc<Vec<u8>>,
+    pub index: u32,
+}
+
+impl FontFace {
+    /// Ascent and descent (both positive) in points at `size` points.
+    pub fn ascent_descent(&self, size: f32) -> (f32, f32) {
+        let Ok(f) = skrifa::FontRef::from_index(&self.data, self.index) else {
+            return (size * 0.93, size * 0.24);
+        };
+        let m = f.metrics(skrifa::instance::Size::new(size), skrifa::instance::LocationRef::default());
+        (m.ascent, -m.descent)
+    }
+
+    /// Advance width of `text` (no kerning) in points at `size` points.
+    pub fn text_width(&self, size: f32, text: &str) -> f32 {
+        let Ok(f) = skrifa::FontRef::from_index(&self.data, self.index) else { return 0.0 };
+        let cmap = f.charmap();
+        let gm = f.glyph_metrics(skrifa::instance::Size::new(size), skrifa::instance::LocationRef::default());
+        text.chars().map(|c| cmap.map(c).and_then(|g| gm.advance_width(g)).unwrap_or(0.0)).sum()
+    }
+}
+
+/// A single-line text drawn at a baseline (`QPainter::drawText`).
+#[derive(Clone)]
+pub struct TextItem {
+    pub face: FontFace,
+    /// Font size in points.
+    pub size: f32,
+    pub x: f32,
+    pub baseline: f32,
+    pub text: String,
+}
+
+/// A line (`QPainter::drawLine` with the default pen), in points.
+#[derive(Debug, Clone, Copy)]
+pub struct LineItem {
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
 }
 
 /// Where a link goes.
 #[derive(Debug, Clone)]
 pub enum LinkTarget {
     Uri(String),
-    /// Page index in the output and position in points (top-left origin).
-    Page {
-        page: usize,
-        x: f32,
-        y: f32,
-    },
+    /// A named destination (`QPainter::addLink`), defined by an [`Anchor`]
+    /// somewhere in the document.
+    Named(String),
 }
 
 /// A link annotation; `rect` is in points, top-left origin.
 #[derive(Debug, Clone)]
 pub struct PdfLink {
-    pub page: usize,
     pub rect: (f32, f32, f32, f32),
     pub target: LinkTarget,
+}
+
+/// A named destination (`QPainter::addAnchor`), in points (top-left origin).
+#[derive(Debug, Clone)]
+pub struct Anchor {
+    pub name: String,
+    pub x: f32,
+    pub y: f32,
+}
+
+/// An AcroForm field (`QPainter::addTextField` / `addCheckBox` of the
+/// patched Qt). Rectangles are in points, top-left origin.
+#[derive(Debug, Clone)]
+pub enum FormField {
+    Text {
+        rect: (f32, f32, f32, f32),
+        value: String,
+        name: String,
+        multiline: bool,
+        password: bool,
+        readonly: bool,
+        /// `-1` when unset.
+        maxlen: i32,
+    },
+    CheckBox {
+        rect: (f32, f32, f32, f32),
+        checked: bool,
+        name: String,
+        readonly: bool,
+    },
+}
+
+/// Everything drawn on one output page, in painting order: bands, then
+/// lines and texts.
+#[derive(Default)]
+pub struct OutPage<'a> {
+    pub bands: Vec<Band<'a>>,
+    pub texts: Vec<TextItem>,
+    pub lines: Vec<LineItem>,
+    pub links: Vec<PdfLink>,
+    pub anchors: Vec<Anchor>,
+    pub fields: Vec<FormField>,
+}
+
+/// Output options of the printer.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PdfOptions {
+    /// `QPrinter::GrayScale`: every colour becomes a grey RGB triple.
+    pub grayscale: bool,
+    /// `--image-dpi`: raster images (other than JPEG, embedded as is) drawn at a
+    /// higher resolution are scaled down to it, like Qt's PDF engine (0: never).
+    pub image_dpi: u32,
 }
 
 /// A bookmark.
 #[derive(Debug, Clone)]
 pub struct OutlineNode {
     pub title: String,
+    /// Named destination of the bookmark (`beginSectionOutline(title,
+    /// anchor)`); when it is defined, it wins over `page`/`x`/`y`.
+    pub anchor: String,
     pub page: usize,
     pub x: f32,
     pub y: f32,
@@ -146,16 +245,26 @@ fn norm(v: f32) -> NormalizedF32 {
     NormalizedF32::new(v.clamp(0.0, 1.0)).unwrap_or(NormalizedF32::ONE)
 }
 
-fn rgb_of(c: Color) -> (rgb::Color, f32) {
-    let rgba = c.to_rgba8();
-    (rgb::Color::new(rgba.r, rgba.g, rgba.b), f32::from(rgba.a) / 255.0)
+/// `qGray`: Qt's grey level of an RGB colour.
+fn q_gray(r: u8, g: u8, b: u8) -> u8 {
+    ((u32::from(r) * 11 + u32::from(g) * 16 + u32::from(b) * 5) / 32) as u8
 }
 
-fn stops(g: &peniko::Gradient) -> Vec<Stop> {
+fn rgb_of(c: Color, gray: bool) -> (rgb::Color, f32) {
+    let rgba = c.to_rgba8();
+    let a = f32::from(rgba.a) / 255.0;
+    if gray {
+        let v = q_gray(rgba.r, rgba.g, rgba.b);
+        return (rgb::Color::new(v, v, v), a);
+    }
+    (rgb::Color::new(rgba.r, rgba.g, rgba.b), a)
+}
+
+fn stops(g: &peniko::Gradient, gray: bool) -> Vec<Stop> {
     g.stops
         .iter()
         .map(|s| {
-            let (c, a) = rgb_of(s.color.to_alpha_color());
+            let (c, a) = rgb_of(s.color.to_alpha_color(), gray);
             Stop { offset: norm(s.offset), color: c.into(), opacity: norm(a) }
         })
         .collect()
@@ -171,16 +280,22 @@ fn spread(e: peniko::Extend) -> SpreadMethod {
 
 /// A krilla fill for an anyrender paint, or `None` when it cannot be
 /// expressed (images are handled separately).
-fn paint_fill(p: &Paint, brush_transform: Option<Affine>, alpha: f32, rule: peniko::Fill) -> Option<Fill> {
+fn paint_fill(
+    p: &Paint,
+    brush_transform: Option<Affine>,
+    alpha: f32,
+    rule: peniko::Fill,
+    gray: bool,
+) -> Option<Fill> {
     let rule = if rule == peniko::Fill::EvenOdd { FillRule::EvenOdd } else { FillRule::NonZero };
     let transform = tf(brush_transform.unwrap_or(Affine::IDENTITY));
     match p {
         Paint::Solid(c) => {
-            let (col, a) = rgb_of(*c);
+            let (col, a) = rgb_of(*c, gray);
             Some(Fill { paint: col.into(), opacity: norm(a * alpha), rule })
         }
         Paint::Gradient(g) => {
-            let st = stops(g);
+            let st = stops(g, gray);
             if st.is_empty() {
                 return None;
             }
@@ -323,6 +438,7 @@ struct Replayer<'a> {
     page: &'a RenderedPage,
     caches: &'a mut Caches,
     image_dpi: u32,
+    gray: bool,
 }
 
 impl Replayer<'_> {
@@ -338,8 +454,16 @@ impl Replayer<'_> {
         let (mut tw, mut th) = (w, h);
         if jpeg.is_none() && self.image_dpi > 0 {
             let pt = f64::from(page.pt_per_px);
-            let shown_w = { let [a, b, _, _, _, _] = transform.as_coeffs(); (a * f64::from(w)).hypot(b * f64::from(w)) } * pt / 72.0;
-            let shown_h = { let [_, _, c, d, _, _] = transform.as_coeffs(); (c * f64::from(h)).hypot(d * f64::from(h)) } * pt / 72.0;
+            let shown_w = {
+                let [a, b, _, _, _, _] = transform.as_coeffs();
+                (a * f64::from(w)).hypot(b * f64::from(w))
+            } * pt
+                / 72.0;
+            let shown_h = {
+                let [_, _, c, d, _, _] = transform.as_coeffs();
+                (c * f64::from(h)).hypot(d * f64::from(h))
+            } * pt
+                / 72.0;
             let dpi = f64::from(self.image_dpi);
             let (cw, ch) = ((shown_w * dpi).floor() as u32, (shown_h * dpi).floor() as u32);
             if cw < w || ch < h {
@@ -347,22 +471,33 @@ impl Replayer<'_> {
                 th = ch.clamp(1, h);
             }
         }
+        let gray = self.gray;
         self.caches
             .images
             .entry((id, tw, th))
             .or_insert_with(|| {
-                if let Some(src) = jpeg {
+                if let Some(src) = jpeg.filter(|_| !gray) {
                     if let Ok(i) = krilla::image::Image::from_jpeg(src.to_vec().into(), false) {
                         return Some(i);
                     }
                 }
-                let data = img.image.data.data().to_vec();
-                if (tw, th) == (w, h) {
-                    return Some(krilla::image::Image::from_rgba8(data, w, h));
+                let mut data = img.image.data.data().to_vec();
+                let (mut iw, mut ih) = (w, h);
+                if (tw, th) != (w, h) {
+                    let full = image::RgbaImage::from_raw(w, h, data)?;
+                    data = image::imageops::resize(&full, tw, th, image::imageops::FilterType::Triangle)
+                        .into_raw();
+                    (iw, ih) = (tw, th);
                 }
-                let full = image::RgbaImage::from_raw(w, h, data)?;
-                let small = image::imageops::resize(&full, tw, th, image::imageops::FilterType::Triangle);
-                Some(krilla::image::Image::from_rgba8(small.into_raw(), tw, th))
+                if gray {
+                    for px in data.chunks_exact_mut(4) {
+                        let v = q_gray(px[0], px[1], px[2]);
+                        px[0] = v;
+                        px[1] = v;
+                        px[2] = v;
+                    }
+                }
+                Some(krilla::image::Image::from_rgba8(data, iw, ih))
             })
             .clone()
     }
@@ -376,7 +511,9 @@ impl Replayer<'_> {
         if c.glyphs.is_empty() {
             return;
         }
-        let Some(fill) = paint_fill(&c.brush, None, c.brush_alpha, peniko::Fill::NonZero) else { return };
+        let Some(fill) = paint_fill(&c.brush, None, c.brush_alpha, peniko::Fill::NonZero, self.gray) else {
+            return;
+        };
         let g0 = c.glyphs[0];
         let size = c.font_size;
         let mut t = c.transform;
@@ -498,7 +635,9 @@ impl Replayer<'_> {
                         surface.pop();
                     }
                     brush => {
-                        let Some(fill) = paint_fill(brush, c.brush_transform, 1.0, c.fill) else { continue };
+                        let Some(fill) = paint_fill(brush, c.brush_transform, 1.0, c.fill, self.gray) else {
+                            continue;
+                        };
                         let Some(p) = to_path(&c.shape) else { continue };
                         surface.push_transform(&tf(c.transform));
                         surface.set_fill(Some(fill));
@@ -508,7 +647,8 @@ impl Replayer<'_> {
                     }
                 },
                 RenderCommand::Stroke(c) => {
-                    let Some(fill) = paint_fill(&c.brush, c.brush_transform, 1.0, peniko::Fill::NonZero)
+                    let Some(fill) =
+                        paint_fill(&c.brush, c.brush_transform, 1.0, peniko::Fill::NonZero, self.gray)
                     else {
                         continue;
                     };
@@ -576,24 +716,54 @@ fn date_time(secs: u64) -> DateTime {
         .utc_offset_minute(0)
 }
 
-fn outline_node(n: &OutlineNode) -> krilla::outline::OutlineNode {
-    let mut k = krilla::outline::OutlineNode::new(
-        n.title.clone(),
-        XyzDestination::new(n.page, Point::from_xy(n.x, n.y)),
-    );
+fn outline_node(n: &OutlineNode, named: &HashMap<String, XyzDestination>) -> krilla::outline::OutlineNode {
+    let dest = named
+        .get(&n.anchor)
+        .cloned()
+        .unwrap_or_else(|| XyzDestination::new(n.page, Point::from_xy(n.x, n.y)));
+    let mut k = krilla::outline::OutlineNode::new(n.title.clone(), dest);
     for c in &n.children {
-        k.push_child(outline_node(c));
+        k.push_child(outline_node(c, named));
     }
     k
 }
 
-/// Write the PDF.
+/// Draw one band: its document range (plus repeated table groups) placed at
+/// `band.origin`, clipped horizontally to the paper.
+fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut Caches, opts: PdfOptions) {
+    let s = band.page.pt_per_px;
+    let (ox, oy) = band.origin;
+    let (cx0, cx1) = (-ox / s, (paper_w - ox) / s);
+    surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ox, oy));
+    let mut r = Replayer { page: band.page, caches, gray: opts.grayscale, image_dpi: opts.image_dpi };
+    let scene = &band.page.recorder.scene;
+    let p = band.slice;
+    let mut dy = 0.0;
+    for b in [p.thead, Some((p.y0, p.y1)), p.tfoot] {
+        let Some((b0, b1)) = b else { continue };
+        surface.push_transform(&Transform::from_translate(0.0, dy - b0));
+        if let Some(clip) = rect_path(cx0, b0, cx1, b1) {
+            surface.push_clip_path(&clip, &FillRule::NonZero);
+            r.replay(surface, scene, b0, b1);
+            surface.pop();
+        }
+        surface.pop();
+        dy += b1 - b0;
+    }
+    surface.pop();
+}
+
+/// Write the PDF: `pages` in order on `width` × `height` pt paper.
+/// `outline_mode` adds `/PageMode /UseOutlines` to the catalog, like Qt
+/// does whenever the outline is enabled.
 pub fn write_pdf(
-    setup: &PageSetup,
-    parts: &[DocPart<'_>],
-    links: &[PdfLink],
+    width: f32,
+    height: f32,
+    pages: &[OutPage<'_>],
     outline: &[OutlineNode],
+    outline_mode: bool,
     info: &DocInfo,
+    opts: PdfOptions,
 ) -> Result<Vec<u8>, String> {
     let configuration =
         ConfigurationBuilder::new().with_version(PdfVersion::Pdf14).finish().map_err(|e| format!("{e:?}"))?;
@@ -601,58 +771,97 @@ pub fn write_pdf(
         SerializeSettings { xmp_metadata: false, enable_tagging: false, configuration, ..Default::default() };
     let mut doc = Document::new_with(settings);
     let mut caches = Caches::default();
-    let mut page_index = 0usize;
-    let page_settings = PageSettings::from_wh(setup.width, setup.height).ok_or("invalid page size")?;
-    for part in parts {
-        let s = part.page.pt_per_px;
-        let (ml, mt) = (setup.margin_left, setup.margin_top);
-        // Horizontal clip: everything that fits on the paper.
-        let (cx0, cx1) = (-ml / s, (setup.width - ml) / s);
-        for p in part.slices {
-            let mut page = doc.start_page_with(page_settings.clone());
-            for l in links.iter().filter(|l| l.page == page_index) {
-                let Some(rect) = Rect::from_ltrb(l.rect.0, l.rect.1, l.rect.2, l.rect.3) else { continue };
-                let target = match &l.target {
-                    LinkTarget::Uri(u) => {
-                        krilla::annotation::Target::Action(krilla::action::LinkAction::new(u.clone()).into())
-                    }
-                    LinkTarget::Page { page, x, y } => {
-                        krilla::annotation::Target::Destination(krilla::destination::Destination::Xyz(
-                            XyzDestination::new(*page, Point::from_xy(*x, *y)),
-                        ))
-                    }
-                };
-                page.add_annotation(krilla::annotation::Annotation::new_link(
-                    krilla::annotation::LinkAnnotation::new(rect, target),
-                    None,
-                ));
-            }
-            let mut surface = page.surface();
-            surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ml, mt));
-            let mut r = Replayer { page: part.page, caches: &mut caches, image_dpi: setup.image_dpi };
-            let scene = &part.page.recorder.scene;
-            let mut dy = 0.0;
-            for band in [p.thead, Some((p.y0, p.y1)), p.tfoot] {
-                let Some((b0, b1)) = band else { continue };
-                surface.push_transform(&Transform::from_translate(0.0, dy - b0));
-                if let Some(clip) = rect_path(cx0, b0, cx1, b1) {
-                    surface.push_clip_path(&clip, &FillRule::NonZero);
-                    r.replay(&mut surface, scene, b0, b1);
-                    surface.pop();
-                }
-                surface.pop();
-                dy += b1 - b0;
-            }
-            surface.pop();
-            surface.finish();
-            page.finish();
-            page_index += 1;
+    let page_settings = PageSettings::from_wh(width, height).ok_or("invalid page size")?;
+    // Named destinations: like Qt's anchor table, the last definition of a
+    // name wins (with copies, the last copy).
+    let mut named: HashMap<String, XyzDestination> = HashMap::new();
+    for (i, p) in pages.iter().enumerate() {
+        for a in &p.anchors {
+            named.insert(a.name.clone(), XyzDestination::new(i, Point::from_xy(a.x, a.y)));
         }
+    }
+    let mut fonts: HashMap<(usize, u32), Font> = HashMap::new();
+    for p in pages {
+        let mut page = doc.start_page_with(page_settings.clone());
+        for l in &p.links {
+            let Some(rect) = Rect::from_ltrb(l.rect.0, l.rect.1, l.rect.2, l.rect.3) else { continue };
+            let target = match &l.target {
+                LinkTarget::Uri(u) => {
+                    krilla::annotation::Target::Action(krilla::action::LinkAction::new(u.clone()).into())
+                }
+                LinkTarget::Named(n) => {
+                    let Some(xyz) = named.get(n) else { continue };
+                    krilla::annotation::Target::Destination(
+                        krilla::destination::NamedDestination::new(n.clone(), xyz.clone()).into(),
+                    )
+                }
+            };
+            page.add_annotation(krilla::annotation::Annotation::new_link(
+                krilla::annotation::LinkAnnotation::new(rect, target),
+                None,
+            ));
+        }
+        let mut surface = page.surface();
+        for band in &p.bands {
+            draw_band(&mut surface, band, width, &mut caches, opts);
+        }
+        for l in &p.lines {
+            let mut b = PathBuilder::new();
+            b.move_to(l.x0, l.y0);
+            b.line_to(l.x1, l.y1);
+            if let Some(path) = b.finish() {
+                surface.set_fill(None);
+                surface.set_stroke(Some(Stroke {
+                    paint: rgb::Color::new(0, 0, 0).into(),
+                    // Qt's default pen is cosmetic (width 0, a hairline).
+                    width: 0.0,
+                    ..Default::default()
+                }));
+                surface.draw_path(&path);
+                surface.set_stroke(None);
+            }
+        }
+        for t in &p.texts {
+            if t.text.is_empty() {
+                continue;
+            }
+            let key = (Arc::as_ptr(&t.face.data) as usize, t.face.index);
+            let font = match fonts.get(&key) {
+                Some(f) => f.clone(),
+                None => {
+                    let Some(f) = Font::new(t.face.data.clone().into(), t.face.index) else { continue };
+                    fonts.insert(key, f.clone());
+                    f
+                }
+            };
+            surface.set_stroke(None);
+            surface.set_fill(Some(Fill {
+                paint: rgb::Color::new(0, 0, 0).into(),
+                opacity: NormalizedF32::ONE,
+                rule: FillRule::NonZero,
+            }));
+            surface.draw_text(
+                Point::from_xy(t.x, t.baseline),
+                font,
+                t.size,
+                &t.text,
+                false,
+                krilla::text::TextDirection::Auto,
+            );
+        }
+        surface.finish();
+        page.finish();
+    }
+    for (name, xyz) in &named {
+        let _ = doc.register_named_destination(krilla::destination::NamedDestination::new(
+            name.clone(),
+            xyz.clone(),
+        ));
     }
     if !outline.is_empty() {
         let mut o = krilla::outline::Outline::new();
         for n in outline {
-            o.push_child(outline_node(n));
+            o.push_child(outline_node(n, &named));
         }
         doc.set_outline(o);
     }
@@ -664,7 +873,13 @@ pub fn write_pdf(
         meta = meta.creation_date(date_time(secs));
     }
     doc.set_metadata(meta);
-    doc.finish().map_err(|e| format!("{e:?}"))
+    let pdf = doc.finish().map_err(|e| format!("{e:?}"))?;
+    let fields: Vec<&[FormField]> = pages.iter().map(|p| p.fields.as_slice()).collect();
+    if outline_mode || fields.iter().any(|f| !f.is_empty()) {
+        crate::acroform::update(pdf, height, outline_mode, &fields)
+    } else {
+        Ok(pdf)
+    }
 }
 
 #[cfg(test)]

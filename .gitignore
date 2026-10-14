@@ -14,6 +14,7 @@ bench/results/*/
 # Generated PDFs, except committed reference outputs and fixtures
 *.pdf
 !tests/corpus/ref/*.pdf
+!tests/js/ref/*.pdf
 !tests/parts/**/ref.pdf
 !docs/upstream-fixtures/**/*.pdf
 
@@ -26,3 +27,6 @@ bench/results/*/
 
 # Reference wkhtmltopdf 0.12.6 binary (oracle), never published
 /.ref/
+
+# Agent worktrees
+/.claude/

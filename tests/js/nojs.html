@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>JavaScript disabled</title>
+<style>body { font-family: 'DejaVu Sans'; font-size: 11pt; }</style>
+<script>alert('this alert must not show');</script>
+</head>
+<body onload="document.body.appendChild(document.createTextNode('onload ran'))">
+<h1>JavaScript disabled</h1>
+<p id="a">Static text, not replaced.</p>
+<noscript><p>The noscript block is rendered when scripts are disabled.</p></noscript>
+<script>document.getElementById('a').textContent = 'Replaced by script';</script>
+</body></html>

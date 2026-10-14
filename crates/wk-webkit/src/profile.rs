@@ -226,7 +226,8 @@ fn media_prelude(prelude: &str) -> String {
                 } else if s[i].is_ascii_whitespace() {
                     i += 1;
                 } else {
-                    let end = q[i..].find(|c: char| c.is_ascii_whitespace() || c == '(').map_or(q.len(), |p| i + p);
+                    let end =
+                        q[i..].find(|c: char| c.is_ascii_whitespace() || c == '(').map_or(q.len(), |p| i + p);
                     words.push(q[i..end].to_string());
                     i = end;
                 }
@@ -449,9 +450,9 @@ const PREFIXED: &[(&str, &str)] = &[
 ];
 
 fn unsupported(name: &str) -> bool {
-    UNSUPPORTED
-        .iter()
-        .any(|u| if let Some(p) = u.strip_suffix('-') { name.starts_with(&format!("{p}-")) } else { name == *u })
+    UNSUPPORTED.iter().any(|u| {
+        if let Some(p) = u.strip_suffix('-') { name.starts_with(&format!("{p}-")) } else { name == *u }
+    })
 }
 
 /// The declarations replacing `name: value` (empty: dropped).
@@ -485,8 +486,16 @@ fn declaration(name: &str, value: &str) -> Vec<(String, String)> {
         return match v.as_str() {
             "-webkit-box" => vec![("display".into(), "flex".into())],
             "-webkit-inline-box" => vec![("display".into(), "inline-flex".into())],
-            "flex" | "inline-flex" | "grid" | "inline-grid" | "-webkit-flex" | "-webkit-inline-flex"
-            | "flow-root" | "contents" | "ruby" | "math" => vec![],
+            "flex"
+            | "inline-flex"
+            | "grid"
+            | "inline-grid"
+            | "-webkit-flex"
+            | "-webkit-inline-flex"
+            | "flow-root"
+            | "contents"
+            | "ruby"
+            | "math" => vec![],
             _ => keep(name, value.to_string()),
         };
     }
@@ -561,7 +570,9 @@ fn convert_value(value: &str) -> Option<String> {
             return None;
         }
     }
-    for f in ["linear-gradient(", "radial-gradient(", "repeating-linear-gradient(", "repeating-radial-gradient("] {
+    for f in
+        ["linear-gradient(", "radial-gradient(", "repeating-linear-gradient(", "repeating-radial-gradient("]
+    {
         if contains_function(&lower, f) {
             return None;
         }
@@ -616,7 +627,10 @@ fn has_unsupported_unit(lower: &str) -> bool {
             }
             c if c.is_ascii_digit() || c == b'.' => {
                 // A number not glued to an identifier (`h1`, `#a0b`).
-                let ident_before = i > 0 && (s[i - 1].is_ascii_alphabetic() || s[i - 1] == b'#' || s[i - 1] == b'-' && i > 1 && s[i - 2].is_ascii_alphabetic());
+                let ident_before = i > 0
+                    && (s[i - 1].is_ascii_alphabetic()
+                        || s[i - 1] == b'#'
+                        || s[i - 1] == b'-' && i > 1 && s[i - 2].is_ascii_alphabetic());
                 let mut j = i;
                 while j < s.len() && (s[j].is_ascii_digit() || s[j] == b'.') {
                     j += 1;
@@ -625,7 +639,24 @@ fn has_unsupported_unit(lower: &str) -> bool {
                 while k < s.len() && s[k].is_ascii_alphabetic() {
                     k += 1;
                 }
-                if !ident_before && matches!(&lower[j..k], "vw" | "vh" | "vmin" | "vmax" | "ch" | "q" | "dvh" | "svh" | "lvh" | "dvw" | "svw" | "lvw" | "cqw" | "cqh") {
+                if !ident_before
+                    && matches!(
+                        &lower[j..k],
+                        "vw" | "vh"
+                            | "vmin"
+                            | "vmax"
+                            | "ch"
+                            | "q"
+                            | "dvh"
+                            | "svh"
+                            | "lvh"
+                            | "dvw"
+                            | "svw"
+                            | "lvw"
+                            | "cqw"
+                            | "cqh"
+                    )
+                {
                     return true;
                 }
                 i = k.max(i + 1);
@@ -749,7 +780,14 @@ fn legacy_radial(args: &str) -> Option<String> {
         l.split_whitespace().all(|w| {
             matches!(
                 w,
-                "circle" | "ellipse" | "closest-side" | "closest-corner" | "farthest-side" | "farthest-corner" | "contain" | "cover"
+                "circle"
+                    | "ellipse"
+                    | "closest-side"
+                    | "closest-corner"
+                    | "farthest-side"
+                    | "farthest-corner"
+                    | "contain"
+                    | "cover"
             )
         })
     };
@@ -772,24 +810,28 @@ fn legacy_radial(args: &str) -> Option<String> {
         head.push_str(p);
     }
     let stops = parts[idx..].join(", ");
-    Some(if head.is_empty() { format!("radial-gradient({stops})") } else { format!("radial-gradient({head}, {stops})") })
+    Some(if head.is_empty() {
+        format!("radial-gradient({stops})")
+    } else {
+        format!("radial-gradient({head}, {stops})")
+    })
 }
 
 /// A `-webkit-gradient()` point (`left top`, `50% 0`, `0 100`) as fractions.
 fn point(p: &str) -> (f32, f32) {
     let mut w = p.split_whitespace();
-    let coord = |t: Option<&str>, axis_x: bool| -> f32 {
+    let coord = |t: Option<&str>| -> f32 {
         match t.map(|t| t.to_ascii_lowercase()) {
             Some(t) if t == "left" || t == "top" => 0.0,
             Some(t) if t == "right" || t == "bottom" => 1.0,
             Some(t) if t == "center" => 0.5,
             Some(t) if t.ends_with('%') => t.trim_end_matches('%').parse::<f32>().unwrap_or(0.0) / 100.0,
             // Plain numbers are pixels; without the box size, keep the sign.
-            Some(t) => t.parse::<f32>().map(|v| if v > 0.0 { 1.0 } else { 0.0 }).unwrap_or(if axis_x { 0.0 } else { 0.0 }),
+            Some(t) => t.parse::<f32>().map(|v| if v > 0.0 { 1.0 } else { 0.0 }).unwrap_or(0.0),
             None => 0.5,
         }
     };
-    (coord(w.next(), true), coord(w.next(), false))
+    (coord(w.next()), coord(w.next()))
 }
 
 /// `-webkit-gradient(linear|radial, …, from(), to(), color-stop())`.
@@ -815,7 +857,11 @@ fn old_webkit_gradient(args: &str) -> Option<String> {
         } else {
             let a = split_args(inner);
             let pos = a.first()?.trim();
-            let pos = if let Some(pc) = pos.strip_suffix('%') { pc.parse::<f32>().ok()? / 100.0 } else { pos.parse::<f32>().ok()? };
+            let pos = if let Some(pc) = pos.strip_suffix('%') {
+                pc.parse::<f32>().ok()? / 100.0
+            } else {
+                pos.parse::<f32>().ok()?
+            };
             stops.push((pos, a.get(1)?.trim().to_string()));
         }
     }
@@ -859,7 +905,10 @@ mod tests {
 
     #[test]
     fn values_webkit_could_not_parse_drop_the_declaration() {
-        assert_eq!(sheet("a{width:calc(100% - 2px);height:2vh;color:var(--x);--x:red;margin:1em}"), "a{margin:1em}");
+        assert_eq!(
+            sheet("a{width:calc(100% - 2px);height:2vh;color:var(--x);--x:red;margin:1em}"),
+            "a{margin:1em}"
+        );
         assert_eq!(sheet("a{background:linear-gradient(red,blue)}"), "a{}");
         assert_eq!(sheet("h1{width:10px}"), "h1{width:10px}");
         assert_eq!(sheet("a{color:#0ch}"), "a{color:#0ch}");
@@ -908,10 +957,7 @@ mod tests {
             "a{display:flex;justify-content:space-between;flex-direction:column}"
         );
         assert_eq!(sheet("a{display:flex}"), "a{}");
-        assert_eq!(
-            sheet("a{-webkit-box-flex:2}"),
-            "a{flex-grow:2;flex-shrink:2;flex-basis:auto}"
-        );
+        assert_eq!(sheet("a{-webkit-box-flex:2}"), "a{flex-grow:2;flex-shrink:2;flex-basis:auto}");
     }
 
     #[test]

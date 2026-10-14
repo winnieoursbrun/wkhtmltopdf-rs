@@ -8,6 +8,22 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 
 ## [Unreleased]
 
+### Added
+
+- JavaScript (P4, `crates/wk-js`): Boa realm per page with DOM bindings, scripts in document
+  order (script-pausing parser, external scripts through the loader, `document.write`),
+  `DOMContentLoaded`/`load`/`<body onload>`, timers and `Date` on a virtual clock,
+  `--javascript-delay`, `--window-status`, `--run-script`, `window.print()`,
+  `--debug-javascript` and dialog output like 0.12.6, `--stop-slow-scripts`,
+  `--disable-javascript`, XMLHttpRequest over the loader, canvas 2D painted as vector.
+- `tests/js`: JavaScript corpus (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution,
+  timers, `document.write`, …) with outputs of the real binary.
+
+### Fixed
+
+- A missing local file's error reads `Error opening <path>`, like Qt.
+- Outside string list markers end one space width before the item text, like WebKit.
+
 ## [0.1.0-alpha.1] - unreleased
 
 First public pre-release. Not a drop-in replacement yet: see the status table in the README.

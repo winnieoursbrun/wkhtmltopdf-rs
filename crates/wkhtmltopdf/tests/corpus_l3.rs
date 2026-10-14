@@ -27,7 +27,8 @@ const DPI: f32 = 50.0;
 
 /// `(document, page or 0 for every page) -> min SSIM`.
 fn thresholds() -> HashMap<(String, usize), f64> {
-    let text = std::fs::read_to_string(common::corpus().join("l3-thresholds.txt")).expect("l3-thresholds.txt");
+    let text =
+        std::fs::read_to_string(common::corpus().join("l3-thresholds.txt")).expect("l3-thresholds.txt");
     let mut out = HashMap::new();
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -90,7 +91,12 @@ fn corpus_l3_raster() {
 
 #[test]
 fn ssim_of_identical_pages_is_one() {
-    let g = common::Gray { w: 16, h: 16, px: (0..256).map(|i| (i % 255) as u8).collect(), rgb: vec![[0; 3]; 256] };
+    let g = common::Gray {
+        w: 16,
+        h: 16,
+        px: (0..256).map(|i| (i % 255) as u8).collect(),
+        rgb: vec![[0; 3]; 256],
+    };
     assert!((common::ssim(&g, &g) - 1.0).abs() < 1e-9);
     let blank = common::Gray { w: 16, h: 16, px: vec![255; 256], rgb: vec![[255; 3]; 256] };
     assert!(common::ssim(&g, &blank) < 0.5);

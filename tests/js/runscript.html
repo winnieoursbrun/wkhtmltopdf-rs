@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>run-script</title>
+<style>body { font-family: 'DejaVu Sans'; font-size: 11pt; }</style>
+</head>
+<body>
+<h1 id="title">Original title</h1>
+<p id="target">This text is replaced by --run-script.</p>
+<p id="order">order:</p>
+<script>
+window.addEventListener('load', function () {
+  document.getElementById('order').textContent += ' load';
+});
+setTimeout(function () { document.getElementById('order').textContent += ' timer'; }, 10);
+</script>
+</body></html>
