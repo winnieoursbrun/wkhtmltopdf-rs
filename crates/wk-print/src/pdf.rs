@@ -33,7 +33,7 @@ use krilla::{Document, SerializeSettings};
 use kurbo::{Affine, BezPath, PathEl, Shape};
 use peniko::Color;
 use skrifa::MetadataProvider;
-use wk_webkit::{Command, RenderedPage, RunText};
+use wk_webkit::{Command, DisplayList, RenderedPage, RunText};
 
 use crate::paginate::PageSlice;
 
@@ -586,7 +586,7 @@ impl Replayer<'_> {
     }
 
     /// Replay `commands` onto `surface`, restricted to the band `[y0, y1)`.
-    fn replay(&mut self, surface: &mut Surface, commands: &[Command], y0: f32, y1: f32) {
+    fn replay(&mut self, surface: &mut Surface, commands: &DisplayList, y0: f32, y1: f32) {
         let (y0d, y1d) = (f64::from(y0), f64::from(y1));
         let mut layers: Vec<usize> = vec![];
         for (idx, cmd) in commands.iter().enumerate() {
@@ -740,10 +740,10 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
     let (ox, oy) = band.origin;
     let (cx0, cx1) = (-ox / s, (paper_w - ox) / s);
     surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ox, oy));
-    let commands = band.page.recorder.commands.as_slice();
+    let commands = &band.page.recorder.commands;
     let bboxes = caches
         .bboxes
-        .entry(commands.as_ptr() as usize)
+        .entry(commands as *const DisplayList as usize)
         .or_insert_with(|| commands.iter().map(|c| bbox(&c.get())).collect())
         .clone();
     let mut r =

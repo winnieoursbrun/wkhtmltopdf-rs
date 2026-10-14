@@ -7,7 +7,7 @@
 //! Memory: an `anyrender::recording::RenderCommand` is 464 bytes, plus a
 //! heap path for its shape. Table-heavy documents paint tens of thousands of
 //! solid rectangles (cell backgrounds, collapsed borders), so those are kept
-//! as [`RectFill`] (no path, ~160 bytes) and expanded on demand into the very
+//! as [`RectFill`] (no path, 104 bytes) and expanded on demand into the very
 //! command `anyrender::Scene::fill` would have recorded; every other command
 //! is recorded by an `anyrender::Scene` and boxed.
 
@@ -21,13 +21,13 @@ use blitz_paint::run_text::RunText;
 use kurbo::{Affine, Rect, Shape, Stroke};
 use peniko::{BlendMode, Color, Fill, FontData, StyleRef};
 
-/// A solid rectangle fill (`Scene::fill` with a `Rect` and a solid colour).
+/// A solid rectangle fill (`Scene::fill` with a `Rect`, a solid colour and
+/// no brush transform).
 #[derive(Debug, Clone)]
 pub struct RectFill {
     fill: Fill,
     transform: Affine,
     color: Color,
-    brush_transform: Option<Affine>,
     rect: Rect,
 }
 
@@ -35,6 +35,7 @@ pub struct RectFill {
 #[derive(Debug, Clone)]
 pub enum Command {
     RectFill(RectFill),
+    PopLayer,
     Other(Box<RenderCommand>),
 }
 
@@ -43,14 +44,61 @@ impl Command {
     pub fn get(&self) -> Cow<'_, RenderCommand> {
         match self {
             Command::Other(c) => Cow::Borrowed(c),
+            Command::PopLayer => Cow::Owned(RenderCommand::PopLayer),
             Command::RectFill(r) => Cow::Owned(RenderCommand::Fill(FillCommand {
                 fill: r.fill,
                 transform: r.transform,
                 brush: Paint::Solid(r.color),
-                brush_transform: r.brush_transform,
+                brush_transform: None,
                 shape: r.rect.into_path(Scene::default().tolerance),
             })),
         }
+    }
+}
+
+/// Commands in fixed-size chunks: a long document records tens of thousands
+/// of them, and a single `Vec` would hold up to twice its size (three times
+/// while it grows).
+#[derive(Default)]
+pub struct DisplayList {
+    chunks: Vec<Vec<Command>>,
+    len: usize,
+}
+
+impl DisplayList {
+    const CHUNK: usize = 4096;
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn get(&self, i: usize) -> Option<&Command> {
+        self.chunks.get(i / Self::CHUNK)?.get(i % Self::CHUNK)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Command> {
+        self.chunks.iter().flatten()
+    }
+
+    fn push(&mut self, c: Command) {
+        match self.chunks.last_mut() {
+            Some(last) if last.len() < Self::CHUNK => last.push(c),
+            _ => {
+                let mut chunk = Vec::with_capacity(Self::CHUNK);
+                chunk.push(c);
+                self.chunks.push(chunk);
+            }
+        }
+        self.len += 1;
+    }
+
+    fn clear(&mut self) {
+        self.chunks.clear();
+        self.len = 0;
     }
 }
 
@@ -58,7 +106,7 @@ impl Command {
 #[derive(Default)]
 pub struct Recorder {
     /// The display list, in painting order.
-    pub commands: Vec<Command>,
+    pub commands: DisplayList,
     /// Source text of glyph-run commands, by command index.
     pub texts: HashMap<usize, RunText>,
     /// Records one command at a time, moved to `commands`.
@@ -68,7 +116,10 @@ pub struct Recorder {
 impl Recorder {
     fn take_scratch(&mut self) {
         for c in self.scratch.commands.drain(..) {
-            self.commands.push(Command::Other(Box::new(c)));
+            self.commands.push(match c {
+                RenderCommand::PopLayer => Command::PopLayer,
+                c => Command::Other(Box::new(c)),
+            });
         }
     }
 }
@@ -127,14 +178,8 @@ impl PaintScene for Recorder {
         shape: &impl Shape,
     ) {
         let brush = brush.into();
-        if let (Paint::Solid(color), Some(rect)) = (&brush, shape.as_rect()) {
-            self.commands.push(Command::RectFill(RectFill {
-                fill: style,
-                transform,
-                color: *color,
-                brush_transform,
-                rect,
-            }));
+        if let (Paint::Solid(color), Some(rect), None) = (&brush, shape.as_rect(), brush_transform) {
+            self.commands.push(Command::RectFill(RectFill { fill: style, transform, color: *color, rect }));
             return;
         }
         self.scratch.fill(style, transform, brush, brush_transform, shape);

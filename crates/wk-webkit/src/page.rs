@@ -752,7 +752,7 @@ impl WebPage {
         let mut inline: HashMap<(NodeId, i64), kurbo::Rect> = HashMap::new();
         for (idx, rt) in &rec.texts {
             let Some(&a) = link_of.get(&rt.node_id) else { continue };
-            let Some(bb) = glyph_run_bbox(&rec.commands[*idx].get()) else { continue };
+            let Some(bb) = rec.commands.get(*idx).and_then(|c| glyph_run_bbox(&c.get())) else { continue };
             let key = (a, bb.y1.round() as i64);
             inline.entry(key).and_modify(|r| *r = r.union(bb)).or_insert(bb);
         }
