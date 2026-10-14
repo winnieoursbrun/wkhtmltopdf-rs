@@ -186,13 +186,63 @@ fn map_error(e: &ureq::Error, url: &Url) -> (NetworkError, String) {
 }
 
 /// Name resolution failures come from `getaddrinfo` as uncategorised I/O
-/// errors (`failed to lookup address information: …`).
+/// errors (`failed to lookup address information: …`). On Windows they are
+/// Winsock errors instead (`No such host is known. (os error 11001)`).
 fn is_resolution_failure(e: &std::io::Error) -> bool {
+    if cfg!(windows) && is_winsock_resolution_error(e.raw_os_error()) {
+        return true;
+    }
     let m = e.to_string().to_ascii_lowercase();
     m.contains("lookup address")
         || m.contains("not known")
         || m.contains("name resolution")
         || m.contains("no address associated")
+}
+
+/// Winsock resolver errors that `QHostInfo` reports as `HostNotFound`:
+/// `WSAHOST_NOT_FOUND` (11001), `WSATRY_AGAIN` (11002, no answer from the
+/// DNS server, e.g. offline) and `WSANO_DATA` (11004, the name has no
+/// address). Only meaningful for Windows error codes.
+fn is_winsock_resolution_error(code: Option<i32>) -> bool {
+    matches!(code, Some(11001 | 11002 | 11004))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn winsock_resolution_errors() {
+        assert!(is_winsock_resolution_error(Some(11001)));
+        assert!(is_winsock_resolution_error(Some(11002)));
+        assert!(is_winsock_resolution_error(Some(11004)));
+        assert!(!is_winsock_resolution_error(Some(11003)));
+        assert!(!is_winsock_resolution_error(Some(10061)));
+        assert!(!is_winsock_resolution_error(None));
+    }
+
+    #[test]
+    fn resolution_failure_maps_to_host_not_found() {
+        let url = Url::parse("http://nonexist.html/").unwrap();
+        let io = std::io::Error::other(
+            "failed to lookup address information: nodename nor servname provided, or not known",
+        );
+        let (err, msg) = map_error(&ureq::Error::Io(io), &url);
+        assert_eq!(err, NetworkError::HostNotFoundError);
+        assert_eq!(msg, "Host nonexist.html not found");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_resolution_failure_maps_to_host_not_found() {
+        let url = Url::parse("http://nonexistent.invalid/").unwrap();
+        for code in [11001, 11002, 11004] {
+            let io = std::io::Error::from_raw_os_error(code);
+            let (err, msg) = map_error(&ureq::Error::Io(io), &url);
+            assert_eq!(err, NetworkError::HostNotFoundError, "os error {code}");
+            assert_eq!(msg, "Host nonexistent.invalid not found");
+        }
+    }
 }
 
 impl HttpClient {
