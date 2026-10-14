@@ -5,6 +5,8 @@
 # stdout, Letter, 0.75in margins, UTF-8.
 #
 # Usage: WK_BIN=/path/to/wkhtmltopdf-linux-amd64 tests/corpus/make-refs.sh [page ...]
+# A page may carry extra options in <page>.args (whitespace separated, placed
+# before the input); the corpus tests read the same file.
 # The binary comes from the wkhtmltopdf-binary-edge 0.12.6.0 gem
 # (libexec/wkhtmltopdf-linux-amd64). Pages default to every *.html here.
 # The references are committed: the L2 test (crates/wkhtmltopdf/tests/corpus_l2.rs)
@@ -18,7 +20,10 @@ if [ $# -eq 0 ]; then
   set -- $(cd "$HERE" && ls *.html | sed 's/\.html$//')
 fi
 for p in "$@"; do
+  EXTRA=""
+  if [ -f "$HERE/$p.args" ]; then EXTRA=$(cat "$HERE/$p.args"); fi
+  # shellcheck disable=SC2086
   docker run --rm -i --platform linux/amd64 -e TZ=UTC -v "$WK_BIN":/wk/wkhtmltopdf:ro \
-    --entrypoint /wk/wkhtmltopdf wkref:local $ARGS - - < "$HERE/$p.html" > "$HERE/ref/$p.pdf"
+    --entrypoint /wk/wkhtmltopdf wkref:local $ARGS $EXTRA - - < "$HERE/$p.html" > "$HERE/ref/$p.pdf"
   echo "ref/$p.pdf: $(wc -c < "$HERE/ref/$p.pdf") bytes"
 done

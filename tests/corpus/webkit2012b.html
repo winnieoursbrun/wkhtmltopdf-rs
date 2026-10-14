@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>WebKit 2012 profile (2)</title>
+<style>
+body { font-family: "DejaVu Sans", sans-serif; font-size: 10px; margin: 8px; }
+.row { overflow: hidden; margin-bottom: 6px; }
+.cell { float: left; width: 150px; height: 56px; margin-right: 10px; }
+.label { font-size: 8px; color: #333; height: 12px; }
+.box { width: 60px; height: 24px; background: #9bd; margin-left: 20px; }
+.o1 { opacity: 0.3; font-size: 14px; color: #000; }
+.o2 { opacity: 0.3; background: #c00; width: 60px; height: 24px; }
+.o3 { color: rgba(0, 0, 0, 0.3); font-size: 14px; }
+.o4 { background: hsla(0, 100%, 40%, 0.5); }
+.x1 { display: -webkit-box; -webkit-box-orient: horizontal; width: 130px; background: #eee; }
+.x1 > div { -webkit-box-flex: 1; border: 1px solid #333; height: 20px; }
+.x2 { display: -webkit-box; -webkit-box-orient: vertical; width: 130px; background: #eee; }
+.x2 > span { border: 1px solid #333; }
+.x3 { display: -webkit-box; -webkit-box-pack: center; width: 130px; background: #eee; }
+.x3 > div { width: 30px; height: 20px; background: #9bd; }
+.x4 { display: -webkit-inline-box; background: #eee; }
+.w1 { width: 10vh; }
+.w2 { width: 10vmin; }
+.w3 { -webkit-border-top-left-radius: 12px; }
+.w4 { -webkit-background-size: 10px 10px; background-image: -webkit-linear-gradient(left, #c00 50%, #fff 50%); }
+@supports (display: block) { .w5 { background: #c00; } }
+.w6 { background: #9bd !important; background: #c00; }
+.w7 { overflow-wrap: break-word; width: 60px; }
+.w8 { word-wrap: break-word; width: 60px; }
+.w9 { outline: 3px solid #c00; outline-offset: 4px; }
+.y1 { border-image: -webkit-linear-gradient(left, #c00, #00c) 1; border: 4px solid #333; }
+.y2 { -webkit-text-stroke: 1px #c00; font-size: 18px; font-weight: bold; }
+.y3 { text-decoration: underline; -webkit-text-decoration-color: #c00; text-decoration-color: #c00; font-size: 14px; }
+.y4 { text-transform: uppercase; letter-spacing: 2px; word-spacing: 6px; }
+.y5:not(.nope) { background: #c00; }
+.y6::before { content: "B:"; color: #c00; }
+.y7 { background: #9bd url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAGklEQVR4nGM4w8AAR/+RAAMVJZA5yIqoKAEAbYl5IT5h878AAAAASUVORK5CYII=") no-repeat 10px 6px; }
+.y8 { background: #9bd url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAGklEQVR4nGM4w8AAR/+RAAMVJZA5yIqoKAEAbYl5IT5h878AAAAASUVORK5CYII=") repeat-x 0 50%; }
+.y9 { background: #9bd url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAGklEQVR4nGM4w8AAR/+RAAMVJZA5yIqoKAEAbYl5IT5h878AAAAASUVORK5CYII=") right bottom no-repeat; }
+.z1 { background: #9bd; position: relative; }
+.z1 span { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; background: #c00; }
+.z2 { font-size: 0.8em; } .z2 b { font-size: 150%; }
+.z3 { -webkit-box-shadow: 3px 3px 4px rgba(0,0,0,0.6); border-radius: 8px; }
+.z4 { box-shadow: 2px 2px 0 #c00, -2px -2px 0 #00c; }
+</style></head><body>
+<div class="row">
+ <div class="cell"><div class="label">opacity text</div><div class="o1">Opacity</div></div>
+ <div class="cell"><div class="label">opacity box</div><div class="o2"></div></div>
+ <div class="cell"><div class="label">rgba text</div><div class="o3">Rgba text</div></div>
+ <div class="cell"><div class="label">hsla</div><div class="box o4"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">-webkit-box flex 1</div><div class="x1"><div>a</div><div>b</div></div></div>
+ <div class="cell"><div class="label">-webkit-box vertical</div><div class="x2"><span>a</span><span>b</span></div></div>
+ <div class="cell"><div class="label">-webkit-box-pack center</div><div class="x3"><div></div><div></div></div></div>
+ <div class="cell"><div class="label">-webkit-inline-box</div>x<div class="x4"><span>a</span><span>b</span></div>y</div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">vh</div><div class="box w1"></div></div>
+ <div class="cell"><div class="label">vmin</div><div class="box w2"></div></div>
+ <div class="cell"><div class="label">-webkit-border-top-left-radius</div><div class="box w3"></div></div>
+ <div class="cell"><div class="label">-webkit-background-size</div><div class="box w4"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">@supports</div><div class="box w5"></div></div>
+ <div class="cell"><div class="label">!important</div><div class="box w6"></div></div>
+ <div class="cell"><div class="label">overflow-wrap</div><div class="w7">Averyveryverylongword</div></div>
+ <div class="cell"><div class="label">word-wrap</div><div class="w8">Averyveryverylongword</div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">outline-offset</div><div class="box w9"></div></div>
+ <div class="cell"><div class="label">border-image</div><div class="box y1"></div></div>
+ <div class="cell"><div class="label">-webkit-text-stroke</div><div class="y2">Stroke</div></div>
+ <div class="cell"><div class="label">text-decoration-color</div><div class="y3">Underline</div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">transform/spacing</div><div class="y4">upper case</div></div>
+ <div class="cell"><div class="label">:not()</div><div class="box y5"></div></div>
+ <div class="cell"><div class="label">::before</div><div class="y6">text</div></div>
+ <div class="cell"><div class="label">bg no-repeat 10px 6px</div><div class="box y7"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">bg repeat-x 0 50%</div><div class="box y8"></div></div>
+ <div class="cell"><div class="label">bg right bottom</div><div class="box y9"></div></div>
+ <div class="cell"><div class="label">abs overflow</div><div class="box z1"><span></span></div></div>
+ <div class="cell"><div class="label">em/%</div><div class="z2">small <b>big</b></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">shadow rgba blur radius</div><div class="box z3"></div></div>
+ <div class="cell"><div class="label">two shadows</div><div class="box z4"></div></div>
+</div>
+</body></html>

@@ -11,7 +11,7 @@ use style::{
 use crate::{
     color::{ToColorColor as _, contrast_ratio},
     kurbo_css::Edge,
-    render::{ElementCx, PhysicalTracks},
+    render::ElementCx,
 };
 
 /// A darker version of a colour (mirrors WebKit/Blink's `Color::Dark`): the
@@ -147,6 +147,11 @@ fn sample_points_along_path(path: &BezPath, spacing: f64, count: usize) -> Vec<P
 impl ElementCx<'_, '_> {
     /// Draw all borders for a node
     pub(crate) fn draw_border(&self, scene: &mut impl PaintScene) {
+        // wkhtmltopdf-rs: a cell of a collapsed table paints no border of its own;
+        // the table paints the resolved collapsed borders (`draw_table_borders`).
+        if self.node.collapsed_border.get().is_some() {
+            return;
+        }
         let style = &*self.style;
         let border = style.get_border();
         let current_color = style.clone_color();
@@ -509,81 +514,45 @@ impl ElementCx<'_, '_> {
         scene.pop_layer();
     }
 
+    /// wkhtmltopdf-rs: the collapsing border model as QtWebKit 2.2 paints it:
+    /// every cell edge carries its resolved collapsed border (`collapse_borders`
+    /// in blitz-dom's `layout/table.rs`), straddling the cell boundary with the
+    /// extra pixel inside the cell below/right of it.
     pub(crate) fn draw_table_borders(&self, scene: &mut impl PaintScene) {
         let SpecialElementData::TableRoot(table) = &self.element.special_data else {
             return;
         };
-        // Borders are only handled at the table level when BorderCollapse::Collapse
         if table.border_collapse != BorderCollapse::Collapse {
             return;
         }
-
-        let Some(grid_info) = &mut *table.computed_grid_info.borrow_mut() else {
-            return;
-        };
-        let Some(border_style) = table.border_style.as_deref() else {
-            return;
-        };
-
-        let outer_border_style = self.style.get_border();
-
-        let cols = PhysicalTracks::from_tracks(&grid_info.columns);
-        let rows = PhysicalTracks::from_tracks(&grid_info.rows);
-
-        // TODO: support different colors for different borders
-        let current_color = self.style.clone_color();
-        let border_color = border_style
-            .border_top_color
-            .resolve_to_absolute(&current_color)
-            .as_srgb_color();
-
-        // No need to draw transparent borders (as they won't be visible anyway)
-        if border_color == Color::TRANSPARENT {
-            return;
-        }
-
-        // Border widths are not adjusted for border-style in computed styles,
-        // so a border with `none`/`hidden` style must be treated as zero-width.
-        if border_style.border_top_style.none_or_hidden() {
-            return;
-        }
-
-        // The borders are laid out as the gutters between the tracks, and as the border
-        // of the table around them. Track positions are relative to the table's border box.
-        let border_width = table.style.gap.map(|gap| gap.into_raw().value() as f64);
-        let left = cols.origin() as f64 - border_width.width;
-        let right = (cols.origin() + cols.span()) as f64 + border_width.width;
-        let top = rows.origin() as f64 - border_width.height;
-        let bottom = (rows.origin() + rows.span()) as f64 + border_width.height;
-
-        let mut fill = |x0: f64, y0: f64, x1: f64, y1: f64| {
+        let mut fill = |x0: f64, y0: f64, x1: f64, y1: f64, color: Color| {
+            if x1 <= x0 || y1 <= y0 {
+                return;
+            }
             let shape = Rect::new(x0, y0, x1, y1).scale_from_origin(self.scale);
-            scene.fill(Fill::NonZero, self.transform, border_color, None, &shape);
+            scene.fill(Fill::NonZero, self.transform, color, None, &shape);
         };
-
-        // Horizontal borders: the outer edges, then the gutters between adjacent row tracks.
-        // The vertical borders are drawn between them so that no corner is painted twice.
-        if outer_border_style.border_top_style != BorderStyle::Hidden {
-            fill(left, top, right, top + border_width.height);
-        }
-        if outer_border_style.border_bottom_style != BorderStyle::Hidden {
-            fill(left, bottom - border_width.height, right, bottom);
-        }
-        for (prev, next) in rows.iter().zip(rows.iter().skip(1)) {
-            fill(left, prev.end as f64, right, next.start as f64);
-        }
-
-        // Vertical borders, one segment per row
-        for row in rows.iter() {
-            let (y0, y1) = (row.start as f64, row.end as f64);
-            if outer_border_style.border_left_style != BorderStyle::Hidden {
-                fill(left, y0, left + border_width.width, y1);
+        for cell in &table.cells {
+            let Some(edges) = &cell.collapsed else { continue };
+            let Some(node) = self.context.dom.get_node(cell.node_id) else { continue };
+            let l = node.final_layout();
+            let (x, y) = (l.location.x as f64, l.location.y as f64);
+            let (w, h) = (l.size.width as f64, l.size.height as f64);
+            let [top, right, bottom, left] = edges;
+            let color = |c: style::color::AbsoluteColor| c.as_srgb_color();
+            // Each edge reaches into the neighbour by its lower half.
+            let (lx0, rx1) = (x - left.outer_half(), x + w + right.inner_half());
+            if top.is_painted() {
+                fill(lx0, y - top.outer_half(), rx1, y + top.inner_half(), color(top.color));
             }
-            if outer_border_style.border_right_style != BorderStyle::Hidden {
-                fill(right - border_width.width, y0, right, y1);
+            if bottom.is_painted() {
+                fill(lx0, y + h - bottom.outer_half(), rx1, y + h + bottom.inner_half(), color(bottom.color));
             }
-            for (prev, next) in cols.iter().zip(cols.iter().skip(1)) {
-                fill(prev.end as f64, y0, next.start as f64, y1);
+            if left.is_painted() {
+                fill(x - left.outer_half(), y, x + left.inner_half(), y + h, color(left.color));
+            }
+            if right.is_painted() {
+                fill(x + w - right.outer_half(), y, x + w + right.inner_half(), y + h, color(right.color));
             }
         }
     }

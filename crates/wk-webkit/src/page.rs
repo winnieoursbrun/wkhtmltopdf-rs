@@ -369,6 +369,9 @@ impl WebPage {
         let mut recorder = Recorder::default();
         blitz_paint::paint_scene(&mut recorder, &mut self.doc, 1.0, layout_w as u32, doc_h, 0, 0);
 
+        if std::env::var_os("WKHTMLTOPDF_DEBUG_LAYOUT").is_some() {
+            self.debug_layout();
+        }
         if std::env::var_os("WKHTMLTOPDF_DEBUG_SCENE").is_some() {
             for (i, c) in recorder.scene.commands.iter().enumerate() {
                 if let anyrender::recording::RenderCommand::GlyphRun(g) = c {
@@ -404,6 +407,35 @@ impl WebPage {
             if !self.doc.has_pending_critical_resources() {
                 break;
             }
+        }
+    }
+
+    /// Print every element box (`WKHTMLTOPDF_DEBUG_LAYOUT`): tag, position,
+    /// size, border and padding, indented by depth.
+    fn debug_layout(&self) {
+        let mut stack = vec![(self.doc.root_element().id, 0usize)];
+        while let Some((id, depth)) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            for &c in n.children.iter().rev() {
+                stack.push((c, depth + 1));
+            }
+            if !n.is_element() {
+                continue;
+            }
+            let l = n.final_layout();
+            let p = n.absolute_position(0.0, 0.0);
+            eprintln!(
+                "{:indent$}{} x={:.2} y={:.2} w={:.2} h={:.2} border={:?} padding={:?}",
+                "",
+                tag(n),
+                p.x,
+                p.y,
+                l.size.width,
+                l.size.height,
+                (l.border.top, l.border.right, l.border.bottom, l.border.left),
+                (l.padding.top, l.padding.right, l.padding.bottom, l.padding.left),
+                indent = depth * 2
+            );
         }
     }
 
@@ -571,6 +603,22 @@ fn extent(doc: &BaseDocument, node: &Node) -> Option<(f32, f32)> {
         .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
 }
 
+/// Vertical extents of the cells of a table (not of nested tables).
+fn collect_cell_edges(doc: &BaseDocument, node: &Node, out: &mut Vec<(f32, f32)>) {
+    for &c in node.children.iter() {
+        let Some(child) = doc.get_node(c) else { continue };
+        match tag(child) {
+            "td" | "th" => {
+                if let Some(e) = extent(doc, child) {
+                    out.push(e);
+                }
+            }
+            "table" => {}
+            _ => collect_cell_edges(doc, child, out),
+        }
+    }
+}
+
 /// Collect the pagination data of a laid-out document.
 pub fn collect_geometry(doc: &BaseDocument) -> Geometry {
     let mut g = Geometry::default();
@@ -616,7 +664,9 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
                         .0
                         .iter()
                         .any(|i| !matches!(i, style::values::computed::Image::None));
-                if l.border.top > 0.0 || l.padding.top > 0.0 || has_bg {
+                // A table's collapsed borders are not in its box's border
+                // widths (they are grid gutters), so a table always counts.
+                if l.border.top > 0.0 || l.padding.top > 0.0 || has_bg || t == "table" {
                     g.content_starts.push(top);
                 }
             }
@@ -659,6 +709,22 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
                 _ => {}
             }
         }
+        // The repeated groups take the border gutters and spacing around their
+        // cells with them: the header from the table's top edge down to the
+        // next row's cells, the footer from the previous row's cells down to
+        // the table's bottom edge (WebKit repeats the painted group).
+        let mut cell_edges = Vec::new();
+        collect_cell_edges(doc, node, &mut cell_edges);
+        let thead = thead.map(|(a, b)| {
+            let a = if a - top < 8.0 { top } else { a };
+            let next = cell_edges.iter().map(|e| e.0).filter(|&t| t >= b - 0.01).fold(f32::INFINITY, f32::min);
+            (a, if next.is_finite() { next } else { b })
+        });
+        let tfoot = tfoot.map(|(a, b)| {
+            let prev = cell_edges.iter().map(|e| e.1).filter(|&t| t <= a + 0.01).fold(f32::NEG_INFINITY, f32::max);
+            let b = if bottom - b < 8.0 { bottom } else { b };
+            (if prev.is_finite() { prev } else { a }, b)
+        });
         g.tables.push(TableInfo { top, bottom, thead, tfoot });
     }
 

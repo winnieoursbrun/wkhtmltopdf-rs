@@ -49,11 +49,13 @@ use taffy::Layout;
 /// top-to-bottom) order. Taffy reports tracks in logical order, which for RTL grid
 /// containers is physically reversed.
 #[derive(Clone, Copy)]
+#[allow(dead_code)] // wkhtmltopdf-rs: collapsed borders no longer use the grid tracks
 pub(crate) struct PhysicalTracks<'a> {
     positions: &'a [taffy::Line<f32>],
     reversed: bool,
 }
 
+#[allow(dead_code)]
 impl<'a> PhysicalTracks<'a> {
     pub(crate) fn from_tracks<S: taffy::CheapCloneStr>(
         tracks: &'a taffy::DetailedGridTracksInfo<S>,
@@ -529,7 +531,6 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                         cx.draw_background(scene);
                         cx.draw_inset_box_shadow(scene);
                         cx.draw_table_row_backgrounds(scene);
-                        cx.draw_table_borders(scene);
                         cx.draw_border(scene);
                         cx.stroke_devtools(scene);
 
@@ -572,6 +573,10 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                                 cx.draw_marker(scene, content_position);
                                 cx.draw_inline_layout(scene, content_position);
                                 cx.draw_children(scene, cx.transform, child_clip_rect);
+                                // wkhtmltopdf-rs: collapsed borders lie inside the cells (WebKit
+                                // gives each cell half of them), so they are painted after the
+                                // cells' backgrounds, as WebKit's collapsed-border phase does.
+                                cx.draw_table_borders(scene);
                             },
                         );
 

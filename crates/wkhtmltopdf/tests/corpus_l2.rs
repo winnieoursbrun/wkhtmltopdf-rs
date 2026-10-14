@@ -15,46 +15,9 @@
 //! like `pdftotext`), so the test runs without Docker or poppler. System fonts are disabled: only the embedded DejaVu set is used,
 //! like the DejaVu-only reference image.
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+mod common;
 
 const MIN_SIMILARITY: f64 = 0.95;
-
-fn corpus() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus")
-}
-
-fn ours(html: &[u8]) -> Vec<u8> {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_wkhtmltopdf"))
-        .args([
-            "--quiet",
-            "--page-size",
-            "Letter",
-            "--margin-top",
-            "0.75in",
-            "--margin-right",
-            "0.75in",
-            "--margin-bottom",
-            "0.75in",
-            "--margin-left",
-            "0.75in",
-            "--encoding",
-            "UTF-8",
-            "-",
-            "-",
-        ])
-        .env("WKHTMLTOPDF_SYSTEM_FONTS", "0")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run wkhtmltopdf");
-    child.stdin.take().unwrap().write_all(html).unwrap();
-    let o = child.wait_with_output().unwrap();
-    assert!(o.stdout.starts_with(b"%PDF"), "no PDF: {}", String::from_utf8_lossy(&o.stderr));
-    o.stdout
-}
 
 /// Page sizes (MediaBox width × height, rounded) in page order.
 fn page_sizes(pdf: &[u8]) -> Vec<(i64, i64)> {
@@ -250,9 +213,9 @@ fn ratio(a: &[String], b: &[String]) -> f64 {
 }
 
 fn check(name: &str) {
-    let html = std::fs::read(corpus().join(format!("{name}.html"))).unwrap();
-    let reference = std::fs::read(corpus().join(format!("ref/{name}.pdf"))).unwrap();
-    let got = ours(&html);
+    let html = std::fs::read(common::corpus().join(format!("{name}.html"))).unwrap();
+    let reference = std::fs::read(common::corpus().join(format!("ref/{name}.pdf"))).unwrap();
+    let got = common::ours(&html, &common::page_args(name));
     let (rs, gs) = (page_sizes(&reference), page_sizes(&got));
     let (rw, gw) = (words_by_page(&reference), words_by_page(&got));
     let doc = ratio(&rw.concat(), &gw.concat());
@@ -300,7 +263,6 @@ fn corpus_layout() {
 }
 
 #[test]
-#[ignore = "known: 7/7 pages and document similarity 1.00, but one word (`façade`) of a paragraph's last line wraps onto page 7 (5 vs 6 words there, page similarity 0.92); QtWebKit's exact line breaking (P5)"]
 fn corpus_report() {
     check("report");
 }
@@ -308,6 +270,28 @@ fn corpus_report() {
 #[test]
 fn corpus_statement() {
     check("statement");
+}
+
+#[test]
+fn corpus_large() {
+    check("large");
+}
+
+#[test]
+fn corpus_medium() {
+    check("medium");
+}
+
+#[test]
+#[ignore = "WebKit-2012 profile probe: ellipsis, small-caps and the ignored/prefixed properties of docs/webkit2012-profile.md are not all reproduced yet"]
+fn corpus_webkit2012() {
+    check("webkit2012");
+}
+
+#[test]
+#[ignore = "WebKit-2012 profile probe: -webkit-box and @supports are not reproduced yet (docs/webkit2012-profile.md)"]
+fn corpus_webkit2012b() {
+    check("webkit2012b");
 }
 
 #[test]

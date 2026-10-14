@@ -1,0 +1,38 @@
+# L3 raster thresholds of the corpus test (crates/wkhtmltopdf/tests/corpus_l3.rs).
+#
+# Format: <page> <page number | *> <minimum mean SSIM>
+# SSIM is computed at 50 dpi in gray on 8x8 windows (stride 4), skipping windows
+# blank in both rasters, between our PDF and the reference PDF of the real
+# wkhtmltopdf 0.12.6 (tests/corpus/ref, made by make-refs.sh).
+#
+# Rules: a value is the measured SSIM rounded down to the hundredth, minus 0.01
+# (rasteriser noise across platforms). It records where we are, not where we want
+# to be: raise it when a change improves a page, never lower it to make a change
+# pass. Values below 0.90 carry the reason.
+#
+# What lowers SSIM even when the layout matches: QtWebKit positions glyphs with
+# fractional advances while our layout snaps each "space + word" segment to whole
+# pixels, so text shifts by up to half a pixel per word; antialiasing differs.
+
+a          *  0.97
+fonts      *  0.79  # font fallback and synthetic styles differ (P5 fonts item)
+invoice    *  0.92
+large      *  0.86  # glyph positions (see above) on dense mono/sans tables
+layout     *  0.80  # transform/flex/border-radius dotted: WebKit-2012 profile items
+medium     1  0.92
+medium     2  0.89  # glyph positions on justified serif text
+medium     3  0.77  # a table row breaks differently (QtWebKit pagination strut)
+medium     4  0.77  # follows page 3
+report     1  0.72  # cover: centred heading glyph positions
+report     2  0.90
+report     3  0.76  # two lines only: glyph positions dominate
+report     4  0.90
+report     5  0.80  # short page: glyph positions dominate
+report     6  0.92
+report     7  0.87  # short page: glyph positions dominate
+statement  1  0.98
+statement  2  0.17  # QtWebKit pushes a row across a page boundary with a strut (tall row); not reproduced
+statement  3  0.52  # follows page 2
+statement  4  0.88  # follows page 2
+webkit2012  *  0.84  # profile probe: prefixed gradients, filters, ellipsis, small-caps pending
+webkit2012b *  0.75  # profile probe: opacity, -webkit-box, outline-offset, text-stroke pending

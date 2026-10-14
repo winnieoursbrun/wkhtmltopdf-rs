@@ -10,7 +10,7 @@ members = [
     "crates/wk-print",
     "crates/wk-converter",
 ]
-exclude = ["vendor/stylo", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "spikes"]
+exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "spikes"]
 
 [workspace.package]
 version = "0.1.0-alpha.1"
@@ -51,9 +51,16 @@ base64 = { version = "0.22" }
 stylo = { path = "vendor/stylo" }
 # blitz-paint publishing the source text of glyph runs (vendor/blitz-paint/src/run_text.rs).
 blitz-paint = { path = "vendor/blitz-paint" }
+# blitz-dom with QtWebKit 2.2 tables (auto layout in layout/table_auto.rs, collapsed borders in
+# layout/table.rs), font sizes and line heights (stylo_to_parley.rs).
+blitz-dom = { path = "vendor/blitz-dom" }
+# stylo_taffy with WebKit's whole-pixel lengths (convert.rs) and collapsed-cell border overrides (wrapper.rs).
+stylo_taffy = { path = "vendor/stylo_taffy" }
+# taffy with BFC roots containing floats above their bottom padding and border (vendor/taffy/src/compute/block.rs).
+taffy = { path = "vendor/taffy" }
 # parley with QtWebKit's line-height: normal (ascent and descent rounded up, vendor/parley/src/style/mod.rs).
 parley = { path = "vendor/parley" }
-# parley_engine with whole-pixel glyph advances, like QtWebKit's hinted text (vendor/parley_engine/src/shape/shaped_text.rs).
+# parley_engine with QtWebKit's linear glyph advances (vendor/parley_engine/src/shape/shaped_text.rs).
 parley_engine = { path = "vendor/parley_engine" }
 
 [profile.release]
@@ -67,3 +74,15 @@ incremental = false
 
 [profile.dev.package."*"]
 debug = false
+
+# The L3 corpus test rasterises ~50 pages with hayro: optimise the rasteriser in test builds.
+[profile.dev.package.vello_cpu]
+opt-level = 3
+[profile.dev.package.vello_common]
+opt-level = 3
+[profile.dev.package.hayro]
+opt-level = 3
+[profile.dev.package.hayro-interpret]
+opt-level = 3
+[profile.dev.package.hayro-syntax]
+opt-level = 3

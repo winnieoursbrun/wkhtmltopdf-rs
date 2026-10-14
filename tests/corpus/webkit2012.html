@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>WebKit 2012 profile</title>
+<style>
+:root { --main: #c00; }
+body { font-family: "DejaVu Sans", sans-serif; font-size: 10px; margin: 8px; }
+.row { overflow: hidden; margin-bottom: 6px; }
+.cell { float: left; width: 150px; height: 46px; margin-right: 10px; }
+.label { font-size: 8px; color: #333; height: 12px; }
+.box { width: 60px; height: 24px; background: #9bd; margin-left: 20px; }
+/* 1. transforms */
+.t1 { transform: rotate(20deg); }
+.t2 { -webkit-transform: rotate(20deg); }
+.t3 { -webkit-transform: translate(30px, 0) scale(0.5); }
+.t4 { -webkit-transform: skew(20deg); }
+/* 2. shadows */
+.s1 { box-shadow: 4px 4px 0 #333; }
+.s2 { -webkit-box-shadow: 4px 4px 0 #333; }
+.s3 { -webkit-box-shadow: 0 0 6px 2px #c00; }
+.s4 { -webkit-box-shadow: inset 4px 4px 0 #333; }
+/* 3. radius */
+.r1 { border-radius: 12px; }
+.r2 { -webkit-border-radius: 12px; }
+.r3 { border-radius: 12px; border: 3px dashed #c00; }
+.r4 { border-radius: 12px; border: 3px dotted #c00; }
+/* 4. box-sizing */
+.b1 { box-sizing: border-box; padding: 10px; width: 60px; }
+.b2 { -webkit-box-sizing: border-box; padding: 10px; width: 60px; }
+/* 5. gradients */
+.g1 { background: linear-gradient(to right, #c00, #00c); }
+.g2 { background: -webkit-linear-gradient(left, #c00, #00c); }
+.g3 { background: -webkit-gradient(linear, left top, left bottom, from(#c00), to(#00c)); }
+.g4 { background: -webkit-radial-gradient(center, circle, #c00, #00c); }
+.g5 { background: radial-gradient(circle, #c00, #00c); }
+.g6 { background: -webkit-linear-gradient(45deg, #c00, #00c); }
+/* 6. flex */
+.f { width: 130px; height: 24px; background: #eee; }
+.f span { background: #9bd; border: 1px solid #333; }
+.f1 { display: flex; justify-content: space-between; }
+.f2 { display: -webkit-box; -webkit-box-pack: justify; }
+.f3 { display: -webkit-flex; -webkit-justify-content: space-between; }
+.f4 { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+/* 7. values */
+.v1 { width: calc(100% - 100px); }
+.v2 { width: -webkit-calc(100% - 100px); }
+.v3 { background: var(--main); }
+.v4 { width: 6rem; }
+.v5 { width: 10vw; }
+.v6 { width: 10ch; }
+/* 8. misc */
+.m1 { opacity: 0.4; }
+.m2 { background: rgba(200, 0, 0, 0.5); }
+.m3 { text-shadow: 2px 2px 0 #c00; font-size: 16px; }
+.m4 { -webkit-filter: blur(2px); filter: blur(2px); }
+.m5 { column-count: 2; -webkit-column-count: 3; width: 140px; font-size: 7px; }
+.m6 { -webkit-column-count: 2; width: 140px; font-size: 7px; }
+.m7 { background-size: 10px 10px; background-image: -webkit-linear-gradient(left, #c00 50%, #fff 50%); }
+.m8 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 80px; }
+.m9 { font-variant: small-caps; font-size: 14px; }
+/* 9. borders */
+.d1 { border: 6px double #333; }
+.d2 { border: 6px groove #9bd; }
+.d3 { border: 6px ridge #9bd; }
+.d4 { border: 6px inset #9bd; }
+.d5 { border: 6px outset #9bd; }
+.d6 { border: 4px solid; border-color: #c00 #0c0 #00c #cc0; }
+</style></head><body>
+<div class="row">
+ <div class="cell"><div class="label">transform</div><div class="box t1"></div></div>
+ <div class="cell"><div class="label">-webkit-transform</div><div class="box t2"></div></div>
+ <div class="cell"><div class="label">-webkit translate scale</div><div class="box t3"></div></div>
+ <div class="cell"><div class="label">-webkit skew</div><div class="box t4"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">box-shadow</div><div class="box s1"></div></div>
+ <div class="cell"><div class="label">-webkit-box-shadow</div><div class="box s2"></div></div>
+ <div class="cell"><div class="label">-webkit blur spread</div><div class="box s3"></div></div>
+ <div class="cell"><div class="label">-webkit inset</div><div class="box s4"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">border-radius</div><div class="box r1"></div></div>
+ <div class="cell"><div class="label">-webkit-border-radius</div><div class="box r2"></div></div>
+ <div class="cell"><div class="label">radius dashed</div><div class="box r3"></div></div>
+ <div class="cell"><div class="label">radius dotted</div><div class="box r4"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">box-sizing</div><div class="box b1">x</div></div>
+ <div class="cell"><div class="label">-webkit-box-sizing</div><div class="box b2">x</div></div>
+ <div class="cell"><div class="label">linear-gradient</div><div class="box g1"></div></div>
+ <div class="cell"><div class="label">-webkit-linear-gradient</div><div class="box g2"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">-webkit-gradient</div><div class="box g3"></div></div>
+ <div class="cell"><div class="label">-webkit-radial-gradient</div><div class="box g4"></div></div>
+ <div class="cell"><div class="label">radial-gradient</div><div class="box g5"></div></div>
+ <div class="cell"><div class="label">-webkit-linear 45deg</div><div class="box g6"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">display: flex</div><div class="f f1"><span>a</span><span>b</span><span>c</span></div></div>
+ <div class="cell"><div class="label">display: -webkit-box</div><div class="f f2"><span>a</span><span>b</span><span>c</span></div></div>
+ <div class="cell"><div class="label">display: -webkit-flex</div><div class="f f3"><span>a</span><span>b</span><span>c</span></div></div>
+ <div class="cell"><div class="label">display: grid</div><div class="f f4"><span>a</span><span>b</span><span>c</span></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">calc</div><div class="box v1"></div></div>
+ <div class="cell"><div class="label">-webkit-calc</div><div class="box v2"></div></div>
+ <div class="cell"><div class="label">var()</div><div class="box v3"></div></div>
+ <div class="cell"><div class="label">rem</div><div class="box v4"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">vw</div><div class="box v5"></div></div>
+ <div class="cell"><div class="label">ch</div><div class="box v6"></div></div>
+ <div class="cell"><div class="label">opacity</div><div class="box m1"></div></div>
+ <div class="cell"><div class="label">rgba</div><div class="box m2"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">text-shadow</div><div class="m3">Shadow</div></div>
+ <div class="cell"><div class="label">filter blur</div><div class="box m4"></div></div>
+ <div class="cell"><div class="label">column-count</div><div class="m5">one two three four five six seven eight nine ten eleven twelve</div></div>
+ <div class="cell"><div class="label">-webkit-column-count</div><div class="m6">one two three four five six seven eight nine ten eleven twelve</div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">background-size</div><div class="box m7"></div></div>
+ <div class="cell"><div class="label">ellipsis</div><div class="m8">A very long text that overflows</div></div>
+ <div class="cell"><div class="label">small-caps</div><div class="m9">Small Caps</div></div>
+ <div class="cell"><div class="label">4 colours</div><div class="box d6"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">double</div><div class="box d1"></div></div>
+ <div class="cell"><div class="label">groove</div><div class="box d2"></div></div>
+ <div class="cell"><div class="label">ridge</div><div class="box d3"></div></div>
+ <div class="cell"><div class="label">inset</div><div class="box d4"></div></div>
+</div>
+<div class="row">
+ <div class="cell"><div class="label">outset</div><div class="box d5"></div></div>
+</div>
+</body></html>

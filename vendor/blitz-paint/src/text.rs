@@ -58,8 +58,10 @@ pub(crate) fn draw_inline_backgrounds<'a>(
             let x = glyph_run.offset() as f64;
             let w = glyph_run.advance() as f64;
             let baseline = glyph_run.baseline() as f64;
-            let y0 = baseline - metrics.ascent as f64;
-            let y1 = baseline + metrics.descent as f64;
+            // wkhtmltopdf-rs: QtWebKit's inline box is the font's ascent and
+            // descent each rounded up (FreeType metrics), like its line boxes.
+            let y0 = baseline - (metrics.ascent as f64).ceil();
+            let y1 = baseline + (metrics.descent as f64).ceil();
             let rect = Rect::new(x, y0, x + w, y1);
 
             scene.fill(Fill::NonZero, transform, bg_color, None, &rect);

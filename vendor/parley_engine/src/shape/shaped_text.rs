@@ -503,6 +503,7 @@ fn process_shaped_clusters<'a>(
         });
     }
 
+    let first_new_cluster = shaped_clusters.len();
     let mut cluster = Cluster {
         id: 0,
         characters_start,
@@ -532,9 +533,13 @@ fn process_shaped_clusters<'a>(
             x: (glyph_pos.x_offset as f32) * scale_factor,
             // Convert from font space (Y-up) to layout space (Y-down)
             y: -(glyph_pos.y_offset as f32) * scale_factor,
-            // wkhtmltopdf-rs: QtWebKit 2.2 lays text out with hinted FreeType advances, which are
-            // whole pixels.
-            advance: ((glyph_pos.x_advance as f32) * scale_factor).round(),
+            // wkhtmltopdf-rs: QtWebKit 2.2 (Qt 4.8, FreeType) lays text out with the fonts'
+            // linear advances at a whole-pixel font size (see blitz-dom's stylo_to_parley.rs),
+            // not with hinted (whole-pixel) advances: 20 `i` in DejaVu Sans at 10px are 55px
+            // wide in the 0.12.6 binary, as 20 × 569/2048 × 10.
+            // Qt keeps advances in 26.6 fixed point, truncated (FreeType's linear advance
+            // shifted down): 20 `i` of DejaVu Sans at 10px are 20 × 177/64 = 55.3 → 55px.
+            advance: ((glyph_pos.x_advance as f32) * scale_factor * 64.).floor() / 64.,
         };
         if cluster.glyphs == 0 && glyph.x == 0. && glyph.y == 0. {
             // Defer this potential zero-offset, single glyph cluster
@@ -551,7 +556,47 @@ fn process_shaped_clusters<'a>(
 
     // Flush the final cluster.
     flush(&mut cluster, characters.len(), characters, shaped_clusters);
+
+    round_words_like_qtwebkit(&mut shaped_clusters[first_new_cluster..], glyphs, characters);
 }
+
+/// wkhtmltopdf-rs: QtWebKit 2.2's line breaker measures text in segments made of the spaces
+/// before a word plus the word (`textWidth(t, lastSpace, pos - lastSpace)`), and Qt returns
+/// each segment's width as an integer (`QFontMetrics::width`, the rounded sum of the linear
+/// advances). So in DejaVu Sans 12px, `a a a` (16 `a`, 15 spaces) is 7 + 15 × round(3.81 +
+/// 7.35) = 172px, while 20 `a` in one word are 147px. Make every such segment of the run a
+/// whole number of pixels by adjusting the advance of its last cluster.
+fn round_words_like_qtwebkit(clusters: &mut [ShapedCluster], glyphs: &mut [Glyph], characters: &[Character]) {
+    fn adjust(cluster: &mut ShapedCluster, glyphs: &mut [Glyph], delta: f32) {
+        if delta == 0. {
+            return;
+        }
+        cluster.advance += delta;
+        if !cluster.has_inline_glyph() && cluster.glyph_len() > 0 {
+            let last = cluster.glyph_offset as usize + cluster.glyph_len() as usize - 1;
+            if let Some(g) = glyphs.get_mut(last) {
+                g.advance += delta;
+            }
+        }
+    }
+    let mut width = 0.0f32;
+    let mut prev_was_word = false;
+    for i in 0..clusters.len() {
+        let first = clusters[i].chars_range.0 as usize;
+        let is_space = characters.get(first).is_some_and(|c| c.whitespace == Whitespace::Space);
+        if is_space && prev_was_word {
+            // A space after a word starts the next segment: close the current one.
+            adjust(&mut clusters[i - 1], glyphs, width.round() - width);
+            width = 0.0;
+        }
+        width += clusters[i].advance;
+        prev_was_word = !is_space;
+    }
+    if let Some(last) = clusters.len().checked_sub(1) {
+        adjust(&mut clusters[last], glyphs, width.round() - width);
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
