@@ -508,8 +508,8 @@ impl WebPage {
             self.debug_layout();
         }
         if std::env::var_os("WKHTMLTOPDF_DEBUG_SCENE").is_some() {
-            for (i, c) in recorder.scene.commands.iter().enumerate() {
-                if let anyrender::recording::RenderCommand::GlyphRun(g) = c {
+            for (i, c) in recorder.commands.iter().enumerate() {
+                if let anyrender::recording::RenderCommand::GlyphRun(g) = &*c.get() {
                     let t = recorder.texts.get(&i);
                     eprintln!(
                         "glyphs #{i} n={} at {:?} skew={:?} text={:?} node={:?}",
@@ -752,7 +752,7 @@ impl WebPage {
         let mut inline: HashMap<(NodeId, i64), kurbo::Rect> = HashMap::new();
         for (idx, rt) in &rec.texts {
             let Some(&a) = link_of.get(&rt.node_id) else { continue };
-            let Some(bb) = glyph_run_bbox(&rec.scene.commands[*idx]) else { continue };
+            let Some(bb) = glyph_run_bbox(&rec.commands[*idx].get()) else { continue };
             let key = (a, bb.y1.round() as i64);
             inline.entry(key).and_modify(|r| *r = r.union(bb)).or_insert(bb);
         }

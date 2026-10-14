@@ -17,4 +17,4 @@ pub use net::Fetcher;
 pub use page::{
     Anchors, FormElement, Geometry, Heading, LinkBox, RenderedPage, TableInfo, WebPage, WebSettings,
 };
-pub use paint::Recorder;
+pub use paint::{Command, Recorder};

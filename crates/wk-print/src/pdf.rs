@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use anyrender::recording::RenderCommand;
-use anyrender::{Paint, Scene};
+use anyrender::Paint;
 use krilla::color::rgb;
 use krilla::configure::{ConfigurationBuilder, PdfVersion};
 use krilla::destination::XyzDestination;
@@ -33,7 +33,7 @@ use krilla::{Document, SerializeSettings};
 use kurbo::{Affine, BezPath, PathEl, Shape};
 use peniko::Color;
 use skrifa::MetadataProvider;
-use wk_webkit::{RenderedPage, RunText};
+use wk_webkit::{Command, RenderedPage, RunText};
 
 use crate::paginate::PageSlice;
 
@@ -214,8 +214,8 @@ struct FontEntry {
 struct Caches {
     fonts: HashMap<(u64, u32), Option<FontEntry>>,
     images: HashMap<(u64, u32, u32), Option<krilla::image::Image>>,
-    /// Culling box ([`bbox`]) of every command of a scene, keyed by the
-    /// scene's address: computed once, not once per page and band.
+    /// Culling box ([`bbox`]) of every command of a display list, keyed by
+    /// its address: computed once, not once per page and band.
     bboxes: HashMap<usize, std::rc::Rc<[Option<kurbo::Rect>]>>,
 }
 
@@ -585,18 +585,18 @@ impl Replayer<'_> {
         }
     }
 
-    /// Replay `scene` onto `surface`, restricted to the band `[y0, y1)`.
-    fn replay(&mut self, surface: &mut Surface, scene: &Scene, y0: f32, y1: f32) {
+    /// Replay `commands` onto `surface`, restricted to the band `[y0, y1)`.
+    fn replay(&mut self, surface: &mut Surface, commands: &[Command], y0: f32, y1: f32) {
         let (y0d, y1d) = (f64::from(y0), f64::from(y1));
         let mut layers: Vec<usize> = vec![];
-        for (idx, cmd) in scene.commands.iter().enumerate() {
+        for (idx, cmd) in commands.iter().enumerate() {
             if let Some(b) = self.bboxes[idx] {
-                let is_text = matches!(cmd, RenderCommand::GlyphRun(_));
+                let is_text = matches!(cmd, Command::Other(c) if matches!(**c, RenderCommand::GlyphRun(_)));
                 if b.y1 < y0d || b.y0 > y1d || (is_text && (b.y0 < y0d || b.y0 >= y1d)) {
                     continue;
                 }
             }
-            match cmd {
+            match &*cmd.get() {
                 RenderCommand::PushLayer(c) => {
                     let mut n = 0;
                     if c.alpha < 1.0 {
@@ -740,11 +740,11 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
     let (ox, oy) = band.origin;
     let (cx0, cx1) = (-ox / s, (paper_w - ox) / s);
     surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ox, oy));
-    let scene = &band.page.recorder.scene;
+    let commands = band.page.recorder.commands.as_slice();
     let bboxes = caches
         .bboxes
-        .entry(scene as *const Scene as usize)
-        .or_insert_with(|| scene.commands.iter().map(bbox).collect())
+        .entry(commands.as_ptr() as usize)
+        .or_insert_with(|| commands.iter().map(|c| bbox(&c.get())).collect())
         .clone();
     let mut r =
         Replayer { page: band.page, bboxes: &bboxes, caches, gray: opts.grayscale, image_dpi: opts.image_dpi };
@@ -755,7 +755,7 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
         surface.push_transform(&Transform::from_translate(0.0, dy - b0));
         if let Some(clip) = rect_path(cx0, b0, cx1, b1) {
             surface.push_clip_path(&clip, &FillRule::NonZero);
-            r.replay(surface, scene, b0, b1);
+            r.replay(surface, commands, b0, b1);
             surface.pop();
         }
         surface.pop();
