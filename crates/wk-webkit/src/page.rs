@@ -384,9 +384,10 @@ impl WebPage {
                 if let anyrender::recording::RenderCommand::GlyphRun(g) = c {
                     let t = recorder.texts.get(&i);
                     eprintln!(
-                        "glyphs #{i} n={} at {:?} text={:?} node={:?}",
+                        "glyphs #{i} n={} at {:?} skew={:?} text={:?} node={:?}",
                         g.glyphs.len(),
                         g.transform.translation(),
+                        g.glyph_transform.map(|t| t.as_coeffs()[2]),
                         t.map(|t| t.text.as_str()),
                         t.map(|t| t.node_id)
                     );

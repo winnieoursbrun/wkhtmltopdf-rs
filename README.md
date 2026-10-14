@@ -12,18 +12,13 @@ The target is the observable behaviour of the released 0.12.6 binary, down to it
 | Phase | Scope | State |
 |---|---|---|
 | P1 — CLI | All 122 options, object grammar, `--read-args-from-stdin`, documentation outputs, argument errors, settings model | **Done**: every `docs/upstream-fixtures/0.12.6/cli` case is byte-identical |
-| P2 — static pipeline | Loader, HTML/CSS layout, paginator, PDF output | **P2a done**: pdfkit's invocation (stdin → stdout) and file/URL inputs produce real PDFs. 10 of 13 `conversion` fixtures reproduce stderr and exit code exactly; `warn` and `info_b` match except for their JavaScript lines (P4); `toc` needs P3. L2 on `tests/corpus`: page count and size match on 6/6 pages, and text similarity is ≥ 0.95 on 5/6 (`report`: one word wraps differently, see `corpus_l2.rs`). P2b: see below the table |
+| P2 — static pipeline | Loader, HTML/CSS layout, paginator, PDF output | **P2a done**: pdfkit's invocation (stdin → stdout) and file/URL inputs produce real PDFs. 10 of 13 `conversion` fixtures reproduce stderr and exit code exactly; `warn` and `info_b` match except for their JavaScript lines (P4); `toc` needs P3. L2 on `tests/corpus`: page count and size match on 6/6 pages, and text similarity is ≥ 0.95 on every corpus page. P2b: see below the table |
 | P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | Started in P2a: PDF links (external and internal), outline bookmarks with `--outline-depth`, `--dump-outline` without TOC entries, multiple page/cover objects in one PDF (a TOC object prints a blank placeholder page). Headers/footers and the TOC are not started |
 | P4 — JavaScript | Boa, DOM bindings, `--javascript-delay`, `--window-status` | Not started |
 | P5 — fidelity | Tables, forms, fonts, raster parity | Not started |
 | P6 — release | Static musl builds, pdfkit test suite | Not started |
 
-P2b gaps: `--minimum-font-size`, `--viewport-size`, `--user-style-sheet` over http, QtWebKit
-ignoring unprefixed `transform` and honouring `-webkit-` prefixes, `orphans`/`widows` properties,
-rows taller than a page, box shadows/filters/blend modes, `--grayscale`/`--lowquality`/image DPI
-and quality, `SSL error ignored` warnings, client certificates, `--cache-dir`, server reason
-phrases in HTTP error messages (canonical phrases are printed), redirects' `Set-Cookie`. The
-`--javascript-delay` wait is not slept (no JavaScript yet; output is unchanged).
+P2b (rendering fidelity): text metrics, tables, the WebKit-2012 CSS profile ([`docs/webkit2012-profile.md`](docs/webkit2012-profile.md)), shadows, outlines, `--minimum-font-size`, `--viewport-size` (media queries), `--image-dpi`, and an L3 raster check (`crates/wkhtmltopdf/tests/corpus_l3.rs`, thresholds in `tests/corpus/l3-thresholds.txt`). Still divergent: QtWebKit's tall table rows at page boundaries (statement page 2), a float placed before a collapsing margin, `text-overflow: ellipsis`, `small-caps`, `-webkit-text-stroke`, web fonts picked by their internal family name, the server's HTTP reason phrase (canonical phrases are printed), `SSL error ignored` warnings, client certificates, `--cache-dir`, `--image-quality` and `--lowquality` (no visible effect found in the 0.12.6 binary), `orphans`/`widows` (not applied by 0.12.6 either).
 
 ## Layout
 
@@ -42,10 +37,13 @@ Vendored crates (`vendor/`, wired through `[patch.crates-io]`), each change mark
 
 | Crate | Change |
 |---|---|
-| `stylo` 0.22.0 | `break-before/after/inside` and `page-break-*` enabled in servo mode |
+| `stylo` 0.22.0 | `break-before/after/inside` and `page-break-*` enabled in servo mode; `--minimum-font-size` |
 | `blitz-paint` 0.3.0-beta.3 | glyph runs publish their source text (`run_text.rs`); list markers painted before the item text, like WebKit |
+| `blitz-dom` 0.3.0-beta.3 | WebKit auto table layout and collapsed borders, CSS rewrite hook (WebKit-2012 profile), whole-pixel font sizes, `line-height` numbers, no kerning/ligatures |
+| `stylo_taffy` 0.3.0-beta.3 | whole-pixel lengths (`roundForImpreciseConversion`), collapsed-cell border halves |
+| `taffy` 0.15.0 | BFC roots keep their bottom padding/border below their floats |
 | `parley` 0.12.0 | `line-height: normal` rounds ascent and descent up (QtWebKit/FreeType); glyph runs expose their cluster range |
-| `parley_engine` 0.12.0 | whole-pixel glyph advances (QtWebKit's hinted text layout) |
+| `parley_engine` 0.12.0 | QtWebKit's text measurement: linear 26.6 advances, "spaces + word" segments rounded to whole pixels |
 
 ## Build and test
 

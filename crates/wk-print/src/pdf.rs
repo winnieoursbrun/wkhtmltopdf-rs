@@ -382,8 +382,11 @@ impl Replayer<'_> {
         let mut t = c.transform;
         if let Some(gt) = c.glyph_transform {
             // Synthetic oblique: skew around the run origin.
+            // The glyph transform is expressed in font space (y up); the run is
+            // drawn y down, so mirror it (a forward slant stays forward).
+            let flip = Affine::scale_non_uniform(1.0, -1.0);
             let o = kurbo::Vec2::new(f64::from(g0.x), f64::from(g0.y));
-            t = t * Affine::translate(o) * gt * Affine::translate(-o);
+            t = t * Affine::translate(o) * flip * gt * flip * Affine::translate(-o);
         }
         let Some(text) = text else {
             // No source text: draw the outlines (list bullets).

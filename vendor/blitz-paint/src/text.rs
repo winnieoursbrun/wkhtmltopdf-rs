@@ -648,6 +648,38 @@ pub(crate) fn stroke_text<'a>(
                 };
 
                 let normalized_coords: &[i16] = bytemuck::cast_slice(run.normalized_coords());
+                // wkhtmltopdf-rs: `text-shadow` (QtWebKit 2.2 paints it): the glyphs
+                // again under the text, offset, in the shadow colour (no blur).
+                if let Some(node_styles) = doc.get_node(style.brush.id).and_then(|n| n.primary_styles()) {
+                    let current = node_styles.clone_color();
+                    for shadow in node_styles.get_inherited_text().text_shadow.0.iter().rev() {
+                        let color = shadow.color.resolve_to_absolute(&current).as_srgb_color();
+                        if color.components[3] <= 0.0 {
+                            continue;
+                        }
+                        let offset = transform.then_translate(kurbo::Vec2::new(
+                            shadow.horizontal.px() as f64 * scale,
+                            shadow.vertical.px() as f64 * scale,
+                        ));
+                        scene.draw_glyphs(
+                            font,
+                            font_size,
+                            !FONT_EMBOLDEN_ENABLED,
+                            normalized_coords,
+                            embolden,
+                            Fill::NonZero,
+                            &anyrender::Paint::from(color),
+                            1.0,
+                            offset,
+                            glyph_xform,
+                            glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
+                                id: glyph.id as _,
+                                x: glyph.x,
+                                y: glyph.y,
+                            }),
+                        );
+                    }
+                }
                 // wkhtmltopdf-rs: publish the run's source text before the glyphs are drawn.
                 crate::run_text::publish(source_text, &glyph_run, style.brush.id);
                 scene.draw_glyphs(
