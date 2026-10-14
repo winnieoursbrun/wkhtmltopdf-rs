@@ -137,6 +137,54 @@ This proves that the pipeline detects real differences independently of the port
 Images go to `results/<ts>/visual/<case>/page-N-{original,rust,diff,side}.png`. Expect about
 20 MB per run today, and more once the port renders.
 
+## OpenHTMLtoPDF comparison (`java/`)
+
+A second, independent harness compares the port with the leading Java HTML-to-PDF library,
+[OpenHTMLtoPDF](https://github.com/openhtmltopdf/openhtmltopdf) (maintained fork
+`io.github.openhtmltopdf:openhtmltopdf-pdfbox`, PDFBox 3), on the static corpus pages.
+
+```sh
+bench/java/run.sh              # full run (~15 min on an idle 4-vCPU machine)
+bench/java/run.sh --quick      # smoke test: short loops, numbers not meaningful
+bench/java/run.sh --no-build   # reuse wkjava:local and the Rust binaries in bench/.target
+```
+
+Results land in `bench/results/java-<UTC timestamp>/` (raw files + `REPORT.md`), copied to
+`bench/results/JAVA-LATEST.md`. It uses its own image, `wkjava:local` (`java/Dockerfile`:
+`eclipse-temurin:21-jre-noble`, linux/arm64, hyperfine, GNU time, poppler, DejaVu fonts),
+so `bench/run.sh` and `wkbench:local` are untouched. Maven resolves the jars at image build
+(`java/pom.xml`, versions pinned there). The Rust CLI and the in-process harness are
+bind-mounted, so both engines run in the same container on the same CPUs.
+
+**Inputs.** `small`, `medium`, `large` and `hf-body` (the `hf_toc` body page on its own).
+Rust gets pdfkit's exact invocation. `java/src/main/java/bench/Convert.java` does what an
+application would: parse with jsoup, convert with jsoup's `W3CDom` (ordinary HTML, not
+XHTML), inject `@page { size: 8.5in 11in; margin: 0.75in }`, register the DejaVu TTFs (also
+as the CSS generic families), render with `PdfRendererBuilder` to memory. Left out because
+OpenHTMLtoPDF has no equivalent: `js` (no JavaScript engine), `hf_toc` and `multi`
+(`--header-html`/`--footer-html`, generated TOC, cover objects).
+
+**Measurements.**
+
+1. *Cold CLI*, one process per conversion, hyperfine (`--warmup 3 --min-runs 10`) plus three
+   `/usr/bin/time -v` runs (median CPU and peak RSS). Java variants: default flags
+   (`java -jar`), *tuned* (`-XX:TieredStopAtLevel=1 -Xshare:auto`), and *tuned + AppCDS*
+   (class-data archive of one conversion, built into the image).
+2. *Warm throughput*. Java: `Convert --warmup 20 --loop 30` in one JVM, reporting ms/doc
+   (mean, median, p95), CPU ms/doc over the timed loop (all JVM threads), the first in-JVM
+   conversion and the process peak RSS. Rust: the same loop in-process with
+   `wkhtmltopdf-inproc` (`crates/wkhtmltopdf/src/bin/wkhtmltopdf-inproc.rs`, built only with
+   `--features bench-inproc`, which calls `wkhtmltopdf_app::run` repeatedly), and the CLI
+   run 30 times in sequence (its real steady state, since it has no daemon).
+3. *Smallest Java heap*: `-Xmx16m` … `-Xmx256m` on `medium` and `large`
+   (`--warmup 5 --loop 10`); the first size that survives the loop is reported.
+4. *Output sanity*: size, page count, `pdftotext` word count and embedded fonts of each
+   output, and a side-by-side PNG of page 1 (`visual/<case>.png`).
+
+Page counts differ by design: wkhtmltopdf lays out on a 96 dpi viewport shrunk to the page
+width, OpenHTMLtoPDF prints CSS sizes at their nominal size. Prefer CPU time and peak RSS
+when the host is busy; wall-clock comparisons need an idle machine.
+
 ## Files
 
 | Path | Role |
@@ -149,6 +197,8 @@ Images go to `results/<ts>/visual/<case>/page-N-{original,rust,diff,side}.png`. 
 | `scripts/visual.py`, `visual-thresholds.json` | Rendering parity |
 | `scripts/report.py` | Writes `REPORT.md` |
 | `pdfkit/Gemfile`, `Gemfile.lock`, `generate.rb` | pdfkit integration |
+| `java/run.sh`, `java/inside.sh`, `java/report.py` | OpenHTMLtoPDF comparison: host entry point, container side, `REPORT.md` |
+| `java/Dockerfile`, `java/pom.xml`, `java/src/` | `wkjava:local` and the Java driver (`Convert.java`) |
 | `corpus/` | Static pages (small, header, footer, cover, extra.css, js.template), vendored jQuery, generated pages |
 
 ## Known caveat

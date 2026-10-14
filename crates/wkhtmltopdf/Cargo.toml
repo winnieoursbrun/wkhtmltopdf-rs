@@ -15,6 +15,12 @@ path = "src/lib.rs"
 name = "wkhtmltopdf"
 path = "src/main.rs"
 
+# In-process throughput harness for bench/java/ (not shipped).
+[[bin]]
+name = "wkhtmltopdf-inproc"
+path = "src/bin/wkhtmltopdf-inproc.rs"
+required-features = ["bench-inproc"]
+
 [dependencies]
 wk-cli.workspace = true
 wk-settings.workspace = true
@@ -27,6 +33,7 @@ dlmalloc = { version = "0.2", features = ["global"], optional = true }
 [features]
 dhat-heap = ["dep:dhat"]
 dlmalloc = ["dep:dlmalloc"]
+bench-inproc = []
 
 [dev-dependencies]
 pdf-extract = "0.12"
