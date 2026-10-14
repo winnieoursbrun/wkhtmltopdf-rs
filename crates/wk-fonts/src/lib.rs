@@ -155,6 +155,18 @@ pub fn font_context(opts: &FontOptions) -> FontContext {
     FontContext { collection: collection(opts), source_cache: SourceCache::new(Default::default()) }
 }
 
+/// The regular face `QFont(family)` resolves to, as font bytes and face
+/// index: the family when it exists, otherwise [`DEFAULT_FAMILY`] (the
+/// reference image's fontconfig substitution, e.g. for `Arial`).
+pub fn regular_face(ctx: &mut FontContext, family: &str) -> Option<(Arc<Vec<u8>>, u32)> {
+    use parley::fontique::{FontStyle, FontWeight, FontWidth};
+    let id = ctx.collection.family_id(family).or_else(|| ctx.collection.family_id(DEFAULT_FAMILY))?;
+    let fam = ctx.collection.family(id)?;
+    let font = fam.match_font(FontWidth::NORMAL, FontStyle::Normal, FontWeight::NORMAL, true)?;
+    let blob = font.load(Some(&mut ctx.source_cache))?;
+    Some((Arc::new(blob.data().to_vec()), font.index()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
