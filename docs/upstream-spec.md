@@ -914,6 +914,42 @@ Consequences:
 | Slow script, with `--stop-slow-scripts` (default) | warning `A slow script was stopped`, interrupt | same |
 | Slow script, with `--no-stop-slow-scripts` | debug `A slow script has been detected, but was not stopped` | (no debug level) |
 
+**JavaScript details verified with the 0.12.6 binary** (P4, `tests/js`, `TZ=UTC`, `LC_ALL=C`):
+
+- `console.log(a, b, …)` (and `info`/`warn`/`error`/`debug`) prints only the **first argument**,
+  converted with `String()`.
+- The `<line>` of a console message is **the line where the innermost executing function starts**
+  (the `function` keyword), or the line where the script starts (`<script>` start tag) for global
+  code — not the line of the statement. Inline scripts count document lines; external scripts
+  count from 1 with their own URL. A `<body onload>` handler reports the `<body>` tag's line.
+- An uncaught exception prints, with `--debug-javascript` only, `Warning: undefined:0 <text>`,
+  where `<text>` is JSC's: `ReferenceError: Can't find variable: f`, `TypeError: 'null' is not
+  an object`, `Error: <message>`, or `String(value)` for a thrown non-error.
+- A slow script (`while (true) {}`) is stopped after about 10 s:
+  `Warning: A slow script was stopped`, then (with `--debug-javascript`)
+  `Warning: undefined:0 JavaScript execution exceeded timeout.`; the next script runs.
+- `window.print()` before `loadFinished` (in a script or the load handler) ends the load early;
+  the page's own progress and finished signals then print
+  `A finished ResourceObject received a loading progress signal. …` and
+  `… loading finished signal. …`, and `--run-script` is not evaluated. Timers keep running during
+  the later phases (their output is not deterministic).
+- During loading the page is laid out in a **0×0 viewport**: `innerWidth`/`innerHeight` are 0,
+  a block's `offsetWidth` is 0 and text wraps at every word. `screen` is 1366×768,
+  `devicePixelRatio` 1, `navigator.language` is the locale (`C`), `navigator.platform`
+  `Linux x86_64`, `navigator.vendor` `Apple Computer, Inc.`.
+- Elements with an `id` are window globals; `textContent = undefined` writes `undefined`.
+- A failed synchronous `XMLHttpRequest` throws `Error: NETWORK_ERR: XMLHttpRequest Exception
+  101` (the loader error line comes later); an asynchronous one completes after the parser has
+  finished, before scripts inserted by script, which load asynchronously too. `file:` replies
+  have status 0.
+- `Date` uses local time (`Thu Jan 01 1970 00:00:00 GMT+0000 (UTC)`); `toLocaleDateString()` is
+  `01/15/2020`, `toLocaleTimeString()` `10:30:00`, `toLocaleString()`
+  `Wed Jan 15 00:00:00 2020` (midnight), numbers' `toLocaleString()` is `String(n)`.
+- Not available in QtWebKit 2.2: `Promise`, `Map`, `Symbol`, `Proxy`, `Intl`,
+  `requestAnimationFrame`, `performance` (the port keeps Boa's built-ins and adds the browser
+  ones: scripts written for 0.12.6 feature-detect them).
+- Canvases are rasterised: canvas text is not text in the PDF.
+
 Media type: `--print-media-type` makes WebKit use `print` CSS media, else `screen` (patched
 `overrideMediaType`).
 

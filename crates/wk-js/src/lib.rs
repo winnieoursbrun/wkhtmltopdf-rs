@@ -89,6 +89,10 @@ pub struct Session {
 /// 20 M simple iterations per second. A deterministic budget (DESIGN.md).
 const SLOW_SCRIPT_LOOP_LIMIT: u64 = 200_000_000;
 
+/// Virtual time after which a `--window-status` that never comes stops
+/// the wait while timers are still pending (upstream waits forever).
+const WINDOW_STATUS_LIMIT_MS: f64 = 60_000.0;
+
 /// Access the document of the running session (the parser's tree sink).
 pub fn with_document<R>(f: impl FnOnce(&mut BaseDocument) -> R) -> R {
     with_host(|h| f(&mut h.doc))
@@ -418,19 +422,21 @@ impl Session {
     /// `window_status`, poll `window.status` every 50 ms until it matches,
     /// then wait `delay` more; else wait `delay`. Timers run on the virtual
     /// clock. Upstream waits forever for a status that never comes; here
-    /// the wait ends once no timer can change it any more.
+    /// the wait ends once no timer can change it any more, or after 60 s of
+    /// virtual time.
     pub fn wait(&mut self, delay_ms: f64, window_status: Option<&str>, svc: &mut dyn JsServices) {
         if self.print_requested() || delay_ms <= 0.0 {
             return;
         }
         if let Some(want) = window_status.filter(|w| !w.is_empty()) {
+            let start = self.now();
             loop {
                 if self.window_status() == want {
                     let at = self.now();
                     self.advance_to(at + delay_ms, svc);
                     return;
                 }
-                if !self.has_timers() {
+                if !self.has_timers() || self.now() - start > WINDOW_STATUS_LIMIT_MS {
                     return;
                 }
                 let next = self.now() + 50.0;

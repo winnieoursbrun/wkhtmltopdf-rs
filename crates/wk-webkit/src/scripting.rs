@@ -308,3 +308,102 @@ pub(crate) fn load(
     let canvases = pictures.into_iter().map(|(id, p)| (id, Rc::new(p))).collect();
     WebPage::from_parts(doc, net, settings, bodies, url, canvases)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Serves nothing; collects warnings.
+    #[derive(Default)]
+    struct NoNet(Vec<String>);
+    impl Fetcher for NoNet {
+        fn create(&mut self, _: &Url) -> usize {
+            0
+        }
+        fn finish(&mut self, _: usize) -> Option<Vec<u8>> {
+            None
+        }
+        fn warning(&mut self, m: &str) {
+            self.0.push(m.to_string());
+        }
+    }
+
+    fn load(html: &str, settings: WebSettings) -> (WebPage, Vec<String>) {
+        let fonts = wk_fonts::font_context(&wk_fonts::FontOptions { system_fonts: false, extra_dirs: Vec::new() });
+        let mut net = NoNet::default();
+        let url = Url::parse("file:///tmp/page.html?page=3&topage=7").unwrap();
+        let page = WebPage::load(html, url, settings, fonts, &mut net);
+        (page, net.0)
+    }
+
+    fn title(page: &WebPage) -> String {
+        page.title().unwrap_or_default().trim().to_string()
+    }
+
+    #[test]
+    fn head_scripts_do_not_see_the_body() {
+        let html = "<html><head><title>t</title><script>document.title = (document.body ? 'body' : 'nobody') + ' ' + document.getElementsByTagName('p').length;</script></head><body><p>x</p></body></html>";
+        let (page, _) = load(html, WebSettings::default());
+        assert_eq!(title(&page), "nobody 0");
+    }
+
+    #[test]
+    fn document_write_goes_back_into_the_parser() {
+        let html = "<title>t</title><body><p>a</p><script>document.write('<p>b</p><scr' + 'ipt>document.write(\"<p>c</p>\")</scr' + 'ipt>');</script><p>d</p><script>document.title = [].map.call(document.getElementsByTagName('p'), function (p) { return p.textContent; }).join('');</script>";
+        let (page, _) = load(html, WebSettings::default());
+        assert_eq!(title(&page), "abcd");
+    }
+
+    #[test]
+    fn query_string_reaches_location_search() {
+        let html = "<title>t</title><body onload=\"document.title = location.search\">";
+        let (page, _) = load(html, WebSettings::default());
+        assert_eq!(title(&page), "?page=3&topage=7");
+    }
+
+    #[test]
+    fn timers_run_on_the_virtual_clock_until_the_delay() {
+        let html = "<title>t</title><script>var s = ''; [50, 150, 250].forEach(function (ms) { setTimeout(function () { s += ms + ' '; document.title = s; }, ms); });</script>";
+        let (page, _) = load(html, WebSettings { javascript_delay: 200, ..WebSettings::default() });
+        assert_eq!(title(&page), "50 150");
+    }
+
+    #[test]
+    fn window_status_waits_then_the_delay_runs() {
+        let html = "<title>t</title><script>var n = 0; function tick() { n++; document.title = 'n' + n; if (n === 10) window.status = 'go'; else setTimeout(tick, 100); } setTimeout(tick, 100); setTimeout(function () { document.title += ' late'; }, 1150);</script>";
+        let settings = WebSettings { javascript_delay: 200, window_status: "go".into(), ..WebSettings::default() };
+        let (page, _) = load(html, settings);
+        // The status is seen at t=1000 (polled every 50 ms), then 200 ms more:
+        // the 1150 ms timer runs.
+        assert_eq!(title(&page), "n10 late");
+    }
+
+    #[test]
+    fn wrappers_keep_their_identity_and_expandos() {
+        let html = "<title>t</title><body><div id=d></div><script>var d = document.getElementById('d'); d.foo = 42; document.title = (document.body.firstChild === document.body.firstChild) + ' ' + document.getElementById('d').foo + ' ' + (d === window.d);</script>";
+        let (page, _) = load(html, WebSettings::default());
+        assert_eq!(title(&page), "true 42 true");
+    }
+
+    #[test]
+    fn dialogs_print_like_0_12_6() {
+        let html = "<script>alert('a'); confirm('b'); prompt('c', 'd');</script>";
+        let (_, warnings) = load(html, WebSettings::default());
+        assert_eq!(
+            warnings,
+            vec![
+                "Javascript alert: a".to_string(),
+                "Javascript confirm: b (answered yes)".to_string(),
+                "Javascript prompt: c (answered d)".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn disabled_javascript_runs_nothing() {
+        let html = "<title>t</title><script>document.title = 'ran'; alert('x');</script>";
+        let (page, warnings) = load(html, WebSettings { enable_javascript: false, ..WebSettings::default() });
+        assert_eq!(title(&page), "t");
+        assert!(warnings.is_empty());
+    }
+}

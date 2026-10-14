@@ -219,9 +219,10 @@ impl Parser {
             PausingSink::new(),
             TreeBuilderOpts {
                 exact_errors: false,
-                // Like blitz-html: <noscript> content is parsed as markup
-                // (and hidden by the user-agent style sheet when JS runs).
-                scripting_enabled: false,
+                // Scripts run: <noscript> content is raw text, so nothing
+                // in it is requested or run (and the user-agent style sheet
+                // hides the element).
+                scripting_enabled: true,
                 iframe_srcdoc: false,
                 drop_doctype: true,
                 quirks_mode: QuirksMode::NoQuirks,

@@ -15,8 +15,9 @@
 //!
 //! Loading is sequential and deterministic: resources are started in object
 //! order, then loaded one after the other. `--javascript-delay` is not slept:
-//! scripts do not run yet (P4) and the delay only changes timing, never the
-//! output (deliberate divergence, DESIGN.md "Determinism").
+//! timers run on the page's virtual clock (`wk-js`), so the delay never
+//! depends on machine speed (deliberate divergence, DESIGN.md
+//! "Determinism").
 
 pub mod cookies;
 pub mod http;
