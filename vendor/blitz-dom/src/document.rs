@@ -1161,9 +1161,44 @@ impl BaseDocument {
     }
 
     pub fn add_user_agent_stylesheet(&mut self, css: &str) {
-        let sheet = self.make_stylesheet(css, Origin::UserAgent);
+        let sheet = self.user_agent_stylesheet(css);
         self.ua_stylesheets.insert(css.to_string(), sheet.clone());
         self.stylist.append_stylesheet(sheet, &self.guard.read());
+    }
+
+    /// wkhtmltopdf-rs: user-agent sheets are parsed once per thread and shared by every
+    /// document (a conversion loads one document per object, header and footer page). A
+    /// shared sheet is parsed under a read-only lock, which any document's guard can read,
+    /// and stylo reuses the cascade data of an identical set of user-agent sheets. Only
+    /// sheets whose meaning does not depend on the document are shared: no `@import` (it
+    /// is fetched by the document) and no relative `url()` (resolved against its URL).
+    fn user_agent_stylesheet(&self, css: &str) -> DocumentStyleSheet {
+        thread_local! {
+            static SHARED_UA_SHEETS: std::cell::RefCell<HashMap<String, DocumentStyleSheet>> =
+                std::cell::RefCell::new(HashMap::new());
+        }
+        let shareable = !css.contains("@import") && (css == DEFAULT_CSS || !css.contains("url("));
+        if !shareable {
+            return self.make_stylesheet(css, Origin::UserAgent);
+        }
+        if let Some(sheet) = SHARED_UA_SHEETS.with(|m| m.borrow().get(css).cloned()) {
+            return sheet;
+        }
+        let lock = SharedRwLock::read_only();
+        let data = Stylesheet::from_str(
+            css,
+            self.url.url_extra_data(),
+            Origin::UserAgent,
+            ServoArc::new(lock.wrap(MediaList::empty())),
+            lock,
+            None,
+            None,
+            QuirksMode::NoQuirks,
+            AllowImportRules::Yes,
+        );
+        let sheet = DocumentStyleSheet(ServoArc::new(data));
+        SHARED_UA_SHEETS.with(|m| m.borrow_mut().insert(css.to_string(), sheet.clone()));
+        sheet
     }
 
     pub fn make_stylesheet(&self, css: impl AsRef<str>, origin: Origin) -> DocumentStyleSheet {
