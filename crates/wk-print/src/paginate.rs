@@ -42,8 +42,35 @@ impl PageSlice {
     }
 }
 
-fn is_safe(g: &Geometry, y: f32) -> bool {
-    !g.atomic.iter().any(|&(a, b)| a + 0.01 < y && y < b - 0.01)
+/// The atomic intervals, for "does a cut at `y` fall strictly inside one of
+/// them" (`a + 0.01 < y < b - 0.01`) in O(log n) rather than a scan of every
+/// line box and row of the document per candidate.
+struct Atomic {
+    /// `a + 0.01` of each interval, ascending.
+    starts: Vec<f32>,
+    /// Running maximum of `b - 0.01`, in the order of `starts`.
+    max_ends: Vec<f32>,
+}
+
+impl Atomic {
+    fn new(g: &Geometry) -> Atomic {
+        let mut v: Vec<(f32, f32)> = g.atomic.iter().map(|&(a, b)| (a + 0.01, b - 0.01)).collect();
+        v.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut max = f32::NEG_INFINITY;
+        let max_ends = v
+            .iter()
+            .map(|&(_, e)| {
+                max = max.max(e);
+                max
+            })
+            .collect();
+        Atomic { starts: v.into_iter().map(|(s, _)| s).collect(), max_ends }
+    }
+
+    fn is_safe(&self, y: f32) -> bool {
+        let n = self.starts.partition_point(|&s| s < y);
+        n == 0 || !(y < self.max_ends[n - 1])
+    }
 }
 
 /// The first content start at or after `y` (or `y` when there is none).
@@ -63,6 +90,7 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
     let mut y = 0.0f32;
     let mut thead: Option<(f32, f32)> = None;
     let page_h = page_h.max(1.0);
+    let atomic = Atomic::new(g);
     // Truncate the margins at the top of the first page.
     y = next_content(g, y);
     while y < g.doc_height - 0.5 && pages.len() < 100_000 {
@@ -98,7 +126,7 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
             g.candidates
                 .iter()
                 .copied()
-                .filter(|&c| c > y + 1.0 && c <= limit && is_safe(g, c))
+                .filter(|&c| c > y + 1.0 && c <= limit && atomic.is_safe(c))
                 .fold(None, |acc: Option<f32>, c| Some(acc.map_or(c, |a| a.max(c))))
                 .unwrap_or(limit)
         };
