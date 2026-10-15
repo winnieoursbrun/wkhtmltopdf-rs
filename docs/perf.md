@@ -6,6 +6,199 @@ output. Result: **wall and CPU beaten (1.6x and 2x less than the original); peak
 29 % but still 45 % above the original** (see "Peak RSS: what is left"). The memory pass that
 followed (next section) brings the peak RSS **below the original's: 48.9 MiB vs 56.6 MiB**.
 
+# Pass 5 (October 2026)
+
+Goal: lower the wall time of a conversion, `large.html` first (148 ms in the bench container
+after pass 4, target under 100 ms), using several cores if needed. Conditions: PDFs
+byte-identical to pass 4 and identical from run to run, peak RSS at most 10 % above pass 4
+on every bench scenario, a bounded number of threads, no slowdown on a single core, pure
+Rust.
+
+Method: phase timings (`WKHTMLTOPDF_DEBUG_TIMING=1`, new: the elapsed time at the main
+pipeline steps on stderr), `perf record` inside the bench VM (`wkbench:local` plus Debian's
+`linux-perf`, container run with `--privileged`; the conversion thread is `main`, the pool
+threads `wk-worker-N`, so each can be profiled on its own) and samply on macOS; A/B timings
+interleaved run by run in one container session.
+
+## Results
+
+`wkbench:local` container (linux/arm64, 4 vCPU), static musl binaries, bench arguments
+(`small` and `large` with `--javascript-delay 0`). All binaries measured in one session,
+interleaved run by run (the host is shared: absolute times drift by ±10 % between sessions,
+so *base* here, pass 4 at `ddaea2a`, is 159 ms on `large` against 148 ms in the pass 4
+session). Wall and CPU (user + sys of the process): median of 15 runs after 3 warm-ups; peak
+RSS: median of 7 runs.
+
+| Scenario | Wall ms base → pass 5 | CPU ms base → pass 5 | Peak RSS MiB base → pass 5 |
+|---|---|---|---|
+| small page | 4.4 → 3.7 (−16 %) | 5.3 → 5.0 | 14.1 → 15.2 (+7.7 %) |
+| medium, 4 pages | 10.7 → 8.9 (−17 %) | 13.3 → 12.6 | 15.4 → 16.4 (+6.2 %) |
+| large invoice, 30 pages | 158.9 → **105.5** (**−34 %**) | 194.5 → 212.2 (+9 %) | 50.1 → 46.9 (−6.5 %) |
+| header/footer HTML + TOC, 8 pages | 60.8 → 48.6 (−20 %) | 64.6 → 54.9 | 25.1 → 26.5 (+5.8 %) |
+| jQuery page | 119.4 → 96.0 (−20 %) | 121.4 → 101.3 | 28.8 → 30.9 (+7.3 %) |
+| multi-object (cover, TOC, 3 parts) | 15.5 → 12.0 (−23 %) | 18.6 → 16.6 | 15.9 → 16.9 (+6.1 %) |
+
+Inside the process (`WKHTMLTOPDF_DEBUG_TIMING`, median of 20 runs, quiet host), `large.html`
+takes 91 ms from the start of the conversion to the written PDF: parse 8, style, boxes and
+layout 39, paint 13, PDF 25 (the rest is the process start and exit around it). The 100 ms
+target is met on a quiet host and missed by 5 % in the session of the table above.
+
+On a single CPU (`docker --cpus=1 --cpuset-cpus=0`, where the pool has one thread and every
+parallel path is off), pass 5 is faster too, thanks to the allocator: small 6.4 → 5.4 ms,
+`large` 183 → 162 ms, header/footer + TOC 69.5 → 58.7 ms, jQuery 121.7 → 103.7 ms.
+
+## Threads
+
+The binary builds one rayon pool of `min(available_parallelism, 4)` threads
+(`RAYON_NUM_THREADS` overrides it), named `wk-worker-N`; the conversion runs on its own
+thread as before. Everything parallel runs on that pool, with results collected in document
+order: Stylo's traversal (on the pool of the calling thread instead of Stylo's own pool,
+which would add up to 6 more threads), inline layout construction, page drafts, deflate,
+background drops and the start-up work. A single core gets a pool of one thread and the
+sequential paths. The output is the same with 1, 4 or 8 threads (checked).
+
+## What changed
+
+Per commit, same session as the results above (median wall, median CPU, median peak RSS).
+
+| Commit | Change |
+|---|---|
+| `c32cb77` | dlmalloc 0.2.14 vendored, unchanged |
+| `5e388a5` | **Allocator of the musl build** (`crates/wkhtmltopdf/src/alloc.rs`, pure Rust): per-thread free lists for requests up to 1016 bytes (one per dlmalloc chunk size, so nothing is padded), refilled and drained in batches under the lock of a shared dlmalloc heap; medium requests from that heap; 128 KiB and more mmapped on their own (`mremap` to grow). The vendored dlmalloc gives the whole pages of freed chunks back to the system (`madvise`). musl's malloc was 15–20 % of the CPU and takes one process-wide lock. macOS, Windows and glibc keep their system allocator; `--features dlmalloc` and `system-alloc` select the other ones |
+| `cebec04` | **Style and inline layouts on the pool** for large documents: Stylo's parallel traversal (2,000 nodes or more) on the rayon pool of the calling thread (`traverse_dom_on_current_pool`), the 256 or more inline layouts of a resolve built on the pool with per-thread layout and font contexts (blitz's `parallel-construct`, chosen at run time). Pool sized `min(CPUs, 4)` |
+| `e794bbe` | **krilla page drafts** (`krilla::draft`): a page drawn on a surface of its own (private serializer, any thread); what depends on the document (graphics-state numbering, the text: CIDs, font objects, `/ActualText` spans) is kept aside and done by `Page::apply_draft` in page order. Drafts using images, opacity groups, masks, gradients, patterns, outlined or colour glyphs or tagging are refused and drawn in the document as before |
+| `2bf2e7a` | **PDF pages drafted on the pool**, at most two per thread ahead of the page being written; faces and culling data shared |
+| `2ec8b06` | Freed pages given back 16 KiB at a time (every page: `madvise` was 5 % of the conversion thread) |
+| `695b968` | Drafts refused under PDF validators (none in wkhtmltopdf) |
+| `0876fdd` | The conversion thread drafts the next pages while it waits for one |
+| `587e01b` | The DOM of a rendered page and the display lists at the end dropped on the pool (3.7 + 4.3 ms off the conversion thread on `large`) |
+| `505a1f0` | **Text of a draft written by the compressing job**: merging only registers the glyphs and texts in the font (CIDs, spans) and the font name; the operators of plain CID text are written by the job that compresses the page |
+| `4f9087d` | Glyph-run texts in a vector sorted by command index (the SipHash map was rehashed as it grew: 4.8 % of the conversion thread) |
+| `0be9568` | Culling boxes of the display lists computed on the pool before the drafts start |
+| `95eeca4` | Font scan on a start-up worker, a page parsed with an empty font context and given the real one before styling |
+| `1ef0989` | 4 KiB of cached blocks per class and thread (instead of 8: 0.2–0.3 MiB less RSS, same time) |
+| `8e310f4` | Pages drafted only from four pages per thread (the 4- and 8-page bench documents gained 0.5–1 ms for 0.5 MiB of RSS) |
+| `e4db04a` | Glyph-run walks skipped when they have nothing to do (inline boxes to place, inline backgrounds to paint): resolve 42.2 → 38.9 ms, paint 13.9 → 13.1 ms on `large` |
+
+Wall time, ms:
+
+| Commit | small | medium | large | hf+toc | js | multi |
+|---|---|---|---|---|---|---|
+| base `ddaea2a` | 4.4 | 10.7 | 158.9 | 60.8 | 119.4 | 15.5 |
+| `5e388a5` allocator | 4.2 | 9.7 | 140.3 | 52.3 | 105.2 | 13.3 |
+| `cebec04` style, inline layouts | 4.6 | 9.8 | 126.8 | 51.6 | 102.8 | 13.5 |
+| `2bf2e7a` page drafts | 4.2 | 9.8 | 117.2 | 52.2 | 102.2 | 13.5 |
+| `2ec8b06` purge 16 KiB | 4.2 | 9.6 | 115.4 | 48.1 | 95.3 | 13.0 |
+| `0876fdd` conversion thread drafts | 4.2 | 9.4 | 116.5 | 48.9 | 99.8 | 12.9 |
+| `587e01b` background drops | 4.2 | 9.4 | 112.2 | 48.5 | 96.5 | 12.8 |
+| `505a1f0` text on the compressing job | 4.1 | 8.8 | 110.6 | 48.4 | 95.3 | 12.5 |
+| `4f9087d` run texts vector | 4.2 | 8.8 | 111.2 | 47.7 | 95.8 | 12.1 |
+| `0be9568` culling on the pool | 4.1 | 8.9 | 111.0 | 47.9 | 95.5 | 12.1 |
+| `95eeca4` font scan on a worker | 4.0 | 8.5 | 110.9 | 48.2 | 97.2 | 11.7 |
+| `1ef0989` 4 KiB caches | 3.9 | 8.6 | 112.2 | 47.5 | 96.2 | 11.9 |
+| `8e310f4` drafts from 16 pages | 3.8 | 9.0 | 108.6 | 49.6 | 96.3 | 12.3 |
+| `e4db04a` glyph-run walks | 3.7 | 8.9 | **105.5** | 48.6 | 96.0 | 12.0 |
+
+CPU (user + sys), ms:
+
+| Commit | small | medium | large | hf+toc | js | multi |
+|---|---|---|---|---|---|---|
+| base `ddaea2a` | 5.3 | 13.3 | 194.5 | 64.6 | 121.4 | 18.6 |
+| `5e388a5` | 4.9 | 12.1 | 174.5 | 56.0 | 107.0 | 15.9 |
+| `cebec04` | 5.7 | 13.0 | 201.4 | 56.3 | 107.4 | 17.0 |
+| `2bf2e7a` | 5.3 | 13.5 | 211.9 | 57.6 | 107.1 | 17.6 |
+| `2ec8b06` | 5.2 | 13.1 | 213.3 | 53.4 | 100.8 | 17.1 |
+| `0876fdd` | 5.2 | 12.9 | 211.8 | 54.4 | 104.8 | 17.0 |
+| `587e01b` | 5.3 | 13.0 | 213.6 | 54.9 | 101.9 | 17.4 |
+| `505a1f0` | 5.2 | 12.8 | 214.4 | 55.3 | 101.0 | 17.6 |
+| `4f9087d` | 5.3 | 12.9 | 217.5 | 55.6 | 102.1 | 17.0 |
+| `0be9568` | 5.1 | 12.7 | 218.7 | 55.3 | 102.3 | 17.0 |
+| `95eeca4` | 5.3 | 13.0 | 225.0 | 55.5 | 103.9 | 17.4 |
+| `1ef0989` | 5.3 | 13.1 | 220.5 | 55.4 | 102.2 | 17.0 |
+| `8e310f4` | 5.2 | 12.5 | 214.7 | 55.6 | 101.3 | 16.9 |
+| `e4db04a` | 5.0 | 12.6 | 212.2 | 54.9 | 101.3 | 16.6 |
+
+Peak RSS, MiB:
+
+| Commit | small | medium | large | hf+toc | js | multi |
+|---|---|---|---|---|---|---|
+| base `ddaea2a` | 14.13 | 15.41 | 50.11 | 25.06 | 28.83 | 15.88 |
+| `5e388a5` | 14.73 | 15.53 | 45.33 | 25.53 | 30.27 | 16.22 |
+| `cebec04` | 14.97 | 16.23 | 47.52 | 25.65 | 29.43 | 16.97 |
+| `2bf2e7a` | 14.97 | 16.53 | 46.21 | 26.27 | 29.95 | 17.11 |
+| `2ec8b06` | 14.89 | 16.43 | 46.86 | 26.64 | 31.13 | 17.19 |
+| `0876fdd` | 14.97 | 16.52 | 47.05 | 26.86 | 30.63 | 17.18 |
+| `587e01b` | 15.30 | 16.65 | 47.71 | 26.82 | 30.80 | 17.27 |
+| `505a1f0` | 15.03 | 16.56 | 47.89 | 27.03 | 30.75 | 17.41 |
+| `4f9087d` | 15.11 | 16.52 | 47.01 | 26.94 | 30.46 | 17.43 |
+| `0be9568` | 15.32 | 17.03 | 47.45 | 27.40 | 30.66 | 17.60 |
+| `95eeca4` | 15.41 | 16.95 | 47.58 | 27.27 | 30.95 | 17.72 |
+| `1ef0989` | 15.25 | 16.79 | 47.43 | 27.21 | 31.10 | 17.43 |
+| `8e310f4` | 15.34 | 16.43 | 46.81 | 26.73 | 31.02 | 16.99 |
+| `e4db04a` | 15.22 | 16.37 | 46.86 | 26.52 | 30.93 | 16.86 |
+
+Between `0be9568` and `1ef0989` the multi-object and medium pages went over the 10 % budget
+(+11.6 % and +10.5 %); the last two allocator and drafting commits bring every scenario
+back within +8 %. What the extra RSS of the small documents is: the three more worker
+threads (about 0.3 MiB each on `medium` and `multi`: their stacks, per-thread caches and the
+heap they touch; with `RAYON_NUM_THREADS=1` the medium page is at +3.3 %), and dlmalloc
+keeping more than musl (+0.3 MiB). `large.html` is lower than pass 4: large buffers are
+mapped on their own, freed pages are given back.
+
+## Byte-identity and determinism
+
+Every commit was checked with `bench/pdf-identity.sh diff` against pass 4 (67 PDFs of the
+corpus: bench scenarios, `tests/corpus`, `tests/js`, `tests/parts`, upstream fixtures),
+with the macOS build and with the musl build in the container, and the final state three
+times in a row on each, plus once with `RAYON_NUM_THREADS=1` and once with 8: all
+byte-identical. While the draft threshold was two pages (before `8e310f4`) every multi-page
+document of the corpus went through the drafts, and was identical too. `cargo test
+--workspace --locked` (199 tests), clippy `-D warnings` and `cargo fmt --check` pass; the
+vendored crates changed (stylo, blitz-dom, blitz-paint, krilla, pdf-writer) type-check for
+`x86_64-pc-windows-msvc` (the workspace crates need ring's C build for that target, not
+available here; the new allocator module is `cfg(unix)`, its global use `cfg(target_env =
+"musl")`).
+
+## Options evaluated and not taken
+
+- **Writing a draft's text in the draft** (assuming no `/ActualText` span, CIDs patched when
+  merging): correct, but the drafts got heavier and the drafting threads were the
+  bottleneck: `large` 121.5 → 129 ms. The text is now written by the compressing job
+  instead, after the merge (`505a1f0`).
+- **Stylo's own thread pool** (its `use_current_thread` pool, 3 more threads): it made the
+  conversion thread a member of that pool, so every later rayon call ran there while the
+  global pool idled. Replaced by a traversal on the calling thread's rayon pool.
+- **Plain `GlobalDlmalloc` with threads**: its single lock made the parallel inline layout
+  construction slower than the sequential one (resolve 97 vs 60 ms on `large`).
+- **Larger per-thread caches** (32 KiB per class): −4 ms on header/footer + TOC, but
+  +1.1 to +1.7 MiB of peak RSS on every scenario.
+- **Giving every freed page back** (4 KiB threshold): 0.5 MiB less on the jQuery page,
+  5 % of the conversion thread in `madvise` and refaults on `large`.
+- **Drafting short documents** (from 2 pages): 0.5–1 ms on the 4- and 8-page bench
+  documents for 0.5 MiB of peak RSS.
+- **Header/footer pages loaded in parallel**: each needs a Boa context, and Boa's contexts,
+  GC and interner are per thread: every thread would parse the 69 KB DOM prelude again
+  (14 ms).
+
+## Profiles after the pass
+
+`large.html`, conversion thread (`perf` in the bench VM): table layout ~20 % (grid track
+sizing, cell min/max-content measures, line breaking), paint ~14 % (`stroke_text` and the
+display list), HTML parse 9 %, box construction 7 %, merging the drafts (registering the
+glyphs and texts of every run in the font: `check_text_span_prop` 4 %), page faults of
+fresh memory ~9 % (also there under musl's allocator). The worker threads are the
+bottleneck of the PDF phase: drafting the pages and the compression jobs (deflate, and now
+the text operators) take about 45 and 30 ms of CPU.
+
+Header/footer + TOC: Boa, 59 % of the conversion thread: parsing the DOM prelude once
+(29 %) and evaluating it in each of the 16 header/footer realms (25 %).
+
+jQuery page: Boa (parse of jQuery, the `onload` DOM build), sequential.
+
+Remaining leads: measuring table cells (min/max-content) on the pool before the sequential
+track sizing; painting large subtrees in parallel; the glyph-to-font registration of the
+merge (per glyph hash lookups and a string per new glyph).
+
 # Pass 4 (October 2026)
 
 Goal: cut CPU, wall time and peak RSS further, `large.html` first (a warm-JVM
