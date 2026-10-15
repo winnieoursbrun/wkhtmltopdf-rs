@@ -81,6 +81,12 @@ unsafe impl Allocator for System {
     fn page_size(&self) -> usize {
         4096
     }
+
+    fn purge(&self, ptr: *mut u8, size: usize) {
+        unsafe {
+            libc::madvise(ptr.cast(), size, libc::MADV_DONTNEED);
+        }
+    }
 }
 
 #[cfg(feature = "global")]

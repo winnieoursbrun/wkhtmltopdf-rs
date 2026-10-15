@@ -4197,6 +4197,7 @@ dependencies = [
  "dhat",
  "dlmalloc",
  "hayro",
+ "libc",
  "lopdf",
  "pdf-extract",
  "rayon",

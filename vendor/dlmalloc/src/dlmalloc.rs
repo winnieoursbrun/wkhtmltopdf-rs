@@ -1264,11 +1264,34 @@ impl<A: Allocator> Dlmalloc<A> {
         }
     }
 
+    /// wkhtmltopdf-rs: give back to the system the whole pages that `freed` (the chunk just
+    /// freed, as `(address, size)`) made free inside the free chunk `p` of `size` bytes it is
+    /// now part of. The first 64 bytes of `p` (its header and free-list links) are kept.
+    /// Freed memory then stops counting in the resident set, as with the C library's
+    /// allocator, instead of staying resident for good (dlmalloc only returns the top of its
+    /// segments); it is faulted in again, zeroed, when reused. Only the pages of `freed` are
+    /// given back, so that freeing next to a large free chunk does not give it back again.
+    unsafe fn purge_freed(&mut self, p: *mut Chunk, size: usize, freed: (usize, usize)) {
+        let page = self.system_allocator.page_size();
+        if size < page {
+            return;
+        }
+        let lo = (p as usize + 64 + page - 1) & !(page - 1);
+        let hi = (p as usize + size) & !(page - 1);
+        let start = lo.max(freed.0 & !(page - 1));
+        let end = hi.min((freed.0 + freed.1 + page - 1) & !(page - 1));
+        if end > start {
+            self.system_allocator.purge(start as *mut u8, end - start);
+        }
+    }
+
     pub unsafe fn free(&mut self, mem: *mut u8) {
         self.check_malloc_state();
 
         let mut p = Chunk::from_mem(mem);
         let mut psize = Chunk::size(p);
+        // wkhtmltopdf-rs: the freed chunk, before it is merged with free neighbours.
+        let freed = (p as usize, psize);
         let next = Chunk::plus_offset(p, psize);
         if !Chunk::pinuse(p) {
             let prevsize = (*p).prev_foot;
@@ -1292,6 +1315,7 @@ impl<A: Allocator> Dlmalloc<A> {
             } else if (*next).head & INUSE == INUSE {
                 self.dvsize = psize;
                 Chunk::set_free_with_pinuse(p, psize, next);
+                self.purge_freed(p, psize, freed);
                 return;
             }
         }
@@ -1310,12 +1334,16 @@ impl<A: Allocator> Dlmalloc<A> {
                 if self.should_trim(tsize) {
                     self.sys_trim(0);
                 }
+                if self.top == p {
+                    self.purge_freed(p, self.topsize, freed);
+                }
                 return;
             } else if next == self.dv {
                 self.dvsize += psize;
                 let dsize = self.dvsize;
                 self.dv = p;
                 Chunk::set_size_and_pinuse_of_free_chunk(p, dsize);
+                self.purge_freed(p, dsize, freed);
                 return;
             } else {
                 let nsize = Chunk::size(next);
@@ -1324,6 +1352,7 @@ impl<A: Allocator> Dlmalloc<A> {
                 Chunk::set_size_and_pinuse_of_free_chunk(p, psize);
                 if p == self.dv {
                     self.dvsize = psize;
+                    self.purge_freed(p, psize, freed);
                     return;
                 }
             }
@@ -1335,6 +1364,7 @@ impl<A: Allocator> Dlmalloc<A> {
             self.insert_small_chunk(p, psize);
             self.check_free_chunk(p);
         } else {
+            self.purge_freed(p, psize, freed);
             self.insert_large_chunk(p.cast(), psize);
             self.check_free_chunk(p);
             self.release_checks -= 1;
@@ -1385,7 +1415,7 @@ impl<A: Allocator> Dlmalloc<A> {
             released += self.release_unused_segments();
 
             if released == 0 && self.topsize > self.trim_check {
-                self.trim_check = usize::max_value();
+                self.trim_check = usize::MAX;
             }
         }
 
@@ -2115,3 +2145,4 @@ mod tests {
         }
     }
 }
+

@@ -29,11 +29,18 @@ wk-loader.workspace = true
 rayon = "1.10"
 # Heap profiler, only with `--features dhat-heap` (docs/perf.md).
 dhat = { version = "0.3", optional = true }
-dlmalloc = { version = "0.2", features = ["global"], optional = true }
+
+# The allocator of the static musl build (src/alloc.rs), compiled and tested on every Unix.
+[target.'cfg(unix)'.dependencies]
+dlmalloc = { version = "0.2", features = ["global"] }
+libc = "0.2"
 
 [features]
 dhat-heap = ["dep:dhat"]
-dlmalloc = ["dep:dlmalloc"]
+# dlmalloc as it is (one lock) as the global allocator, instead of `alloc::WkAlloc` on musl.
+dlmalloc = []
+# The C library's allocator on musl too (for comparisons).
+system-alloc = []
 bench-inproc = []
 
 [dev-dependencies]

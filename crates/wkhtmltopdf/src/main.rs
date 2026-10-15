@@ -11,9 +11,17 @@ use wk_cli::Streams;
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-#[cfg(all(feature = "dlmalloc", not(feature = "dhat-heap")))]
+#[cfg(all(unix, feature = "dlmalloc", not(feature = "dhat-heap")))]
 #[global_allocator]
 static ALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
+
+// The static musl build: musl's malloc is slow and serialises threads (src/alloc.rs).
+#[cfg(all(
+    target_env = "musl",
+    not(any(feature = "dhat-heap", feature = "dlmalloc", feature = "system-alloc"))
+))]
+#[global_allocator]
+static ALLOC: wkhtmltopdf_app::alloc::WkAlloc = wkhtmltopdf_app::alloc::WkAlloc;
 
 #[cfg(unix)]
 fn os_bytes(a: std::ffi::OsString) -> Vec<u8> {

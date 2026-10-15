@@ -64,6 +64,13 @@ pub unsafe trait Allocator: Send {
 
     /// Returns the page size. Must be a power of two
     fn page_size(&self) -> usize;
+
+    /// wkhtmltopdf-rs: gives the physical pages of `[ptr, ptr + size)` (page-aligned, inside a
+    /// free chunk) back to the system; they read as zeros when touched again. No-op by
+    /// default.
+    fn purge(&self, ptr: *mut u8, size: usize) {
+        let _ = (ptr, size);
+    }
 }
 
 /// An allocator instance
