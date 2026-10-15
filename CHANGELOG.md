@@ -19,6 +19,16 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 - `tests/js`: JavaScript corpus (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution,
   timers, `document.write`, …) with outputs of the real binary.
 
+### Changed
+
+- Performance passes 3 and 4 (`docs/perf.md`): user-agent stylesheet parsed once, on a worker;
+  layout at print size while loading; display list indexed by position; JS prelude compiled
+  once; page content streams and font subsets compressed in parallel (at most 2 workers,
+  `RAYON_NUM_THREADS` overrides); deflate with 48 hash-chain probes (same decompressed content,
+  output +0.4 %); faster number formatting. Large invoice: 261 → 148 ms in the benchmark
+  container.
+- Benchmark against OpenHTMLtoPDF (Java) in `bench/java`.
+
 ### Fixed
 
 - A missing local file's error reads `Error opening <path>`, like Qt.

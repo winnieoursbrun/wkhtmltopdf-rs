@@ -39,20 +39,37 @@ container (4 vCPU, hyperfine, 10 runs after 3 warmups). Original: official `wkht
 
 | Scenario | wkhtmltopdf 0.12.6 | wkhtmltopdf-rs | Speed-up | Peak RSS orig → rs |
 |---|---:|---:|---:|---:|
-| `--version` (process startup) | 3.1 ms | 0.4 ms | **8×** | 17.7 → 2.0 MiB |
-| Small page, pdfkit defaults | 281.8 ms | 5.9 ms | **48×** | 38.5 → 14.5 MiB |
-| Medium page (4 pages), pdfkit defaults | 282.9 ms | 16.4 ms | **17×** | 40.7 → 15.9 MiB |
-| Large invoice (30 pages), pdfkit defaults | 660.9 ms | 260.7 ms | **2.5×** | 58.6 → 49.1 MiB |
-| Large invoice, `--javascript-delay 0` | 431.7 ms | 256.8 ms | **1.7×** | 58.1 → 49.1 MiB |
-| Header/footer HTML + TOC + outline (8 pages) | 961.3 ms | 202.6 ms | **4.7×** | 46.6 → 32.8 MiB |
-| jQuery page, `--javascript-delay 200` | 305.5 ms | 147.9 ms | **2.1×** | 47.7 → 29.4 MiB |
-| Cover + TOC + 3 pages | 735.9 ms | 21.3 ms | **35×** | 42.1 → 17.3 MiB |
-| Batch: 20 × medium page, sequential | 5.85 s | 0.32 s | **18.5×** | 43.6 → 16.0 MiB |
+| `--version` (process startup) | 2.9 ms | 0.4 ms | **6.5×** | 17.7 → 1.9 MiB |
+| Small page, pdfkit defaults | 259.0 ms | 4.4 ms | **58×** | 39.8 → 14.2 MiB |
+| Medium page (4 pages), pdfkit defaults | 295.3 ms | 10.8 ms | **27×** | 41.4 → 15.2 MiB |
+| Large invoice (30 pages), pdfkit defaults | 647.5 ms | 147.9 ms | **4.4×** | 56.5 → 48.5 MiB |
+| Large invoice, `--javascript-delay 0` | 398.0 ms | 156.0 ms | **2.6×** | 60.2 → 48.4 MiB |
+| Header/footer HTML + TOC + outline (8 pages) | 986.2 ms | 59.5 ms | **16.6×** | 45.3 → 25.6 MiB |
+| jQuery page, `--javascript-delay 200` | 301.2 ms | 116.1 ms | **2.6×** | 47.7 → 30.7 MiB |
+| Cover + TOC + 3 pages | 746.7 ms | 14.6 ms | **51×** | 43.2 → 16.0 MiB |
+| Batch: 20 × medium page, sequential | 5.88 s | 0.21 s | **27.7×** | 43.4 → 17.1 MiB |
 
 Part of the gap on small pages is the original's default 200 ms `--javascript-delay`, which it
 really sleeps. The port honours the same delay on a virtual clock: timers and `Date` advance
 deterministically, so no wall-clock time is spent waiting (see [Known divergences](#known-divergences)).
 The `--javascript-delay 0` rows compare pure engine cost.
+
+### Against OpenHTMLtoPDF (Java)
+
+Measured with `bench/java/run.sh` in the same kind of container, against
+[OpenHTMLtoPDF](https://github.com/openhtmltopdf/openhtmltopdf) 1.1.87 on Temurin 21, same inputs
+and fonts. Full report and methodology: [`bench/results/JAVA-LATEST.md`](bench/results/JAVA-LATEST.md).
+
+| Document | Cold: rs CLI vs Java CLI (best JVM flags, AppCDS) | Warm: rs in-process vs one warm JVM (median) | Peak RSS rs vs JVM (warm) |
+|---|---:|---:|---:|
+| Small page | 3.1 ms vs 200.6 ms (**64×**) | 1.3 ms vs 8.7 ms (**6.6×**) | 16 vs 211 MiB |
+| Medium page | 9.4 ms vs 299.1 ms (**32×**) | 7.3 ms vs 25.0 ms (**3.4×**) | 16 vs 457 MiB |
+| Large invoice (30 pages) | 147.8 ms vs 845.8 ms (**5.7×**) | 146.2 ms vs 278.4 ms (**1.9×**) | 54 vs 644 MiB |
+| Handbook body | 12.8 ms vs 296.3 ms (**23×**) | 10.7 ms vs 28.4 ms (**2.7×**) | 16 vs 412 MiB |
+
+Even with the JVM fully warmed up and no process start-up to pay, the Rust port converts faster on
+every document while using 8 to 28 times less memory; the JVM also needs a heap of at least 64 MiB
+just to convert the large invoice.
 
 ## Compatibility with wkhtmltopdf 0.12.6
 
