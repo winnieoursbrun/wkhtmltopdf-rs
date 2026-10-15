@@ -209,8 +209,51 @@ pub struct DocInfo {
 
 struct FontEntry {
     font: Font,
-    rev_cmap: HashMap<u32, char>,
-    hmtx: Vec<f32>,
+    /// Smallest code point mapped to each glyph id (`u32::MAX`: none), built on first use:
+    /// only runs without source text need it.
+    rev_cmap: std::cell::OnceCell<Vec<u32>>,
+    /// Advance width of each glyph id in em (NaN: not read yet), read on first use: only
+    /// the last glyph of a run needs it.
+    advances: std::cell::RefCell<Vec<f32>>,
+}
+
+impl FontEntry {
+    fn advance(&self, fd: &peniko::FontData, gid: u32) -> f32 {
+        let mut advances = self.advances.borrow_mut();
+        let Some(a) = advances.get_mut(gid as usize) else { return 0.0 };
+        if a.is_nan() {
+            *a = skrifa::FontRef::from_index(fd.data.data(), fd.index)
+                .map(|fref| {
+                    let size = skrifa::instance::Size::unscaled();
+                    let upem = f32::from(fref.metrics(size, skrifa::instance::LocationRef::default()).units_per_em);
+                    let gm = fref.glyph_metrics(size, skrifa::instance::LocationRef::default());
+                    gm.advance_width(skrifa::GlyphId::new(gid)).unwrap_or(0.0) / upem
+                })
+                .unwrap_or(0.0);
+        }
+        *a
+    }
+
+    fn char_of(&self, fd: &peniko::FontData, gid: u32) -> Option<char> {
+        let map = self.rev_cmap.get_or_init(|| {
+            let mut map = vec![u32::MAX; self.advances.borrow().len()];
+            let Ok(fref) = skrifa::FontRef::from_index(fd.data.data(), fd.index) else {
+                return map;
+            };
+            for (cp, gid) in fref.charmap().mappings() {
+                if char::from_u32(cp).is_none() {
+                    continue;
+                }
+                let g = gid.to_u32() as usize;
+                if g >= map.len() {
+                    map.resize(g + 1, u32::MAX);
+                }
+                map[g] = map[g].min(cp);
+            }
+            map
+        });
+        map.get(gid as usize).and_then(|&cp| char::from_u32(cp))
+    }
 }
 
 #[derive(Default)]
@@ -429,26 +472,16 @@ fn font_entry<'a>(caches: &'a mut Caches, fd: &peniko::FontData) -> Option<&'a F
         .entry((fd.data.id(), fd.index))
         .or_insert_with(|| {
             let fref = skrifa::FontRef::from_index(fd.data.data(), fd.index).ok()?;
-            let mut rev_cmap = HashMap::new();
-            for (cp, gid) in fref.charmap().mappings() {
-                if let Some(ch) = char::from_u32(cp) {
-                    let e = rev_cmap.entry(gid.to_u32()).or_insert(ch);
-                    if (ch as u32) < (*e as u32) {
-                        *e = ch;
-                    }
-                }
-            }
-            let loc = skrifa::instance::LocationRef::default();
-            let fm = fref.metrics(skrifa::instance::Size::unscaled(), loc);
-            let upem = f32::from(fm.units_per_em);
-            let gm = fref.glyph_metrics(skrifa::instance::Size::unscaled(), loc);
-            let n = u32::from(fm.glyph_count);
-            let hmtx =
-                (0..n).map(|g| gm.advance_width(skrifa::GlyphId::new(g)).unwrap_or(0.0) / upem).collect();
+            let fm = fref.metrics(skrifa::instance::Size::unscaled(), skrifa::instance::LocationRef::default());
+            let glyph_count = usize::from(fm.glyph_count);
             // krilla shares the blob's bytes: no copy of the font file per face.
             let data: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(fd.data.clone());
             let font = Font::new(data.into(), fd.index)?;
-            Some(FontEntry { font, rev_cmap, hmtx })
+            Some(FontEntry {
+                font,
+                rev_cmap: std::cell::OnceCell::new(),
+                advances: std::cell::RefCell::new(vec![f32::NAN; glyph_count]),
+            })
         })
         .as_ref()
 }
@@ -629,14 +662,14 @@ impl Replayer<'_> {
                 text.glyph_ranges[i].clone()
             } else {
                 let s = fallback.len();
-                if let Some(ch) = fe.rev_cmap.get(&g.id) {
-                    fallback.push(*ch);
+                if let Some(ch) = fe.char_of(&c.font_data, g.id) {
+                    fallback.push(ch);
                 }
                 s..fallback.len()
             };
             let adv = match c.glyphs.get(i + 1) {
                 Some(n) => (n.x - g.x) / size,
-                None => fe.hmtx.get(g.id as usize).copied().unwrap_or(0.0),
+                None => fe.advance(&c.font_data, g.id),
             };
             glyphs.push(KrillaGlyph::new(
                 GlyphId::new(g.id),
