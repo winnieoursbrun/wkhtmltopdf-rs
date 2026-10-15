@@ -132,6 +132,12 @@ pub struct Geometry {
     /// `orphans`/`widows`, which the 0.12.6 binary does not apply by
     /// default).
     pub paragraphs: Vec<Vec<(f32, f32)>>,
+    /// Painted content: line boxes and the unbreakable boxes (rows, replaced
+    /// elements). A page that starts in a gap between them starts at the next one.
+    pub content_boxes: Vec<(f32, f32)>,
+    /// What moves an unforced break up when it straddles the page bottom: the
+    /// content area of each line, the unbreakable boxes.
+    pub straddlers: Vec<(f32, f32)>,
 }
 
 /// An `<a href>` hit area, in document px.
@@ -935,6 +941,8 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
     if atomic && bottom > top {
         g.content_starts.push(top);
         g.atomic.push((top, bottom));
+        g.straddlers.push((top, bottom));
+        g.content_boxes.push((top, bottom));
         return;
     }
 
@@ -980,13 +988,20 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
         if lines.len() > 1 {
             g.paragraphs.push(lines);
         }
-        for line in text.layout.lines() {
+        for (i, line) in text.layout.lines().enumerate() {
             let m = line.metrics();
             let (a, b) = (y0 + m.block_min_coord, y0 + m.block_max_coord);
-            g.atomic.push((a, b));
+            // QtWebKit 2.2 paginates on the root inline box's lineTop/lineBottom, which leave
+            // out the half-leading: a line straddles the cut when its content area (ascent and
+            // descent) does, and the page then ends at the top of that content area, or at the
+            // line box top for the first line of a block (both verified on the 0.12.6 binary).
+            let (ca, cb) = (y0 + m.content_block_min_coord, y0 + m.content_block_max_coord);
+            let cb = cb.max(ca);
+            g.straddlers.push((ca, cb));
+            g.atomic.push((if i == 0 { ca.min(a) } else { ca }, cb));
+            g.content_boxes.push((a, b));
             g.content_starts.push(a);
-            g.candidates.push(a);
-            g.candidates.push(b);
+            g.candidates.extend([a, b, ca, cb]);
         }
     }
 

@@ -104,7 +104,6 @@ Deliberate:
 Not yet matched:
 
 - QtWebKit's pagination of tall table rows (one page of `tests/corpus/statement` differs).
-- A4 landscape pages with long tables can break one row differently (pdfkit `options_a4` case).
 - `<select>` boxes are not drawn; canvas is painted as vectors where the original rasterises it.
 - `-webkit-text-stroke`, a float placed before a collapsing margin, flex/grid text extraction order
   in the WebKit-2012 profile.
