@@ -12,7 +12,6 @@
 //! is recorded by an `anyrender::Scene` and boxed.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyrender::recording::{FillCommand, GlyphRunCommand, RenderCommand};
@@ -112,13 +111,68 @@ impl DisplayList {
     }
 }
 
+/// Source text of glyph-run commands, by command index: recorded in painting order, so a
+/// vector sorted by index (a hash map rehashed its ~9,000 entries as it grew on large.html).
+#[derive(Default)]
+pub struct RunTexts {
+    entries: Vec<(usize, RunText)>,
+}
+
+impl RunTexts {
+    /// The text of the command at `index`.
+    pub fn get(&self, index: &usize) -> Option<&RunText> {
+        self.entries.binary_search_by_key(index, |(i, _)| *i).ok().map(|k| &self.entries[k].1)
+    }
+
+    /// Set the text of the command at `index`.
+    pub fn insert(&mut self, index: usize, text: RunText) {
+        match self.entries.last() {
+            Some((last, _)) if *last >= index => match self.entries.binary_search_by_key(&index, |(i, _)| *i)
+            {
+                Ok(k) => self.entries[k].1 = text,
+                Err(k) => self.entries.insert(k, (index, text)),
+            },
+            _ => self.entries.push((index, text)),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The texts with their command index, by index.
+    pub fn iter(&self) -> impl Iterator<Item = (&usize, &RunText)> {
+        self.entries.iter().map(|(i, t)| (i, t))
+    }
+}
+
+impl<'a> IntoIterator for &'a RunTexts {
+    type Item = (&'a usize, &'a RunText);
+    type IntoIter = std::iter::Map<
+        std::slice::Iter<'a, (usize, RunText)>,
+        fn(&'a (usize, RunText)) -> (&'a usize, &'a RunText),
+    >;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.iter().map(|(i, t)| (i, t))
+    }
+}
+
 /// A painted document.
 #[derive(Default)]
 pub struct Recorder {
     /// The display list, in painting order.
     pub commands: DisplayList,
     /// Source text of glyph-run commands, by command index.
-    pub texts: HashMap<usize, RunText>,
+    pub texts: RunTexts,
     /// Records one command at a time, moved to `commands`.
     scratch: Scene,
 }

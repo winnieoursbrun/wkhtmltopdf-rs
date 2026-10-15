@@ -17,7 +17,7 @@ pub use net::Fetcher;
 pub use page::{
     Anchors, FormElement, Geometry, Heading, LinkBox, RenderedPage, TableInfo, WebPage, WebSettings,
 };
-pub use paint::{Command, DisplayList, Recorder};
+pub use paint::{Command, DisplayList, Recorder, RunTexts};
 
 /// Work every conversion needs whatever its input, done ahead of time on the calling
 /// thread (the binary runs it on a worker while the input is read and parsed): the
