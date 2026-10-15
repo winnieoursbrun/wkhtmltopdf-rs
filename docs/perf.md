@@ -6,6 +6,131 @@ output. Result: **wall and CPU beaten (1.6x and 2x less than the original); peak
 29 % but still 45 % above the original** (see "Peak RSS: what is left"). The memory pass that
 followed (next section) brings the peak RSS **below the original's: 48.9 MiB vs 56.6 MiB**.
 
+# Pass 4 (October 2026)
+
+Goal: cut CPU, wall time and peak RSS further, `large.html` first (a warm-JVM
+OpenHTMLtoPDF renders it in ~315 ms), and the fixed per-process cost of small pages. For the
+first time the compressed bytes were allowed to change (a cheaper deflate setting), under
+these conditions: total output size within ±1 %, every PDF still parses, all tests pass and
+the *decompressed* content is identical. Only the first commit changes bytes; every other
+one was checked byte for byte with `bench/pdf-identity.sh` against the build before it.
+
+## Results
+
+macOS arm64 host, release profile, `WKHTMLTOPDF_SYSTEM_FONTS=0`, bench arguments (`small`
+and `large` with `--javascript-delay 0`). Instructions retired are the median, peak RSS the
+lowest, of 11 `/usr/bin/time -l` runs; wall is the hyperfine mean of 30 runs. *base* is
+`8144e44` (pass 3), *pass 4* is `e321b99`.
+
+| Scenario | Instructions (M) base → pass 4 | Wall ms base → pass 4 | Peak RSS MiB base → pass 4 |
+|---|---|---|---|
+| small page | 51.3 → 47.0 (−8 %) | 5.9 → 5.1 | 12.8 → 13.1 |
+| medium, 4 pages | 140.3 → 131.3 (−6 %) | 13.4 → 10.6 | 15.4 → 15.8 |
+| large invoice, 30 pages | 2,177 → 2,000 (**−8 %**) | 172.9 → **119.0** (**−31 %**) | 57.0 → 58.6 |
+| header/footer HTML + TOC, 8 pages | 578 → 570 (−1 %) | | 29.7 → 30.4 |
+| jQuery page | 1,070 → 1,060 (−1 %) | | 37.3 → 37.9 |
+| multi-object (cover, TOC, 3 parts) | 176 → 168 (−4 %) | | 16.0 → 16.1 |
+
+The macOS RSS grows by 0.3–1.6 MiB with the two rayon worker threads (their stacks and the
+system allocator's per-thread caches); on Linux/musl it does not move (below).
+
+Heap peak (dhat, `--features dhat-heap`): small 1.49 → 1.27 MB, medium 2.22 → 1.97 MB, large
+35.07 → 35.09 MB, hf+toc 13.19 → 13.20 MB, jQuery 12.04 → 12.06 MB, multi 4.15 → 4.05 MB.
+
+Confirmation in the `wkbench:local` container (linux/arm64, static musl binaries of both
+commits, same session, system fonts enabled as in the bench). Wall: hyperfine median of 20
+runs; CPU: user+sys per conversion, median of 3 batches of 20 conversions (`/usr/bin/time`
+only has 10 ms resolution per run); peak RSS: lowest of 9 runs.
+
+| Scenario | Wall ms base → pass 4 | CPU ms base → pass 4 | Peak RSS MiB base → pass 4 |
+|---|---|---|---|
+| small page | 5.2 → 4.1 | 4.5 → 4.5 | 13.7 → 13.7 |
+| medium, 4 pages | 13.8 → 10.6 | 13.0 → 12.5 | 14.9 → 14.8 |
+| large invoice, 30 pages | 203.8 → **148.3** (**−27 %**) | 203 → **184** (−9 %) | 48.4 → 48.2 |
+| header/footer HTML + TOC | 64.3 → 58.6 | 64.0 → 63.5 | 24.8 → 25.0 |
+| jQuery page | 118.1 → 115.9 | 119.0 → 119.5 | 28.8 → 28.7 |
+| multi-object | 21.0 → 16.0 | 17.5 → 17.5 | 15.4 → 15.6 |
+
+`large.html` now converts in 148 ms of wall time in the container, against ~315 ms for the
+warm-JVM OpenHTMLtoPDF run. CPU is above wall on `large` because page streams are compressed
+on a worker thread while the next page is built.
+
+## What changed
+
+Instruction counts per scenario after each step (macOS, median of 7 runs; wall time on
+`large` where the step targets it).
+
+| Commit | Change | small / medium / large / hf+toc / js / multi |
+|---|---|---|
+| | base (`8144e44`) | 51.5 / 140.1 / 2,179 / 579 / 1,070 / 177 |
+| `65a3bad` | `krilla`: zlib streams compressed by `miniz_oxide` in one call with lazy parsing and **48 hash-chain probes** instead of flate2's streaming writer at level 6 (128 probes). Content streams repeat the same operators over and over, and the long chains made deflate a quarter of `large.html`. **Changes compressed bytes** (below) | 51.0 / 137.4 / 2,048 / 574 / 1,067 / 174 |
+| `f6e7375` | krilla's `rayon` feature: each page's content stream is a `Deferred` chunk compressed on the rayon pool while the next page is built; chunks are written in page order. The binary sizes the global pool to 2 threads (`RAYON_NUM_THREADS` overrides): one worker keeps up, and one thread per CPU only cost thread creation on short documents (+2.6 M instructions on the small page with 8 threads) | 51.6 / 138.9 / 2,046 / 575 / 1,067 / 175; `large` wall 155 → 121 ms |
+| `76a17f8` | `wk-print`: a face's reverse cmap (a SipHash map of ~6,000 DejaVu entries) and its advance widths were built eagerly for every face used; the reverse cmap is now a dense vector built on first use (runs without source text only) and advances are read per glyph and cached | **46.7** / 131.4 / 2,041 / 569 / 1,062 / 168 |
+| `348d300` | `blitz-dom`: shared user-agent sheets move from a per-thread to a process-wide cache (a `OnceLock` per sheet text, parsed against `about:blank`; the stylo prefs that decide what parses are set once before any parse). The binary parses `default.css` (23 KB) on the pool when a conversion starts (`wk_converter::warm_up`), overlapping the input read and the font collection | 46.8 / 131.0 / 2,046 / 569 / 1,062 / 168; small wall −5 % |
+| `936437c` | `pdf-writer` vendored (0.15.0): `push_decimal` writes colour components `k / 255.0` from a 256-entry table built with ryu, and values whose shortest form has at most 4 decimals from the nearest multiple of 10^-d, accepted by an exact interval test (products are exact in f64; ties and powers of two go to ryu). Same bytes as ryu: unit test, plus an exhaustive comparison over every f32 in [1e-4, 9e6] and its negation (611 M values, 200 M through the fast path) | 46.9 / 131.3 / **2,002** / 570 / 1,061 / 168 |
+| `f503be7` | `krilla`: with `rayon`, `serialize_fonts` subsets and compresses the programs of all used CID fonts in parallel (`CIDFont::font_program`) before writing the fonts in their usual order | 46.8 / 131.3 / 1,997 / 570 / 1,059 / 169; small: font serialisation 26 % → 10 % of the main thread |
+
+## Output bytes and how equivalence was checked
+
+`65a3bad` changes the compressed bytes of every stream (content streams, font programs,
+CMaps, images). Over the 67 files of the identity corpus the total size goes from 2,696,829
+to 2,708,806 bytes (**+0.44 %**; `large.html` +0.16 %). Checks:
+
+- `bench/pdf-identity.sh equiv <before> <after>` (new, `bench/scripts/pdf_equiv.py`): every
+  PDF has the same objects in the same order, the same dictionaries and the same
+  **decompressed** stream data; stream `/Length`, xref tables, `startxref` and `/Prev` are
+  masked (they follow from the sizes). It reports a change of a dictionary value (tested) and
+  prints the total sizes. All 67 files pass, for the macOS build and for the musl builds run
+  in the container.
+- `pdfinfo` and `pdftotext` (poppler, in the container) on the 58 PDFs: all parse, with the
+  same page counts and the same extracted text as the base build.
+- `cargo test --workspace` (196 tests, including the L3 corpus rasterised by hayro), clippy
+  `-D warnings` and `cargo fmt --check` pass. The test build now compresses like the
+  release build: krilla called `flate2`, whose `zlib-rs` backend the dev-dependency `hayro`
+  switched on in test builds only.
+
+Every later commit is byte-identical to the one before it (`bench/pdf-identity.sh diff`).
+
+## Profiles after the pass
+
+`large.html`, main thread (samply, 5 runs): load 57 % (inline layout construction and
+shaping 14 %, layout 15 % of which table track sizing 7 %, style 7 %, HTML parse 7 %), PDF
+content building 23 % (`draw_path` 10 %, `draw_glyphs` 8 %; float formatting 8 %, of which
+ryu 2 % for positions such as `183.59961`), painting 11 %, allocator 15 % (spread over every
+phase). Deflate (22 % of all samples) runs on the worker.
+
+Small page: in-process work is ~2 ms of the ~5 ms wall time on macOS; the rest is process
+start-up and exit. Fixed costs left: the first document's style flush (UA cascade data,
+~4 %), font subsetting.
+
+jQuery and header/footer pages: Boa. The prelude is parsed once per process (~14 ms on
+`hf_toc`), each page's realm evaluates it again (~1 ms each), jQuery's parse is 24 % and its
+compilation 9 % of the jQuery page.
+
+## Options evaluated and not taken
+
+- **zlib-rs** (pure Rust, through flate2's `zlib-rs` feature) at level 6: 1.6x faster than
+  miniz_oxide level 6 over the corpus, +0.7 % size; miniz_oxide with 48 probes is as fast on
+  content streams (31.7 vs 31.9 ms for `large.html`'s 7.3 MB), smaller (+0.54 % vs +0.7 % of
+  compressed bytes) and needs no new crate. 32 probes (level 5): +1.07 % on `large.html`,
+  over the ±1 % budget. Greedy parsing: +2.9 % size.
+- **blitz-dom `parallel-construct`** (inline layouts built on the pool, with a 512-task
+  threshold): byte-identical, but each worker starts with a cold copy of the font and shaping
+  caches: building took 37 ms of CPU instead of 16 ms on `large.html`, for −2.5 % wall.
+- **dlmalloc** (`--features dlmalloc`, pure Rust) on the static musl build, measured again on
+  this pass: CPU per conversion −23 % on `large` (184 → 157 ms), −16 to −22 % elsewhere,
+  but peak RSS +0.8 MiB on the small page and +3 MiB (+10 %) on the jQuery page. musl's
+  allocator is a large share of the remaining CPU in the container; the default stays the
+  system allocator, as decided in the first pass.
+- **System font registration**: with system fonts enabled (the default) every process opens,
+  maps and scans every font file. In the bench container the 6 DejaVu files (duplicates of
+  the embedded faces) cost 1.6 ms of the small page's 4.6 ms; on a macOS host with ~90 font
+  files, 89 M instructions and 12 MiB of RSS. Fixing it needs a persistent scan cache like
+  fontconfig's (keyed by path, size and mtime); left for a dedicated change.
+- **Boa's optimizer off** (constant folding, strength reduction): 1.5 % of the jQuery page,
+  not worth a bytecode change.
+- **Parsing the DOM prelude on a worker**: Boa's `Context`, GC and interner are per thread.
+
 # Pass 3 (October 2026)
 
 Goal: lower CPU and peak RSS on every bench scenario, the table-heavy `large.html` first,
@@ -254,6 +379,8 @@ crates easy to merge with the fidelity work.
 bench/pdf-identity.sh run  target-before/release/wkhtmltopdf /tmp/before
 bench/pdf-identity.sh run  target/release/wkhtmltopdf        /tmp/after
 bench/pdf-identity.sh diff /tmp/before /tmp/after
+# When only compressed bytes may change (pass 4): compare after decompressing every stream.
+bench/pdf-identity.sh equiv /tmp/before /tmp/after
 
 # CPU profile (macOS):
 samply record --save-only --unstable-presymbolicate -o prof.json.gz -- \
