@@ -1279,7 +1279,10 @@ impl<A: Allocator> Dlmalloc<A> {
         if size < PURGE_MIN {
             return;
         }
+        // The real page size (`System::page_size`): the range given back must be made of
+        // whole kernel pages, or the kernel would round it up over live neighbours.
         let page = self.system_allocator.page_size();
+        debug_assert!(page.is_power_of_two());
         let lo = (p as usize + 64 + page - 1) & !(page - 1);
         let hi = (p as usize + size) & !(page - 1);
         let start = lo.max(freed.0 & !(page - 1));

@@ -78,10 +78,26 @@ unsafe impl Allocator for System {
         true
     }
 
+    /// wkhtmltopdf-rs: the kernel's page size (upstream returns 4096), read once. `purge`
+    /// relies on it: on a kernel with 16 or 64 KiB pages, `madvise` rounds a length that is
+    /// not a multiple of the page up and would discard live memory past the free range.
     fn page_size(&self) -> usize {
-        4096
+        use core::sync::atomic::{AtomicUsize, Ordering};
+        static PAGE_SIZE: AtomicUsize = AtomicUsize::new(0);
+        let cached = PAGE_SIZE.load(Ordering::Relaxed);
+        if cached != 0 {
+            return cached;
+        }
+        let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        // Unknown: assume the largest page size in use (aarch64), which only makes `purge`
+        // give back fewer pages and system allocations a little coarser.
+        let size = if size > 0 && (size as usize).is_power_of_two() { size as usize } else { 64 * 1024 };
+        PAGE_SIZE.store(size, Ordering::Relaxed);
+        size
     }
 
+    /// wkhtmltopdf-rs: `ptr` and `size` are multiples of [`page_size`](Self::page_size)
+    /// (`Dlmalloc::purge_freed`), so exactly `[ptr, ptr + size)` is discarded.
     fn purge(&self, ptr: *mut u8, size: usize) {
         unsafe {
             libc::madvise(ptr.cast(), size, libc::MADV_DONTNEED);

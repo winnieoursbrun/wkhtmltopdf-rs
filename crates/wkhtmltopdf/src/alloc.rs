@@ -38,6 +38,10 @@ pub const MAX_SMALL: usize = 1024 - 8;
 const CLASSES: usize = 1024 / 16 - 1;
 /// Requests of this size or more are mapped on their own.
 pub const MIN_LARGE: usize = 128 * 1024;
+/// Unit the lengths of large mappings are rounded to, and the largest alignment they serve.
+/// Any kernel page size works: `mmap` returns addresses aligned to the real page (4 KiB or
+/// more), and the kernel rounds the lengths given to `mmap`, `mremap` and `munmap` up to its
+/// page the same way every time, so a mapping is always unmapped whole.
 const PAGE: usize = 4096;
 
 /// The class of a small request of `size` bytes (`size <= MAX_SMALL`).
