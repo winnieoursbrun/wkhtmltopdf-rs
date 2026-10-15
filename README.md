@@ -104,7 +104,8 @@ Deliberate:
 Not yet matched:
 
 - QtWebKit's pagination of tall table rows (one page of `tests/corpus/statement` differs).
-- `<select>` boxes are not drawn; canvas is painted as vectors where the original rasterises it.
+- `<select>` boxes are drawn by hand in Qt's style (list box scroll bars are plain); canvas is painted
+  as vectors where the original rasterises it.
 - Quirks mode (no DOCTYPE) is rendered as standards mode: a line holding only an image keeps the
   text strut's descent (4 px taller at 16 px than in QtWebKit).
 - A broken image (the alt-text box) loses the sizes given to `img` by style-sheet rules.
@@ -120,7 +121,7 @@ Not yet matched:
 | P2 — static pipeline | Loader, HTML/CSS layout, paginator, PDF output | **P2a done**: pdfkit's invocation (stdin → stdout) and file/URL inputs produce real PDFs. 13 of 13 `conversion` fixtures reproduce stderr and exit code exactly (`toc` included). L2 on `tests/corpus`: page count and size match on 6/6 pages, and text similarity is ≥ 0.95 on every corpus page. **P2b done** (rendering fidelity): see below the table |
 | P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | **Done**: text and HTML headers/footers with every variable, cover/TOC/page objects with per-object options, default and custom-XSL TOCs, outline and `--dump-outline`, named-destination links, `--page-offset`, forms, copies/collate, grayscale, including the upstream quirks of spec §10. `tests/parts`: 22 of 22 reference cases pass at L2 (`parts.rs`). Deviations: see below the table |
 | P4 — JavaScript | Boa, DOM bindings, `--javascript-delay`, `--window-status` | **Done** (`crates/wk-js`): scripts run in document order with a script-pausing parser, `document.write`, events, timers and `Date` on a virtual clock, `--window-status`, `--run-script`, `window.print()`, `--debug-javascript`, dialogs, the slow-script budget, XMLHttpRequest over the loader, canvas 2D painted as vector. `warn` and `info_b` reproduce exactly; `tests/js` (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution, …) is at L2 parity on 13/13 cases. Gaps: see below the table |
-| P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: QtWebKit's table-row pagination struts (statement page 2), `<select>` boxes, canvas painted as vector where the reference rasterises it |
+| P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: QtWebKit's table-row pagination struts (statement page 2), canvas painted as vector where the reference rasterises it |
 | P6 — release | Static musl builds, pdfkit test suite | **Alpha**: static musl/macOS/Windows release builds, pdfkit integration run, benchmark and visual parity reports (`bench/`) |
 
 P4 gaps: timers fire on a virtual clock that stops at the end of the wait, so a timer set

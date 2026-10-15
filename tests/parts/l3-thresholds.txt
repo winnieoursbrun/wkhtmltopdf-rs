@@ -26,7 +26,7 @@ cover-toc-pages        5  0.98
 cover-toc-pages        6  0.98
 dump-outline-escaping  1  0.97
 dump-outline-escaping  2  0.98
-forms                  *  0.83  # select (combobox) not drawn; push button size
+forms                  *  0.88  # push button size, select drawn by hand (Qt style)
 grayscale              *  0.98
 hf-default-header      1  0.95
 hf-default-header      2  0.96

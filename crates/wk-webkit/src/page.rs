@@ -537,6 +537,7 @@ impl WebPage {
         let base_h = printable_h_pt / 0.75 / zoom;
         let mut layout_w = (base_w * min_shrink).round().max(1.0);
         let vh = (base_h * min_shrink).round().max(1.0);
+        self.qt_selects();
         let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
         if self.settings.smart_shrinking {
@@ -656,6 +657,151 @@ impl WebPage {
             }
         }
         out
+    }
+
+    /// `<select>` as QtWebKit 2.2 paints it with Qt's default (Windows) style, measured on the
+    /// 0.12.6 binary: a combo box is a 2px sunken frame (#6a6864 and black above and left,
+    /// white and #d4d0c8 below and right) around a white field holding the selected option
+    /// (2px left padding, as wide as the widest option plus 4px) and a 16px raised button
+    /// with a 7px black arrow; a list box (`multiple` or `size` > 1) shows its options one per
+    /// line, the selected ones in white on navy, beside a 16px scroll bar, at least 4 rows.
+    /// blitz-dom has no select layout: each one is rebuilt here as nested spans (the hidden
+    /// options of a combo box only give it its width).
+    fn qt_selects(&mut self) {
+        struct Select {
+            id: NodeId,
+            options: Vec<(String, bool)>,
+            list_rows: Option<usize>,
+            attrs: Vec<blitz_dom::Attribute>,
+        }
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            if tag(n) != "select" {
+                stack.extend(n.children.iter().copied());
+                continue;
+            }
+            let mut options = Vec::new();
+            let mut inner: Vec<NodeId> = n.children.iter().rev().copied().collect();
+            while let Some(c) = inner.pop() {
+                let Some(o) = self.doc.get_node(c) else { continue };
+                match tag(o) {
+                    "option" => {
+                        let text = o.text_content().split_whitespace().collect::<Vec<_>>().join(" ");
+                        options.push((text, o.attr(local_name!("selected")).is_some()));
+                    }
+                    "optgroup" => inner.extend(o.children.iter().rev().copied()),
+                    _ => {}
+                }
+            }
+            let multiple = n.attr(local_name!("multiple")).is_some();
+            let size: usize = n.attr(local_name!("size")).and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+            let list_rows = (multiple || size > 1).then(|| size.max(4));
+            if list_rows.is_none() {
+                // A combo box shows the last selected option, else the first one.
+                let shown = options.iter().rposition(|o| o.1).unwrap_or(0);
+                for (i, o) in options.iter_mut().enumerate() {
+                    o.1 = i == shown;
+                }
+            }
+            let attrs = n.element_data().map(|e| e.attrs.to_vec()).unwrap_or_default();
+            found.push(Select { id, options, list_rows, attrs });
+        }
+        if found.is_empty() {
+            return;
+        }
+        let span = blitz_dom::QualName::new(None, blitz_dom::ns!(html), local_name!("span"));
+        let style_name = blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("style"));
+        let mut m = self.doc.mutate();
+        let el = |m: &mut blitz_dom::DocumentMutator, style: String, children: &[NodeId]| {
+            let attrs = vec![blitz_dom::Attribute { name: style_name.clone(), value: style }];
+            let e = m.create_element(span.clone(), attrs);
+            m.append_children(e, children);
+            e
+        };
+        const SUNKEN: &str = "border:1px solid;border-color:#6a6864 white white #6a6864;";
+        const SUNKEN_IN: &str = "border:1px solid;border-color:black #d4d0c8 #d4d0c8 black;";
+        const RAISED: &str =
+            "border:1px solid;border-color:#d4d0c8 black black #d4d0c8;background-color:#d4d0c8;";
+        const RAISED_IN: &str = "border:1px solid;border-color:white #6a6864 #6a6864 white;";
+        let button = |m: &mut blitz_dom::DocumentMutator, pos: &str, down: bool| {
+            let arrow = if down { "border-top:4px solid black" } else { "border-bottom:4px solid black" };
+            let a = el(
+                m,
+                format!(
+                    "position:absolute;left:3px;top:{}px;width:1px;height:0;border-left:3px solid transparent;border-right:3px solid transparent;{arrow};",
+                    if down { 7 } else { 5 }
+                ),
+                &[],
+            );
+            let inner = el(m, format!("position:absolute;left:0;top:0;right:0;bottom:0;{RAISED_IN}"), &[]);
+            el(m, format!("position:absolute;{pos}width:14px;{RAISED}"), &[inner, a])
+        };
+        for s in found {
+            let mut outer_style = format!(
+                "display:inline-block;box-sizing:border-box;vertical-align:baseline;white-space:pre;\
+                 text-indent:0;text-align:left;line-height:normal;font:inherit;color:black;margin:2px;{SUNKEN}"
+            );
+            if s.list_rows.is_some() {
+                // QtWebKit puts the last row on the baseline; here the box has no baseline
+                // (it sits on it), lowered by a descent and the bottom frame.
+                outer_style.push_str("overflow:hidden;vertical-align:-0.375em;");
+            }
+            let mut kept = Vec::new();
+            for a in s.attrs {
+                match &*a.name.local {
+                    "style" => outer_style.push_str(&a.value),
+                    "id" | "class" | "title" | "lang" | "dir" => kept.push(a),
+                    _ => {}
+                }
+            }
+            let field = if let Some(rows) = s.list_rows {
+                // The first `rows` options, then empty rows: the list is `rows` lines high.
+                let mut lines = Vec::new();
+                for i in 0..rows {
+                    let (text, selected) = s.options.get(i).map_or(("", false), |o| (o.0.as_str(), o.1));
+                    let t = m.create_text_node(if text.is_empty() { "\u{a0}" } else { text });
+                    let colors = if selected { "background-color:#000080;color:white;" } else { "" };
+                    lines.push(el(&mut m, format!("display:block;padding:0 2px 1px;{colors}"), &[t]));
+                }
+                let list = el(&mut m, "display:block;".into(), &lines);
+                let up = button(&mut m, "top:0;right:0;height:14px;", false);
+                let down = button(&mut m, "bottom:0;right:0;height:14px;", true);
+                let track = el(
+                    &mut m,
+                    "position:absolute;top:0;bottom:0;right:0;width:16px;background-color:#eae8e4;".into(),
+                    &[up, down],
+                );
+                let style = format!(
+                    "display:block;position:relative;overflow:hidden;background-color:white;padding-right:16px;{SUNKEN_IN}"
+                );
+                el(&mut m, style, &[list, track])
+            } else {
+                // The shown option first (the box's baseline), then the hidden ones.
+                let shown = s.options.iter().find(|o| o.1).map_or("", |o| o.0.as_str());
+                let t = m.create_text_node(if shown.is_empty() { "\u{a0}" } else { shown });
+                let mut children = vec![el(&mut m, "display:block;".into(), &[t])];
+                for (text, _) in s.options.iter().filter(|o| !o.1) {
+                    let t = m.create_text_node(text);
+                    children.push(el(
+                        &mut m,
+                        "display:block;height:0;overflow:hidden;visibility:hidden;".into(),
+                        &[t],
+                    ));
+                }
+                children.push(button(&mut m, "top:0;right:0;bottom:0;", true));
+                let style = format!(
+                    "display:block;position:relative;overflow:hidden;background-color:white;\
+                     padding:1px 20px 1px 2px;{SUNKEN_IN}"
+                );
+                el(&mut m, style, &children)
+            };
+            kept.push(blitz_dom::Attribute { name: style_name.clone(), value: outer_style });
+            let outer = m.create_element(span.clone(), kept);
+            m.append_children(outer, &[field]);
+            m.replace_node_with(s.id, &[outer]);
+        }
     }
 
     /// QtWebKit's `RenderImage::paintReplaced` for an image that failed to load: a 1px light

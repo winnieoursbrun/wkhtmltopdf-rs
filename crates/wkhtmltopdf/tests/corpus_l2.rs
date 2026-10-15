@@ -146,6 +146,15 @@ fn broken_image_prints_its_alt_text() {
     assert_eq!(words(&["--no-images"]), "a b");
 }
 
+/// A combo box prints its selected option only, a list box every visible row (0.12.6).
+#[test]
+fn select_boxes_print_their_options() {
+    let html = b"<p>a <select><option>One</option><option selected>Two</option></select> b \
+        <select multiple><option>X</option><option>Y</option></select> c</p>";
+    // The list box rows stand above the line: they are extracted first.
+    assert_eq!(words_by_page(&common::ours(html, &[])).concat().join(" "), "X Y a Two b c");
+}
+
 #[test]
 fn similarity_ratio() {
     let w = |s: &str| s.split_whitespace().map(str::to_string).collect::<Vec<_>>();
