@@ -14,7 +14,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use anyrender::Paint;
 use anyrender::recording::RenderCommand;
@@ -1065,9 +1065,32 @@ impl Drafts {
         self.state[i].compare_exchange(0, by, Ordering::AcqRel, Ordering::Acquire).is_ok()
     }
 
+    /// The finished drafts. A panic while it is held (none is expected) leaves it usable:
+    /// each slot is written in one step.
+    fn done(&self) -> MutexGuard<'_, Vec<Option<Draft>>> {
+        self.done.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn put(&self, i: usize, draft: Draft) {
-        self.done.lock().unwrap()[i] = Some(draft);
+        self.done()[i] = Some(draft);
         self.ready.notify_all();
+    }
+
+    /// Draft page `i` (claimed by the caller) with `make` and hand the draft over. If `make`
+    /// panics, the page is handed over without a draft before the panic goes on, so the
+    /// document draws it itself instead of waiting for it forever; the panic reaches the
+    /// document at the end of the pool scope.
+    fn fill(&self, i: usize, make: &dyn Fn(usize) -> Draft) {
+        struct Unfinished<'d>(&'d Drafts, usize);
+        impl Drop for Unfinished<'_> {
+            fn drop(&mut self) {
+                self.0.put(self.1, None);
+            }
+        }
+        let unfinished = Unfinished(self, i);
+        let draft = make(i);
+        std::mem::forget(unfinished);
+        self.put(i, draft);
     }
 
     /// The draft of page `i`, or `None` when the document must draw it: nobody had started
@@ -1078,20 +1101,20 @@ impl Drafts {
             return None;
         }
         loop {
-            if let Some(d) = self.done.lock().unwrap()[i].take() {
+            if let Some(d) = self.done()[i].take() {
                 return d;
             }
             match (i + 1..end).find(|&j| self.claim(j, 1)) {
-                Some(j) => self.put(j, make(j)),
+                Some(j) => self.fill(j, make),
                 None => break,
             }
         }
-        let mut done = self.done.lock().unwrap();
+        let mut done = self.done();
         loop {
             if let Some(d) = done[i].take() {
                 return d;
             }
-            done = self.ready.wait(done).unwrap();
+            done = self.ready.wait(done).unwrap_or_else(PoisonError::into_inner);
         }
     }
 }
@@ -1177,7 +1200,7 @@ pub fn write_pdf(
         let spawn = |i: usize| {
             scope.spawn(move |_| {
                 if drafts.claim(i, 1) {
-                    drafts.put(i, make(i));
+                    drafts.fill(i, &make);
                 }
             });
         };
@@ -1261,6 +1284,29 @@ pub fn write_pdf(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A draft that panics on a pool thread must not leave the document waiting for it: the
+    /// document draws the page itself and the panic reaches it when the drafting ends.
+    #[test]
+    fn a_panicking_draft_does_not_hang_the_document() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = std::panic::catch_unwind(|| {
+                let drafts = Drafts::new(2);
+                let panics = |_: usize| -> Draft { panic!("draft failed") };
+                // Page 0 is claimed by a drafting thread before the document reaches it.
+                assert!(drafts.claim(0, 1));
+                std::thread::scope(|s| {
+                    s.spawn(|| drafts.fill(0, &panics));
+                    // The document waits for page 0, then draws it (page 1 is past `end`).
+                    assert!(drafts.take(0, 1, &panics).is_none());
+                });
+            });
+            let _ = tx.send(result.is_err());
+        });
+        let propagated = rx.recv_timeout(std::time::Duration::from_secs(30)).expect("the document hangs");
+        assert!(propagated, "the draft's panic must reach the document");
+    }
 
     #[test]
     fn civil_dates() {
