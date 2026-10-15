@@ -1879,12 +1879,12 @@ version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "bumpalo",
- "flate2",
  "float-cmp",
  "gif",
  "image-webp",
  "imagesize 0.14.0",
  "indexmap",
+ "miniz_oxide 0.9.1",
  "pdf-writer",
  "png",
  "rustc-hash 2.1.3",

@@ -5,6 +5,10 @@
 #
 #   bench/pdf-identity.sh run  <binary> <outdir>   # convert the whole corpus into <outdir>
 #   bench/pdf-identity.sh diff <dirA> <dirB>       # compare two runs, exit 1 on any difference
+#   bench/pdf-identity.sh equiv <dirA> <dirB>      # same, after decompressing every stream
+#
+# `equiv` (bench/scripts/pdf_equiv.py) is for changes that alter compressed bytes only: same
+# objects, dictionaries and decompressed data; lengths and offsets masked; prints total sizes.
 #
 # Typical flow: build the base commit, `run` into before/; build the change, `run` into after/;
 # `diff before after`.
@@ -131,8 +135,9 @@ diff_dirs() {
 case "${1:-}" in
   run) run "$2" "$3" ;;
   diff) diff_dirs "$2" "$3" ;;
+  equiv) python3 -I "$ROOT/bench/scripts/pdf_equiv.py" "$2" "$3" ;;
   *)
-    echo "usage: $0 run <binary> <outdir> | diff <dirA> <dirB>" >&2
+    echo "usage: $0 run <binary> <outdir> | diff <dirA> <dirB> | equiv <dirA> <dirB>" >&2
     exit 2
     ;;
 esac

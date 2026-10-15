@@ -71,7 +71,8 @@ parley_engine = { path = "vendor/parley_engine" }
 # boa_engine with Script::with_realm, so the DOM prelude is parsed and compiled once per
 # thread and evaluated in each page's realm (vendor/boa_engine/src/script.rs).
 boa_engine = { path = "vendor/boa_engine" }
-# krilla writing the hhea ascent/descent in font descriptors, as Qt does (vendor/krilla/src/text/font.rs).
+# krilla writing the hhea ascent/descent in font descriptors, as Qt does (vendor/krilla/src/text/font.rs),
+# and deflating with fewer hash-chain probes than level 6 (vendor/krilla/src/stream.rs).
 krilla = { path = "vendor/krilla" }
 
 [profile.release]
