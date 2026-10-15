@@ -1092,6 +1092,14 @@ impl Converter<'_, '_> {
         loader.clear_resources();
         hf_loader.clear_resources();
         self.phase(6);
+        // The rendered pages (display lists) are dropped on the rayon pool, off the critical
+        // path of the conversion.
+        drop(out_pages);
+        let rendered: Vec<RenderedPage> = objs
+            .iter_mut()
+            .flat_map(|o| o.rendered.take().into_iter().chain(o.headers.drain(..)).chain(o.footers.drain(..)))
+            .collect();
+        rayon::spawn(move || drop(rendered));
         true
     }
 

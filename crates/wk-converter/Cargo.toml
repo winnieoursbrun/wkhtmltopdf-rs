@@ -17,3 +17,4 @@ wk-fonts.workspace = true
 url.workspace = true
 data-url.workspace = true
 parley.workspace = true
+rayon = "1.10"

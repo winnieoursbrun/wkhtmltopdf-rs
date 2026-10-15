@@ -25,3 +25,4 @@ image.workspace = true
 url.workspace = true
 encoding_rs.workspace = true
 data-url.workspace = true
+rayon = "1.10"

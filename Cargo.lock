@@ -4106,6 +4106,7 @@ version = "0.1.0-alpha.2"
 dependencies = [
  "data-url",
  "parley",
+ "rayon",
  "url",
  "wk-cli",
  "wk-fonts",
@@ -4184,6 +4185,7 @@ dependencies = [
  "kurbo",
  "parley",
  "peniko",
+ "rayon",
  "stylo",
  "url",
  "wk-fonts",

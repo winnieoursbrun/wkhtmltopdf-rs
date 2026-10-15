@@ -551,8 +551,25 @@ impl WebPage {
     /// are handed over to the painter, which frees each one as soon as its text is painted,
     /// so they do not add up with the display list being recorded (the memory peak of a
     /// conversion).
+    ///
+    /// The page (DOM, styles, layout) is then dropped on the rayon pool, off the critical
+    /// path of the conversion.
     pub fn render_final(mut self, printable_w_pt: f32, printable_h_pt: f32) -> RenderedPage {
-        self.render_inner(printable_w_pt, printable_h_pt, true)
+        let rendered = self.render_inner(printable_w_pt, printable_h_pt, true);
+        /// The page, moved to a pool thread only to be dropped there.
+        struct Dropped(#[allow(dead_code)] WebPage);
+        // SAFETY: what makes `WebPage` neither `Send` nor `Sync` is reference counting and
+        // providers that are only ever used by the thread working on the page: `Rc`s of
+        // canvas pictures (their only other clones, lent to the painter, are released by
+        // `render_inner` before it returns) and the `dyn` HTML parser and font metrics
+        // providers of the document, which hold no thread-bound state (no thread-local and
+        // no JavaScript value: the script engine of a scripted page is dropped when its load
+        // ends). Nothing else refers to the page: once moved here it is only dropped, by one
+        // thread.
+        unsafe impl Send for Dropped {}
+        let page = Dropped(self);
+        rayon::spawn(move || drop(page));
+        rendered
     }
 
     fn render_inner(&mut self, printable_w_pt: f32, printable_h_pt: f32, release_text: bool) -> RenderedPage {
