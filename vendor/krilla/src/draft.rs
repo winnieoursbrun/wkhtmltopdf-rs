@@ -66,11 +66,12 @@ pub fn draft_page(
     let serialize_settings = (*settings.settings).clone();
     let unsupported = serialize_settings.enable_tagging;
     let mut sc = SerializeContext::new(serialize_settings);
-    // `SerializeContext::new` may turn settings on for validators (tagging, no device colour
-    // spaces): a draft only covers the plain case.
+    // Validators, and the settings `SerializeContext::new` turns on for them (tagging, no
+    // device colour spaces): a draft only covers the plain case.
     let unsupported = unsupported
         || sc.serialize_settings().enable_tagging
-        || sc.serialize_settings().no_device_cs;
+        || sc.serialize_settings().no_device_cs
+        || !sc.serialize_settings().validators().is_empty();
     let mut chunk_container = ChunkContainer::new(&sc);
     let root_transform = page_root_transform(page_settings.surface_size().height());
     let bbox_important = page_settings.media_box().is_none();
