@@ -17,9 +17,7 @@ fn configure_worker_pool() {
     ONCE.call_once(|| {
         if std::env::var_os("RAYON_NUM_THREADS").is_none() {
             // Fails only if the pool already exists, which is then used as it is.
-            let _ = rayon::ThreadPoolBuilder::new()
-                .num_threads(2)
-                .build_global();
+            let _ = rayon::ThreadPoolBuilder::new().num_threads(2).build_global();
         }
         rayon::spawn(wk_converter::warm_up);
     });

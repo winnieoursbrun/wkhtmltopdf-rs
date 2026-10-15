@@ -225,7 +225,8 @@ impl FontEntry {
             *a = skrifa::FontRef::from_index(fd.data.data(), fd.index)
                 .map(|fref| {
                     let size = skrifa::instance::Size::unscaled();
-                    let upem = f32::from(fref.metrics(size, skrifa::instance::LocationRef::default()).units_per_em);
+                    let upem =
+                        f32::from(fref.metrics(size, skrifa::instance::LocationRef::default()).units_per_em);
                     let gm = fref.glyph_metrics(size, skrifa::instance::LocationRef::default());
                     gm.advance_width(skrifa::GlyphId::new(gid)).unwrap_or(0.0) / upem
                 })
@@ -472,7 +473,8 @@ fn font_entry<'a>(caches: &'a mut Caches, fd: &peniko::FontData) -> Option<&'a F
         .entry((fd.data.id(), fd.index))
         .or_insert_with(|| {
             let fref = skrifa::FontRef::from_index(fd.data.data(), fd.index).ok()?;
-            let fm = fref.metrics(skrifa::instance::Size::unscaled(), skrifa::instance::LocationRef::default());
+            let fm =
+                fref.metrics(skrifa::instance::Size::unscaled(), skrifa::instance::LocationRef::default());
             let glyph_count = usize::from(fm.glyph_count);
             // krilla shares the blob's bytes: no copy of the font file per face.
             let data: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(fd.data.clone());

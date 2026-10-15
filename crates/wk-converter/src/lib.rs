@@ -36,8 +36,8 @@ use wk_print::{
     PdfOptions, TextItem,
 };
 use wk_settings::{ColorMode, LogLevel, PdfGlobal, PdfObject};
-use wk_webkit::{Fetcher, RenderedPage, WebPage, WebSettings};
 pub use wk_webkit::warm_up;
+use wk_webkit::{Fetcher, RenderedPage, WebPage, WebSettings};
 
 use crate::headerfooter::{Parms, hfreplace};
 use crate::outline::{BackLink, LocatedHeading, Outline};
