@@ -264,20 +264,29 @@ impl FontEntry {
 
 /// The faces of the display lists, by blob id and index.
 type FontMap = HashMap<(u64, u32), Option<Arc<FontEntry>>>;
+/// Faces of text items by (address of the data, index), with the data they point to.
+type TextFontMap = HashMap<(usize, u32), (Arc<Vec<u8>>, Option<Font>)>;
 
 /// What the threads drawing pages share: the faces, and the culling data of each display
 /// list (keyed by its address), computed by the first thread that needs it.
+///
+/// Keys made of addresses stay unique only while what they point to is alive: the display
+/// lists are borrowed for `'d`, which outlives the caches (see [`Caches::culling`]), and the
+/// map of the text faces holds their data.
 #[derive(Default)]
-struct Shared {
+struct Shared<'d> {
     fonts: Mutex<FontMap>,
     cullings: Mutex<HashMap<usize, Arc<OnceLock<Culling>>>>,
-    /// Faces of the header/footer texts, keyed by the address of their data.
-    text_fonts: Mutex<HashMap<(usize, u32), Option<Font>>>,
+    /// Faces of the header/footer texts, keyed by the address of their data (kept alive
+    /// here, so that the address is not reused while the map exists).
+    text_fonts: Mutex<TextFontMap>,
+    /// The display lists whose addresses key `cullings`.
+    lists: std::marker::PhantomData<&'d DisplayList>,
 }
 
 /// One thread's view of [`Shared`], and its images.
-struct Caches<'s> {
-    shared: &'s Shared,
+struct Caches<'s, 'd> {
+    shared: &'s Shared<'d>,
     fonts: FontMap,
     images: HashMap<(u64, u32, u32), Option<krilla::image::Image>>,
     /// Culling box ([`bbox`]) of every command of a display list, keyed by
@@ -285,12 +294,14 @@ struct Caches<'s> {
     bboxes: HashMap<usize, Arc<OnceLock<Culling>>>,
 }
 
-impl<'s> Caches<'s> {
-    fn new(shared: &'s Shared) -> Self {
+impl<'s, 'd> Caches<'s, 'd> {
+    fn new(shared: &'s Shared<'d>) -> Self {
         Caches { shared, fonts: HashMap::new(), images: HashMap::new(), bboxes: HashMap::new() }
     }
 
-    fn culling(&mut self, commands: &DisplayList) -> Arc<OnceLock<Culling>> {
+    /// The culling data of `commands`, keyed by its address: borrowed for `'d`, it outlives
+    /// both maps, so no other list can take its address while they exist.
+    fn culling(&mut self, commands: &'d DisplayList) -> Arc<OnceLock<Culling>> {
         let key = commands as *const DisplayList as usize;
         let shared = self.shared;
         let cell = self
@@ -515,7 +526,7 @@ fn paint_fill(
     }
 }
 
-fn font_entry<'a>(caches: &'a mut Caches, fd: &peniko::FontData) -> Option<&'a FontEntry> {
+fn font_entry<'a>(caches: &'a mut Caches<'_, '_>, fd: &peniko::FontData) -> Option<&'a FontEntry> {
     let shared = caches.shared;
     caches
         .fonts
@@ -619,11 +630,11 @@ fn bbox(cmd: &RenderCommand) -> Option<kurbo::Rect> {
     }
 }
 
-struct Replayer<'a, 's> {
+struct Replayer<'a, 's, 'd> {
     page: &'a RenderedPage,
     /// Culling boxes of the page's scene.
     culling: &'a Culling,
-    caches: &'a mut Caches<'s>,
+    caches: &'a mut Caches<'s, 'd>,
     image_dpi: u32,
     gray: bool,
     /// Drawing a page draft (`krilla::draft`), which cannot hold images: they are skipped
@@ -632,7 +643,7 @@ struct Replayer<'a, 's> {
     refused: bool,
 }
 
-impl Replayer<'_, '_> {
+impl Replayer<'_, '_, '_> {
     /// The PDF image for `img` drawn with `transform` (image pixels to CSS px).
     /// JPEG sources are embedded as they are; other images drawn above
     /// `--image-dpi` are scaled down to it (smooth), as the 0.12.6 binary does
@@ -938,11 +949,11 @@ fn outline_node(n: &OutlineNode, named: &BTreeMap<String, XyzDestination>) -> kr
 /// Draw one band: its document range (plus repeated table groups) placed at
 /// `band.origin`, clipped horizontally to the paper. Returns `false` when drawing a draft
 /// that cannot hold the band (an image).
-fn draw_band(
+fn draw_band<'d>(
     surface: &mut Surface,
-    band: &Band<'_>,
+    band: &Band<'d>,
     paper_w: f32,
-    caches: &mut Caches,
+    caches: &mut Caches<'_, 'd>,
     opts: PdfOptions,
     draft: bool,
 ) -> bool {
@@ -950,7 +961,8 @@ fn draw_band(
     let (ox, oy) = band.origin;
     let (cx0, cx1) = (-ox / s, (paper_w - ox) / s);
     surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ox, oy));
-    let commands = &band.page.recorder.commands;
+    let page: &'d RenderedPage = band.page;
+    let commands = &page.recorder.commands;
     let culling = caches.culling(commands);
     let mut r = Replayer {
         page: band.page,
@@ -980,11 +992,11 @@ fn draw_band(
 
 /// Draw everything of `p` on its page's surface. Returns `false` when drawing a draft that
 /// cannot hold the page.
-fn draw_page(
+fn draw_page<'d>(
     surface: &mut Surface,
-    p: &OutPage<'_>,
+    p: &OutPage<'d>,
     width: f32,
-    caches: &mut Caches,
+    caches: &mut Caches<'_, 'd>,
     opts: PdfOptions,
     draft: bool,
 ) -> bool {
@@ -1015,7 +1027,8 @@ fn draw_page(
             .lock()
             .unwrap()
             .entry(key)
-            .or_insert_with(|| Font::new(t.face.data.clone().into(), t.face.index))
+            .or_insert_with(|| (t.face.data.clone(), Font::new(t.face.data.clone().into(), t.face.index)))
+            .1
             .clone();
         let Some(font) = font else { continue };
         surface.set_stroke(None);
