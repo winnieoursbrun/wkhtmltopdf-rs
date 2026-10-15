@@ -314,7 +314,10 @@ pub struct BaseDocument {
     /// `<iframe>` element whose sub-document is loaded automatically
     pub(crate) iframe_loads: HashMap<NodeId, crate::iframe::IframeLoad>,
     /// Set of changed nodes for updating the accessibility tree
-    pub(crate) changed_nodes: HashSet<NodeId>,
+    /// wkhtmltopdf-rs: whether a node was ever created. Upstream kept every created node
+    /// in a set that is only ever tested for emptiness (one hash insertion per node, and the
+    /// set held for the document's lifetime).
+    pub(crate) any_node_created: bool,
     /// Set of changed nodes for updating the accessibility tree
     pub(crate) deferred_construction_nodes: Vec<ConstructionTask>,
 
@@ -480,7 +483,7 @@ impl BaseDocument {
             #[cfg(feature = "custom-widget")]
             pending_resource_deallocations: Vec::new(),
 
-            changed_nodes: HashSet::new(),
+            any_node_created: false,
             deferred_construction_nodes: Vec::new(),
             image_cache: HashMap::new(),
             pending_images: HashMap::new(),
@@ -865,7 +868,7 @@ impl BaseDocument {
             .insert_with_key(|id| Node::new(tree_ptr, id, guard, node_data));
 
         // Mark the new node as changed.
-        self.changed_nodes.insert(id);
+        self.any_node_created = true;
         id
     }
 
@@ -1012,7 +1015,7 @@ impl BaseDocument {
 
     /// Whether the document has been mutated
     pub fn has_changes(&self) -> bool {
-        self.changed_nodes.is_empty()
+        !self.any_node_created
     }
 
     pub fn create_text_node(&mut self, text: &str) -> NodeId {
