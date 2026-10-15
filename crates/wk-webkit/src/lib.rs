@@ -21,9 +21,14 @@ pub use paint::{Command, DisplayList, Recorder, RunTexts};
 
 /// Work every conversion needs whatever its input, done ahead of time on the calling
 /// thread (the binary runs it on a worker while the input is read and parsed): the
-/// user-agent stylesheet's parse. A page created meanwhile waits for it.
+/// user-agent stylesheet's parse and the font scan. A conversion that needs them meanwhile
+/// waits for them.
 pub fn warm_up() {
-    blitz_dom::preparse_user_agent_stylesheet(blitz_dom::DEFAULT_CSS);
+    rayon::join(
+        || blitz_dom::preparse_user_agent_stylesheet(blitz_dom::DEFAULT_CSS),
+        // The font collection of the conversion (`wk_fonts::default_font_context`).
+        || drop(wk_fonts::default_font_context()),
+    );
 }
 
 /// Let a large document use `threads` threads to style and build its text layouts (see

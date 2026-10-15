@@ -295,7 +295,7 @@ pub fn convert_raw(global: &PdfGlobal, objects: &[PdfObject], io: ConvertIo<'_>)
         pf: &mut pf,
         error_code: &mut error_code,
         app_name: &app_name,
-        fonts: wk_fonts::font_context(&wk_fonts::FontOptions::default()),
+        fonts: None,
         temp: toc::TempFiles::default(),
         print_area: None,
     };
@@ -350,7 +350,8 @@ struct Converter<'a, 'b> {
     pf: &'a mut Pf<'b>,
     error_code: &'a mut i32,
     app_name: &'a str,
-    fonts: parley::FontContext,
+    /// The font context, made when the first page loads (`fonts`).
+    fonts: Option<parley::FontContext>,
     temp: toc::TempFiles,
     /// Printable area (points) the pages being loaded will be rendered on
     /// (`WebSettings::print_area`).
@@ -358,6 +359,13 @@ struct Converter<'a, 'b> {
 }
 
 impl Converter<'_, '_> {
+    /// The font context (taken when first needed: the start-up worker may still be scanning
+    /// the fonts, see `wk_fonts::default_font_context`). Pages are loaded with `fonts` as it
+    /// is: `None` lets them take the default context once parsed.
+    fn fonts(&mut self) -> &mut parley::FontContext {
+        self.fonts.get_or_insert_with(wk_fonts::default_font_context)
+    }
+
     fn phase(&mut self, i: usize) {
         self.pf.phase_changed(PHASES[i], i, PHASES.len());
     }
@@ -399,9 +407,10 @@ impl Converter<'_, '_> {
                     viewport_size(&self.g.viewport_size),
                     self.print_area,
                 );
+                let fonts = self.fonts.clone();
                 let mut f =
                     PageFetcher { loader: &mut *loader, index: i, pf: &mut *self.pf, pending: vec![] };
-                pages[i] = Some(WebPage::load("", reply.final_url.clone(), ws, self.fonts.clone(), &mut f));
+                pages[i] = Some(WebPage::load("", reply.final_url.clone(), ws, fonts, &mut f));
                 continue;
             }
             {
@@ -422,9 +431,10 @@ impl Converter<'_, '_> {
                 self.print_area,
             );
             let page = {
+                let fonts = self.fonts.clone();
                 let mut f =
                     PageFetcher { loader: &mut *loader, index: i, pf: &mut *self.pf, pending: vec![] };
-                WebPage::load(&html, reply.final_url.clone(), ws, self.fonts.clone(), &mut f)
+                WebPage::load(&html, reply.final_url.clone(), ws, fonts, &mut f)
             };
             pages[i] = Some(page);
             let mut fb = LoadFeedback { pf: &mut *self.pf };
@@ -1136,7 +1146,7 @@ impl Converter<'_, '_> {
             let face = faces
                 .entry(hf.font_name.clone())
                 .or_insert_with(|| {
-                    wk_fonts::regular_face(&mut self.fonts, &hf.font_name)
+                    wk_fonts::regular_face(self.fonts(), &hf.font_name)
                         .map(|(data, index)| FontFace { data, index })
                 })
                 .clone();

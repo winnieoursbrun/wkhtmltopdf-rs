@@ -1380,6 +1380,14 @@ impl BaseDocument {
         }
     }
 
+    /// wkhtmltopdf-rs: replace the font context of a document not styled yet (a parsed
+    /// document can get its fonts once they are scanned).
+    pub fn set_font_context(&mut self, mut font_ctx: FontContext) {
+        font_ctx.source_cache.make_shared();
+        *self.font_ctx.lock().unwrap() = font_ctx;
+        self.thread_font_contexts.clear();
+    }
+
     /// Cache a loaded image and apply it to all nodes waiting on it
     /// (`<img>` elements, `background-image` layers and `mask-image` layers).
     fn apply_loaded_image(&mut self, url: &str, image: ImageData) {

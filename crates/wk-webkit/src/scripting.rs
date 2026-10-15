@@ -334,7 +334,7 @@ mod tests {
             wk_fonts::font_context(&wk_fonts::FontOptions { system_fonts: false, extra_dirs: Vec::new() });
         let mut net = NoNet::default();
         let url = Url::parse("file:///tmp/page.html?page=3&topage=7").unwrap();
-        let page = WebPage::load(html, url, settings, fonts, &mut net);
+        let page = WebPage::load(html, url, settings, Some(fonts), &mut net);
         (page, net.0)
     }
 

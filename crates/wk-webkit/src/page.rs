@@ -310,11 +310,14 @@ impl WebPage {
     /// with its query string in `url` (`?page=1&topage=3…`, read by the
     /// substitution script through `location.search`), with
     /// `run_script`/`window_status` left empty, then [`render`](Self::render).
+    ///
+    /// `font_ctx` `None` is the process's default context (`wk_fonts::default_font_context`),
+    /// taken once the page is parsed: a worker may still be scanning the fonts meanwhile.
     pub fn load(
         html: &str,
         url: Url,
         settings: WebSettings,
-        font_ctx: FontContext,
+        font_ctx: Option<FontContext>,
         fetcher: &mut dyn Fetcher,
     ) -> WebPage {
         crate::profile::install();
@@ -322,6 +325,7 @@ impl WebPage {
         let (vw, vh) = settings.viewport.unwrap_or((0, 0));
         crate::profile::set_media_viewport(vw as f32, vh as f32);
         if settings.enable_javascript && crate::scripting::needs_js(html) {
+            let font_ctx = font_ctx.unwrap_or_else(wk_fonts::default_font_context);
             return crate::scripting::load(html, url, settings, font_ctx, fetcher);
         }
         let net = QueueNet::default();
@@ -337,7 +341,14 @@ impl WebPage {
             viewport: Some(Viewport::new(load_w, load_h, 1.0, ColorScheme::Light)),
             base_url: Some(url.to_string()),
             net_provider: Some(Arc::new(net.clone())),
-            font_ctx: Some(font_ctx),
+            // An empty context until the page is parsed (see `set_font_context` below).
+            font_ctx: Some(FontContext {
+                collection: parley::fontique::Collection::new(parley::fontique::CollectionOptions {
+                    shared: false,
+                    system_fonts: false,
+                }),
+                source_cache: Default::default(),
+            }),
             media_type: Some(media),
             ..Default::default()
         };
@@ -349,6 +360,7 @@ impl WebPage {
         let sniff_proof = format!("<!---->{html}");
         crate::timing("parse start");
         let mut doc = HtmlDocument::from_html(&sniff_proof, config).into_inner();
+        doc.set_font_context(font_ctx.unwrap_or_else(wk_fonts::default_font_context));
         crate::timing("parsed");
         let extra = ua_css(&settings);
         if !extra.is_empty() {

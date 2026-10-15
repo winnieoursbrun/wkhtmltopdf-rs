@@ -155,6 +155,16 @@ pub fn font_context(opts: &FontOptions) -> FontContext {
     FontContext { collection: collection(opts), source_cache: SourceCache::new(Default::default()) }
 }
 
+/// A font context over the [`collection`] of the default options ([`FontOptions::default`]),
+/// built once per process: the system font scan (every font file opened and its name table
+/// read) is done by the first caller, normally on a worker thread at start-up
+/// (`wk_webkit::warm_up`), while the input is read and parsed; later callers get a copy.
+pub fn default_font_context() -> FontContext {
+    static PREPARED: std::sync::Mutex<Option<FontContext>> = std::sync::Mutex::new(None);
+    let mut prepared = PREPARED.lock().unwrap_or_else(|e| e.into_inner());
+    prepared.get_or_insert_with(|| font_context(&FontOptions::default())).clone()
+}
+
 /// The regular face `QFont(family)` resolves to, as font bytes and face
 /// index: the family when it exists, otherwise [`DEFAULT_FAMILY`] (the
 /// reference image's fontconfig substitution, e.g. for `Arial`).
