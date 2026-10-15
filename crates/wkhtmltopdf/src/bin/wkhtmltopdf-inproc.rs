@@ -20,6 +20,16 @@ use std::time::Instant;
 
 use wk_cli::Streams;
 
+// Same allocator as the CLI's static musl build (src/main.rs), so warm numbers compare the
+// shipped configuration.
+#[cfg(all(
+    target_env = "musl",
+    target_pointer_width = "64",
+    not(any(feature = "dhat-heap", feature = "dlmalloc", feature = "system-alloc"))
+))]
+#[global_allocator]
+static ALLOC: wkhtmltopdf_app::alloc::WkAlloc = wkhtmltopdf_app::alloc::WkAlloc;
+
 fn usage() -> ! {
     eprintln!(
         "usage: wkhtmltopdf-inproc [--warmup W] [--loop N] [--stdin FILE] [--out FILE] -- <wkhtmltopdf args>"
