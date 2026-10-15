@@ -11,7 +11,7 @@ members = [
     "crates/wk-print",
     "crates/wk-converter",
 ]
-exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/krilla", "vendor/boa_engine", "spikes"]
+exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/krilla", "vendor/boa_engine", "vendor/pdf-writer", "spikes"]
 
 [workspace.package]
 version = "0.1.0-alpha.1"
@@ -76,6 +76,9 @@ boa_engine = { path = "vendor/boa_engine" }
 # krilla writing the hhea ascent/descent in font descriptors, as Qt does (vendor/krilla/src/text/font.rs),
 # and deflating with fewer hash-chain probes than level 6 (vendor/krilla/src/stream.rs).
 krilla = { path = "vendor/krilla" }
+# pdf-writer formatting colour components and short decimals without ryu, byte for byte as
+# ryu does (vendor/pdf-writer/src/float.rs).
+pdf-writer = { path = "vendor/pdf-writer" }
 
 [profile.release]
 lto = true
