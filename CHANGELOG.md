@@ -8,6 +8,8 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] - 2026-10-15
+
 ### Added
 
 - JavaScript (P4, `crates/wk-js`): Boa realm per page with DOM bindings, scripts in document
@@ -34,7 +36,7 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 - A missing local file's error reads `Error opening <path>`, like Qt.
 - Outside string list markers end one space width before the item text, like WebKit.
 
-## [0.1.0-alpha.1] - unreleased
+## [0.1.0-alpha.1] - 2026-10-14
 
 First public pre-release. Not a drop-in replacement yet: see the status table in the README.
 
@@ -53,5 +55,6 @@ First public pre-release. Not a drop-in replacement yet: see the status table in
 
 -
 
-[Unreleased]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.2...HEAD
+[0.1.0-alpha.2]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/releases/tag/v0.1.0-alpha.1

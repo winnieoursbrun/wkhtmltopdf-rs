@@ -4097,14 +4097,14 @@ dependencies = [
 
 [[package]]
 name = "wk-cli"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "wk-settings",
 ]
 
 [[package]]
 name = "wk-converter"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "data-url",
  "parley",
@@ -4119,7 +4119,7 @@ dependencies = [
 
 [[package]]
 name = "wk-fonts"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "memmap2",
  "parley",
@@ -4127,7 +4127,7 @@ dependencies = [
 
 [[package]]
 name = "wk-js"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyrender",
  "blitz-dom",
@@ -4142,7 +4142,7 @@ dependencies = [
 
 [[package]]
 name = "wk-loader"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "base64 0.22.1",
  "data-url",
@@ -4153,7 +4153,7 @@ dependencies = [
 
 [[package]]
 name = "wk-print"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyrender",
  "image",
@@ -4167,11 +4167,11 @@ dependencies = [
 
 [[package]]
 name = "wk-settings"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 
 [[package]]
 name = "wk-webkit"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyrender",
  "blitz-dom",
@@ -4194,7 +4194,7 @@ dependencies = [
 
 [[package]]
 name = "wkhtmltopdf"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "dhat",
  "dlmalloc",
