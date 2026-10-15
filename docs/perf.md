@@ -6,6 +6,90 @@ output. Result: **wall and CPU beaten (1.6x and 2x less than the original); peak
 29 % but still 45 % above the original** (see "Peak RSS: what is left"). The memory pass that
 followed (next section) brings the peak RSS **below the original's: 48.9 MiB vs 56.6 MiB**.
 
+# Pass 3 (October 2026)
+
+Goal: lower CPU and peak RSS on every bench scenario, the table-heavy `large.html` first,
+with the output unchanged. Every commit was checked with `bench/pdf-identity.sh` (67 PDFs
+byte-identical to the base), and the branch again after merging `main` at `5d4cb8d` (the
+fidelity pass that changed output on purpose): byte-identical to that `main`.
+
+## Results
+
+macOS arm64 host, release profile, `WKHTMLTOPDF_SYSTEM_FONTS=0`, `SOURCE_DATE_EPOCH` fixed,
+bench arguments (`bench/scripts/inside.sh`; `small` and `large` with `--javascript-delay 0`).
+Instructions retired and CPU are the median, peak RSS the lowest, of 11 `/usr/bin/time -l`
+runs. Wall and CPU times are noisy on this shared host (other builds running); instruction
+counts are reproducible to ±1 M. *main* is `5d4cb8d`, *pass 3* is this branch merged with it.
+
+| Scenario | Instructions (M) main → pass 3 | CPU ms main → pass 3 | Peak RSS MiB main → pass 3 |
+|---|---|---|---|
+| small page | 53 → 52 (−2 %) | <10 | 13.0 → 12.8 |
+| medium, 4 pages | 149 → 140 (−6 %) | 10 → 10 | 15.7 → 15.6 |
+| large invoice, 30 pages | 2,675 → 2,173 (**−19 %**) | 200 → 160 | 60.0 → 57.4 |
+| header/footer HTML + TOC, 8 pages | 1,332 → 579 (**−57 %**) | 120 → 40 | 34.2 → 29.9 |
+| jQuery page | 1,083 → 1,071 (−1 %) | 90 → 90 | 37.5 → 37.2 |
+| multi-object (cover, TOC, 3 parts) | 205 → 177 (−14 %) | 10 → 10 | 17.1 → 16.1 |
+
+Confirmation in the `wkbench:local` container (linux/arm64, static musl binaries of both
+commits, same session, same arguments; median user+sys and lowest peak RSS of 9
+`/usr/bin/time` runs):
+
+| Scenario | CPU s main → pass 3 | Peak RSS MiB main → pass 3 |
+|---|---|---|
+| small page | 0.00 → 0.00 | 13.7 → 13.7 |
+| medium, 4 pages | 0.01 → 0.01 | 15.0 → 14.9 |
+| large invoice, 30 pages | 0.24 → **0.19** | 48.6 → 48.4 |
+| header/footer HTML + TOC | 0.16 → **0.05** | 31.5 → **24.8** |
+| jQuery page | 0.11 → 0.11 | 28.9 → 28.7 |
+| multi-object | 0.01 → 0.01 | 16.0 → 15.5 |
+
+## What changed
+
+Instruction counts per scenario after each step (macOS, median of 7 runs; the steps were
+measured before the merge with `main`, on `6245fa4`, whose figures match `main`'s within 1 M).
+
+| Commit | Change | small / medium / large / hf+toc / js / multi |
+|---|---|---|
+| | base (`6245fa4`) | 53 / 149 / 2,671 / 1,333 / 1,082 / 206 |
+| `1a5476e` | `blitz-dom`: user-agent sheets (`default.css`, 23 KB, and the Qt form-control sheet) parsed once per thread under a read-only stylo lock, readable from every document's guard, so stylo's UA cascade-data cache also hits. A conversion loads one document per object and per header/footer page | 53 / 149 / 2,675 / 1,268 / 1,083 / 187 |
+| `c0627fd` | `WebPage::load` lays the page out at the print viewport (the converter passes the printable area, `WebSettings::print_area`) instead of 800×600, so `render` finds nothing to lay out again. Media queries see `--viewport-size`, not this viewport, so resource discovery is unchanged | – / 144 / 2,402 / 1,258 / – / 182 |
+| `73f0559` | `wk-print`: display-list commands bucketed by vertical extent (256 px) once per scene; each band (page body, repeated `thead`/`tfoot`) visits only its candidates, in order, with the same culling test, instead of the whole document's list | 53 / 144 / 2,346 / 1,260 / 1,084 / 182 |
+| `8b32f31` | `wk-js`: the 69 KB DOM prelude is parsed and compiled once per thread. `boa_engine` is vendored with `Script::with_realm` (evaluate a compiled script in another realm); the prelude's global code declares nothing, so its bytecode does not depend on the realm. Each scripted header/footer page had paid ~70 M instructions for it | 53 / 144 / 2,345 / **584** / 1,082 / 181 |
+| `2239bf2` | `wk-print`: solid rectangle fills (cell backgrounds, collapsed borders) replayed from the rectangle, without expanding them into an anyrender `Fill` with a heap `BezPath` (culling box and PDF path alike) | – / 143 / 2,228 / – / – / – |
+| `b1b012a` | `blitz-dom`: grid row sizing measures each cell's height twice at the same width (min- then max-content available height); for an inline formatting context without inline boxes rooting its own BFC both give the same result, so the second reuses the first (one-entry memo in `LayoutPassState`) | – / 143 / 2,188 / – / – / – |
+| `df93a86` | `blitz-dom`: the set of every created node (SipHash insert per node, only tested for emptiness) replaced by a flag | – / 143 / 2,187 / – / – / – |
+| `7fb3d8b` | `wk-print`: the `/PageMode /UseOutlines` incremental update (every conversion with the default outline) parses only the catalog: it is copied with the xref table and trailer into a minimal PDF for lopdf, instead of lopdf parsing every object; full load kept for forms and unknown layouts; a unit test compares both paths byte for byte | 52 / 140 / 2,178 / 579 / 1,072 / 176 |
+
+## Profiles after the pass
+
+`large.html` (samply, 20 kHz): deflate 25 % (krilla's `miniz_oxide` at level 6, fixed by
+the output), PDF content building and float formatting ~15 %, HTML parsing ~6 %, style ~5 %
+(a third of it revalidating the style-sharing cache for `tr:nth-child(even) td`), layout ~8 %
+(table track sizing, inline line breaking), inline layout construction ~7 % (shaping 6 %),
+painting ~7 %. Load-time and render-time layouts are no longer both run (render's resolve is
+0.2 %).
+
+jQuery page: parsing jQuery itself 24 % (Boa's parser), compiling it 9 %, running the
+`onload` DOM build 49 % (RegExp 6 %, GC 6 %), the realm and prelude 10 %.
+
+Small page: heap peak 1.5 MB (dhat); the 13 MiB peak RSS is mostly code and font pages of the
+binary. Per-process fixed costs: the UA sheet parse (~16 % of the instructions) and font
+registration (~7 %).
+
+## Options evaluated and not taken
+
+- **Compressing page streams on a worker thread** (deflate is a quarter of `large.html`):
+  would cut wall time, not CPU, and needs krilla to write each page's stream after
+  compressing it off-thread (vendored krilla, placeholder lengths). Left for a pass that
+  targets wall time.
+- **Caching shaped text runs**: the invoice's cell texts are nearly all distinct (SKUs,
+  amounts); the hit rate would not pay for the key hashing.
+- **Shrinking parley layouts less often** (`shrink_to_fit` reallocations, ~2 % on macOS):
+  the memory pass's trade-off; musl's `realloc` shrinks in place more cheaply than macOS's.
+- **Raising Boa's GC threshold** for the jQuery page: CPU for RSS.
+- **Minifying the prelude**: it has 51 comment lines; the parse cost is per token, and
+  it is now paid once per process anyway.
+
 # Memory pass (October 2026)
 
 Goal: peak RSS on `large.html` at or below the original's, output unchanged. Every step was
