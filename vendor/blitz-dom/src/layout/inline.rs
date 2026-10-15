@@ -965,7 +965,10 @@ impl LayoutPassState<'_> {
         // Store sizes and positions of inline boxes
         let mut ibox_order: u32 = 0;
         let mut span_cb_flags = StyleFlags::empty();
-        for line in inline_layout.layout.lines() {
+        // wkhtmltopdf-rs: without inline boxes there is nothing to place (walking the glyph
+        // runs of every line only to skip them was 2 % of a table-heavy page).
+        let has_inline_boxes = inline_layout.layout.inline_boxes().len() > 0;
+        for line in inline_layout.layout.lines().filter(|_| has_inline_boxes) {
             for item in line.items() {
                 if let parley::layout::PositionedLayoutItem::InlineBox(ibox) = item {
                     let order = ibox_order;

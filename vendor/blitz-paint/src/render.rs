@@ -879,13 +879,19 @@ impl ElementCx<'_, '_> {
 
             // Render inline element backgrounds (e.g. `<span style="background: ...">`)
             // behind the text and selection highlight.
-            crate::text::draw_inline_backgrounds(
-                scene,
-                text_layout.layout.lines(),
-                self.context.dom,
-                transform,
-                self.node.id,
-            );
+            // wkhtmltopdf-rs: only runs of inline elements have one: a layout whose text all
+            // has the inline root's style has none (walking its glyph runs cost 2 % of a
+            // table-heavy page).
+            let root_only = text_layout.layout.styles().iter().all(|s| s.brush.id == self.node.id);
+            if !root_only {
+                crate::text::draw_inline_backgrounds(
+                    scene,
+                    text_layout.layout.lines(),
+                    self.context.dom,
+                    transform,
+                    self.node.id,
+                );
+            }
 
             // Render text selection highlight (if any) using cached selection ranges
             if let Some(&(sel_start, sel_end)) = self.context.selection_ranges.get(&self.node.id) {
