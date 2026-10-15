@@ -40,7 +40,9 @@ anyrender = { version = "0.14" }
 peniko = { version = "0.6" }
 kurbo = { version = "0.13" }
 skrifa = { version = "0.44" }
-krilla = { version = "0.8.2" }
+# rayon: each page's content stream is compressed on the rayon pool while the next page is
+# built (krilla's `Deferred`); objects are still written in the same order.
+krilla = { version = "0.8.2", features = ["rayon"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 url = { version = "2" }
 data-url = { version = "0.3" }

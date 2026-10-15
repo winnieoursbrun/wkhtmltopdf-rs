@@ -26,6 +26,7 @@ wk-cli.workspace = true
 wk-settings.workspace = true
 wk-converter.workspace = true
 wk-loader.workspace = true
+rayon = "1.10"
 # Heap profiler, only with `--features dhat-heap` (docs/perf.md).
 dhat = { version = "0.3", optional = true }
 dlmalloc = { version = "0.2", features = ["global"], optional = true }
