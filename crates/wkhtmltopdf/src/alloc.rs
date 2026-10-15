@@ -53,10 +53,11 @@ fn class_size(c: usize) -> usize {
     (c + 2) * 16 - 8
 }
 
-/// How many free blocks of class `c` a thread keeps: 8 KiB worth, between 4 and 128.
+/// How many free blocks of class `c` a thread keeps: 4 KiB worth, between 4 and 64 (twice
+/// that measured the same, for 0.2-0.3 MiB more peak RSS on small documents).
 #[inline]
 fn cache_cap(c: usize) -> usize {
-    (8192 / (class_size(c) + 8)).clamp(4, 128)
+    (4096 / (class_size(c) + 8)).clamp(4, 64)
 }
 
 /// Blocks of class `c` taken from the heap at once by an empty list.
