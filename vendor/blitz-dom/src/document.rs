@@ -69,7 +69,6 @@ use thin_vec::ThinVec;
 use url::Url;
 use web_time::Instant;
 
-#[cfg(feature = "parallel-construct")]
 use thread_local::ThreadLocal;
 
 pub enum DocGuard<'a> {
@@ -242,8 +241,8 @@ pub struct BaseDocument {
     // Parley contexts
     /// A Parley font context
     pub(crate) font_ctx: Arc<Mutex<parley::FontContext>>,
-    #[cfg(feature = "parallel-construct")]
-    /// Thread-and-document-local copies to the font context
+    /// Thread-and-document-local copies to the font context (inline layouts built on the
+    /// rayon pool, see `resolve_deferred_tasks`)
     pub(crate) thread_font_contexts: ThreadLocal<RefCell<Box<FontContext>>>,
     /// A Parley layout context
     pub(crate) layout_ctx: parley::LayoutContext<TextBrush>,
@@ -451,7 +450,6 @@ impl BaseDocument {
             nodes_to_stylesheet: BTreeMap::new(),
             stylesheet_generation: 0,
             font_ctx,
-            #[cfg(feature = "parallel-construct")]
             thread_font_contexts: ThreadLocal::new(),
             layout_ctx: parley::LayoutContext::new(),
 
@@ -1367,19 +1365,11 @@ impl BaseDocument {
                     .collection
                     .register_fonts(font.clone(), Some(info_override));
 
-                #[cfg(feature = "parallel-construct")]
-                {
-                    rayon::broadcast(|_ctx| {
-                        let mut font_ctx = self
-                            .thread_font_contexts
-                            .get_or(|| RefCell::new(Box::new(global_font_ctx.clone())))
-                            .borrow_mut();
-                        font_ctx
-                            .collection
-                            .register_fonts(font.clone(), Some(info_override));
-                    });
-                }
                 drop(global_font_ctx);
+                // wkhtmltopdf-rs: the per-thread copies are made again from the document's
+                // context when next needed (instead of registering the font on every pool
+                // thread, which also registered it twice in a copy made by that broadcast).
+                self.thread_font_contexts.clear();
 
                 // TODO: see if we can only invalidate if resolved fonts may have changed
                 self.invalidate_inline_contexts();

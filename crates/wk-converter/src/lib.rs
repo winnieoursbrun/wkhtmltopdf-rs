@@ -36,13 +36,15 @@ use wk_print::{
     PdfOptions, TextItem,
 };
 use wk_settings::{ColorMode, LogLevel, PdfGlobal, PdfObject};
-pub use wk_webkit::warm_up;
 use wk_webkit::{Fetcher, RenderedPage, WebPage, WebSettings};
+pub use wk_webkit::{set_parallelism, warm_up};
 
 use crate::headerfooter::{Parms, hfreplace};
 use crate::outline::{BackLink, LocatedHeading, Outline};
 use crate::scripts::PageKind;
 use crate::utilities::{handle_error, paper_size, points_per_unit};
+
+use wk_webkit::timing;
 
 /// Phase descriptions in patched mode.
 const PHASES: [&str; 7] = [
@@ -284,6 +286,7 @@ pub fn convert(global: &PdfGlobal, objects: &[PdfObject], io: ConvertIo<'_>) -> 
 /// `PdfConverter::convert()` and `httpErrorCode()`, without `handleError`
 /// (the `--read-args-from-stdin` loop only looks at success).
 pub fn convert_raw(global: &PdfGlobal, objects: &[PdfObject], io: ConvertIo<'_>) -> (bool, i32) {
+    timing("convert start");
     let ConvertIo { stdin, stdout, stderr, app_name } = io;
     let mut pf = ProgressFeedback::new(global.log_level, &mut *stderr);
     let mut error_code = 0;
@@ -297,6 +300,7 @@ pub fn convert_raw(global: &PdfGlobal, objects: &[PdfObject], io: ConvertIo<'_>)
         print_area: None,
     };
     let success = conv.run(objects, stdin, stdout);
+    timing("convert end");
     (success, error_code)
 }
 
@@ -589,7 +593,9 @@ impl Converter<'_, '_> {
         );
 
         self.print_area = Some((paper.printable_width(), paper.printable_height()));
+        timing("load start");
         let pages = self.load_all(&mut loader, &specs);
+        timing("loaded");
         self.print_area = None;
         // pagesLoaded
         if *self.error_code == 0 {
@@ -663,6 +669,7 @@ impl Converter<'_, '_> {
             // The page's DOM (styles, layout, parley layouts) is dropped once rendered:
             // only its URL key (`o.url`) is used from here on.
             let rendered = page.render_final(paper.printable_width(), paper.printable_height());
+            timing("rendered");
             o.slices = wk_print::paginate(&rendered.geometry, paper.printable_height() / rendered.pt_per_px);
             o.page_count = if o.settings.pages_count { o.slices.len() } else { 0 };
             page_count += o.page_count;
@@ -1052,6 +1059,7 @@ impl Converter<'_, '_> {
             grayscale: self.g.color_mode == ColorMode::GrayScale,
             image_dpi: self.g.image_dpi.max(0) as u32,
         };
+        timing("write_pdf start");
         let pdf = wk_print::write_pdf(
             paper.width,
             paper.height,
@@ -1080,6 +1088,7 @@ impl Converter<'_, '_> {
                 }
             }
         }
+        timing("written");
         loader.clear_resources();
         hf_loader.clear_resources();
         self.phase(6);

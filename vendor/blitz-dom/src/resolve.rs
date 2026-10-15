@@ -9,7 +9,6 @@ use parley::LayoutContext;
 use selectors::Element as _;
 use style::dom::TDocument;
 
-#[cfg(feature = "parallel-construct")]
 use rayon::prelude::*;
 
 // FIXME: static thread_local FontCtx isn't necessarily correct in multi-document context.
@@ -354,62 +353,40 @@ impl BaseDocument {
         deferred_construction_nodes.sort_unstable_by_key(|task| task.node_id);
         deferred_construction_nodes.dedup_by_key(|task| task.node_id);
 
-        #[cfg(feature = "parallel-construct")]
-        let iter = deferred_construction_nodes.into_par_iter();
-        #[cfg(not(feature = "parallel-construct"))]
-        let iter = deferred_construction_nodes.into_iter();
-
-        let results: Vec<ConstructionTaskResult> = iter
-            .map(|task: ConstructionTask| match task.data {
-                ConstructionTaskData::InlineLayout(mut layout) => {
-                    #[cfg(feature = "parallel-construct")]
+        // wkhtmltopdf-rs: built on the rayon pool when there are many (`set_parallelism`), each
+        // pool thread with its own layout context and copy of the font context; the results
+        // are collected in task order, so they do not depend on the scheduling.
+        let parallel = crate::config::parallelism() > 1
+            && deferred_construction_nodes.len() >= crate::config::PARALLEL_CONSTRUCT_MIN_TASKS;
+        let results: Vec<ConstructionTaskResult> = if parallel {
+            let nodes = &*self.nodes;
+            let scale = self.viewport.scale();
+            let shared_font_ctx = &self.font_ctx;
+            let thread_font_contexts = &self.thread_font_contexts;
+            deferred_construction_nodes
+                .into_par_iter()
+                .map(|task| {
                     let mut layout_ctx = LAYOUT_CTX
                         .take()
                         .unwrap_or_else(|| Box::new(LayoutContext::new()));
-                    #[cfg(feature = "parallel-construct")]
-                    let layout_ctx_mut = &mut layout_ctx;
-
-                    #[cfg(feature = "parallel-construct")]
-                    let mut font_ctx = self
-                        .thread_font_contexts
-                        .get_or(|| RefCell::new(Box::new(self.font_ctx.lock().unwrap().clone())))
+                    let mut font_ctx = thread_font_contexts
+                        .get_or(|| RefCell::new(Box::new(shared_font_ctx.lock().unwrap().clone())))
                         .borrow_mut();
-                    #[cfg(feature = "parallel-construct")]
-                    let font_ctx_mut = &mut *font_ctx;
-
-                    #[cfg(not(feature = "parallel-construct"))]
-                    let layout_ctx_mut = &mut self.layout_ctx;
-                    #[cfg(not(feature = "parallel-construct"))]
-                    let font_ctx_mut = &mut *self.font_ctx.lock().unwrap();
-
-                    layout.content_widths = None;
-                    build_inline_layout_into(
-                        &self.nodes,
-                        layout_ctx_mut,
-                        font_ctx_mut,
-                        &mut layout,
-                        self.viewport.scale(),
-                        task.node_id,
-                    );
-
-                    #[cfg(feature = "parallel-construct")]
-                    {
-                        LAYOUT_CTX.set(Some(layout_ctx));
-                    }
-
-                    // If layout doesn't contain any inline boxes, then it is safe to populate the content_widths
-                    // cache during this parallelized stage.
-                    // if layout.layout.inline_boxes().is_empty() {
-                    //     layout.content_widths();
-                    // }
-
-                    ConstructionTaskResult {
-                        node_id: task.node_id,
-                        data: ConstructionTaskResultData::InlineLayout(layout),
-                    }
-                }
-            })
-            .collect();
+                    let result = construct_task(nodes, scale, &mut layout_ctx, &mut font_ctx, task);
+                    LAYOUT_CTX.set(Some(layout_ctx));
+                    result
+                })
+                .collect()
+        } else {
+            let scale = self.viewport.scale();
+            let mut font_ctx = self.font_ctx.lock().unwrap();
+            deferred_construction_nodes
+                .into_iter()
+                .map(|task| {
+                    construct_task(&self.nodes, scale, &mut self.layout_ctx, &mut font_ctx, task)
+                })
+                .collect()
+        };
 
         for result in results {
             match result.data {
@@ -460,5 +437,25 @@ impl BaseDocument {
 
         // println!("\n\n");
         // taffy::print_tree(self, root_node_id)
+    }
+}
+
+/// Build the inline layout of one deferred construction task.
+fn construct_task(
+    nodes: &crate::NodeTree,
+    scale: f32,
+    layout_ctx: &mut LayoutContext<TextBrush>,
+    font_ctx: &mut parley::FontContext,
+    task: ConstructionTask,
+) -> ConstructionTaskResult {
+    match task.data {
+        ConstructionTaskData::InlineLayout(mut layout) => {
+            layout.content_widths = None;
+            build_inline_layout_into(nodes, layout_ctx, font_ctx, &mut layout, scale, task.node_id);
+            ConstructionTaskResult {
+                node_id: task.node_id,
+                data: ConstructionTaskResultData::InlineLayout(layout),
+            }
+        }
     }
 }

@@ -46,12 +46,37 @@ fn report_statistics(stats: &PerThreadTraversalStatistics) {
     }
 }
 
+/// wkhtmltopdf-rs: the threads a traversal runs on.
+#[derive(Clone, Copy)]
+enum Pool<'a> {
+    /// The calling thread only.
+    None,
+    /// The given pool (Stylo's own).
+    Explicit(&'a rayon::ThreadPool),
+    /// The rayon pool of the calling thread, or the global pool from a thread outside any
+    /// pool (the traversal then runs on its threads while the calling thread waits).
+    Current,
+}
+
 fn with_pool_in_place_scope<'scope>(
     work_unit_max: usize,
-    pool: Option<&rayon::ThreadPool>,
+    pool: Pool<'_>,
     closure: impl FnOnce(Option<&rayon::ScopeFifo<'scope>>) + Send + 'scope,
 ) {
-    if work_unit_max == 0 || pool.is_none() {
+    let pool = match pool {
+        _ if work_unit_max == 0 => None,
+        Pool::None => None,
+        Pool::Explicit(pool) => Some(pool),
+        Pool::Current => {
+            if rayon::current_thread_index().is_some() {
+                rayon::in_place_scope_fifo(|scope| closure(Some(scope)));
+            } else {
+                rayon::scope_fifo(|scope| closure(Some(scope)));
+            }
+            return;
+        }
+    };
+    if pool.is_none() {
         closure(None);
     } else {
         let pool = pool.unwrap();
@@ -94,6 +119,31 @@ where
     E: TElement,
     D: DomTraversal<E>,
 {
+    traverse_dom_on(traversal, token, pool.map_or(Pool::None, Pool::Explicit))
+}
+
+/// wkhtmltopdf-rs: [`traverse_dom`] on the rayon pool of the calling thread (the global
+/// pool from a thread outside any pool), when it has between 2 and `STYLO_MAX_THREADS`
+/// threads; sequentially otherwise. The styles do not depend on it.
+pub fn traverse_dom_on_current_pool<E, D>(traversal: &D, token: PreTraverseToken<E>) -> E
+where
+    E: TElement,
+    D: DomTraversal<E>,
+{
+    let threads = rayon::current_num_threads();
+    let pool = if (2..=crate::global_style_data::STYLO_MAX_THREADS).contains(&threads) {
+        Pool::Current
+    } else {
+        Pool::None
+    };
+    traverse_dom_on(traversal, token, pool)
+}
+
+fn traverse_dom_on<E, D>(traversal: &D, token: PreTraverseToken<E>, pool: Pool<'_>) -> E
+where
+    E: TElement,
+    D: DomTraversal<E>,
+{
     let root = token
         .traversal_root()
         .expect("Should've ensured we needed to traverse");
@@ -116,7 +166,8 @@ where
     //     ThreadLocalStyleContext on the main thread. If the main thread
     //     ThreadLocalStyleContext has not released its TLS borrow by that point,
     //     we'll panic on double-borrow.
-    let mut scoped_tls = ScopedTLS::<ThreadLocalStyleContext<E>>::new(pool);
+    let mut scoped_tls =
+        ScopedTLS::<ThreadLocalStyleContext<E>>::with_parallelism(!matches!(pool, Pool::None));
     // Process the nodes breadth-first. This helps keep similar traversal characteristics for the
     // style sharing cache.
     let work_unit_max = work_unit_max();
@@ -159,7 +210,7 @@ where
         }
         // dump statistics to stdout if requested
         if dump_stats {
-            let parallel = pool.is_some();
+            let parallel = !matches!(pool, Pool::None);
             let stats =
                 TraversalStatistics::new(aggregate, traversal, parallel, start_time.unwrap());
             if stats.is_large {

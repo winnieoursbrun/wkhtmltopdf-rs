@@ -25,3 +25,22 @@ pub use paint::{Command, DisplayList, Recorder};
 pub fn warm_up() {
     blitz_dom::preparse_user_agent_stylesheet(blitz_dom::DEFAULT_CSS);
 }
+
+/// Let a large document use `threads` threads to style and build its text layouts (see
+/// `blitz_dom::set_parallelism`; 1 keeps everything on the calling thread). The output does
+/// not depend on it.
+pub fn set_parallelism(threads: usize) {
+    blitz_dom::set_parallelism(threads);
+}
+
+/// `WKHTMLTOPDF_DEBUG_TIMING`: print the elapsed time at a few pipeline steps to stderr.
+pub fn timing(label: &str) {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static START: OnceLock<Option<Instant>> = OnceLock::new();
+    if let Some(t0) =
+        START.get_or_init(|| std::env::var_os("WKHTMLTOPDF_DEBUG_TIMING").map(|_| Instant::now()))
+    {
+        eprintln!("timing {:8.2} ms {label}", t0.elapsed().as_secs_f64() * 1000.0);
+    }
+}

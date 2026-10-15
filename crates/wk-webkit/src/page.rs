@@ -347,7 +347,9 @@ impl WebPage {
         // `xmlns` on `<html>` (then `<ol/>` would be an empty list, as in no
         // browser). A leading empty comment defeats the sniffing.
         let sniff_proof = format!("<!---->{html}");
+        crate::timing("parse start");
         let mut doc = HtmlDocument::from_html(&sniff_proof, config).into_inner();
+        crate::timing("parsed");
         let extra = ua_css(&settings);
         if !extra.is_empty() {
             doc.add_user_agent_stylesheet(&extra);
@@ -370,6 +372,7 @@ impl WebPage {
         };
         page.mask_passwords();
         page.load_resources(fetcher);
+        crate::timing("resources loaded");
         page
     }
 
@@ -557,9 +560,11 @@ impl WebPage {
         let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
         let max_shrink = if self.settings.smart_shrinking { MAX_SHRINK } else { 1.0 };
         let base_w = printable_w_pt / 0.75 / zoom;
+        crate::timing("render start");
         self.qt_selects();
         let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
+        crate::timing("viewport set");
         if self.settings.smart_shrinking {
             let content_w = self.content_width();
             if content_w > layout_w + 0.5 {
@@ -572,7 +577,9 @@ impl WebPage {
         }
         let pt_per_px = printable_w_pt / layout_w;
 
+        crate::timing("pre-geometry");
         let geometry = collect_geometry(&self.doc);
+        crate::timing("geometry");
         let doc_h = geometry.doc_height.ceil().max(1.0) as u32;
         let mut recorder = Recorder::default();
         blitz_paint::canvas::set_pictures(self.canvases.clone());
@@ -582,6 +589,7 @@ impl WebPage {
         blitz_paint::paint_scene(&mut recorder, &mut self.doc, 1.0, layout_w as u32, doc_h, 0, 0);
         blitz_paint::inline_layouts::clear();
         blitz_paint::canvas::clear_pictures();
+        crate::timing("painted");
 
         if std::env::var_os("WKHTMLTOPDF_DEBUG_LAYOUT").is_some() {
             self.debug_layout();
@@ -602,6 +610,7 @@ impl WebPage {
             }
         }
         let (links, headings, anchors) = self.collect_links(&recorder);
+        crate::timing("links");
         let image_sources = self.image_sources();
         let body_height = self.body_height();
         let form_elements = self.form_elements();

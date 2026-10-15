@@ -8,6 +8,28 @@ use parley::FontContext;
 use std::sync::Arc;
 use style::media_queries::MediaType;
 
+/// wkhtmltopdf-rs: number of threads a document may use while resolving (1 = everything on
+/// the calling thread). See [`set_parallelism`].
+static PARALLELISM: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+
+/// wkhtmltopdf-rs: let large documents be styled and have their inline layouts built on the
+/// rayon pool of the resolving thread (the global pool from a thread outside any pool) when
+/// `threads` > 1. Small documents stay on the calling thread. The results do not depend on it.
+pub fn set_parallelism(threads: usize) {
+    PARALLELISM.store(threads.max(1), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Documents with at least this many nodes are styled on Stylo's pool.
+pub(crate) const PARALLEL_STYLE_MIN_NODES: usize = 2000;
+
+/// Inline layouts are built on the rayon pool when at least this many are (re)built.
+pub(crate) const PARALLEL_CONSTRUCT_MIN_TASKS: usize = 256;
+
+/// The value given to [`set_parallelism`] (1 by default).
+pub fn parallelism() -> usize {
+    PARALLELISM.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Strategy for Stylo's style traversal during `resolve`.
 ///
 /// Two `Document`s resolving on [`StyleThreading::Parallel`] concurrently

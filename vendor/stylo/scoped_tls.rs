@@ -19,8 +19,12 @@ use std::ops::DerefMut;
 /// Note that the cleanup is done on the thread that owns the scoped TLS, thus
 /// the Send bound.
 pub struct ScopedTLS<'scope, T: Send> {
-    pool: Option<&'scope rayon::ThreadPool>,
+    /// wkhtmltopdf-rs: whether the slots are used by the threads of a rayon pool (the one
+    /// given to [`ScopedTLS::new`], or the pool of the calling thread), indexed by
+    /// `rayon::current_thread_index`, instead of the calling thread only.
+    parallel: bool,
     slots: [RefCell<Option<T>>; STYLO_MAX_THREADS],
+    _pool: std::marker::PhantomData<&'scope rayon::ThreadPool>,
 }
 
 /// The scoped TLS is `Sync` because no more than one worker thread can access a
@@ -32,16 +36,27 @@ impl<'scope, T: Send> ScopedTLS<'scope, T> {
     /// reference.
     pub fn new(pool: Option<&'scope rayon::ThreadPool>) -> Self {
         debug_assert!(pool.is_none_or(|p| p.current_num_threads() <= STYLO_MAX_THREADS));
+        Self::with_parallelism(pool.is_some())
+    }
+
+    /// wkhtmltopdf-rs: a scoped TLS for the threads of the pool the traversal runs on
+    /// (`parallel`), or for the calling thread only.
+    pub fn with_parallelism(parallel: bool) -> Self {
         ScopedTLS {
-            pool,
+            parallel,
             slots: Default::default(),
+            _pool: std::marker::PhantomData,
         }
     }
 
     /// Returns the index corresponding to the calling thread in the thread pool.
     #[inline]
     pub fn current_thread_index(&self) -> usize {
-        self.pool.map_or(0, |p| p.current_thread_index().unwrap())
+        if self.parallel {
+            rayon::current_thread_index().unwrap()
+        } else {
+            0
+        }
     }
 
     /// Return an immutable reference to the `Option<T>` that this thread owns.

@@ -146,11 +146,21 @@ impl crate::document::BaseDocument {
         if token.should_traverse() {
             // Style the elements, resolving their data
             let mut traverser = RecalcStyle::new(context);
-            // `Sequential` bypasses Stylo's global pool. See `StyleThreading`.
-            let pool_guard = matches!(self.style_threading, StyleThreading::Parallel)
-                .then(|| STYLE_THREAD_POOL.pool());
-            let rayon_pool = pool_guard.as_ref().and_then(|g| g.as_ref());
-            style::driver::traverse_dom(&traverser, token, rayon_pool);
+            // wkhtmltopdf-rs: a large document is styled on the rayon pool of the calling
+            // thread when `set_parallelism` allows it (small ones would only pay for waking
+            // the threads up).
+            if crate::config::parallelism() > 1
+                && self.nodes.len() >= crate::config::PARALLEL_STYLE_MIN_NODES
+                && !matches!(self.style_threading, StyleThreading::Parallel)
+            {
+                style::driver::traverse_dom_on_current_pool(&traverser, token);
+            } else {
+                // `Sequential` bypasses Stylo's global pool. See `StyleThreading`.
+                let pool_guard = matches!(self.style_threading, StyleThreading::Parallel)
+                    .then(|| STYLE_THREAD_POOL.pool());
+                let rayon_pool = pool_guard.as_ref().and_then(|g| g.as_ref());
+                style::driver::traverse_dom(&traverser, token, rayon_pool);
+            }
             nodes_needing_style_image_flush =
                 std::mem::take(traverser.nodes_needing_style_image_flush.get_mut().unwrap());
         }
