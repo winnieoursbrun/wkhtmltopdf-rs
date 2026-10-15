@@ -234,6 +234,18 @@ impl LayoutPassState<'_> {
         block_ctx: &mut BlockContext<'_>,
     ) -> taffy::LayoutOutput {
         let scale = self.viewport.scale();
+        // wkhtmltopdf-rs: grid row sizing measures every table cell's height twice, under a
+        // min-content and then a max-content available height, at the same width. Without
+        // inline boxes (and floats), an inline formatting context that roots its own block
+        // formatting context breaks its lines and sizes itself the same under both, so the
+        // second measurement reuses the first (`inline_measure_memo`, valid for the next
+        // call only).
+        let memo = self.inline_measure_memo.take();
+        let indefinite_height_measure = inputs.run_mode == RunMode::ComputeSize
+            && inputs.axis == RequestedAxis::Vertical
+            && inputs.known_dimensions.width.is_some()
+            && inputs.known_dimensions.height.is_none()
+            && !inputs.available_space.height.is_definite();
         let LayoutInput {
             known_dimensions,
             parent_size,
@@ -620,6 +632,45 @@ impl LayoutPassState<'_> {
         let mut block_ctx =
             outer_block_ctx.sub_context(container_pb.top, [container_pb.left, container_pb.right]);
         // block_ctx.apply_content_box_inset([container_pb.left, container_pb.right]);
+
+        #[cfg(feature = "floats")]
+        let memoizable = indefinite_height_measure
+            && is_bfc_root
+            && inline_layout.layout.inline_boxes().len() == 0;
+        #[cfg(not(feature = "floats"))]
+        let memoizable =
+            indefinite_height_measure && inline_layout.layout.inline_boxes().len() == 0;
+        if memoizable {
+            if let Some((memo_id, memo_inputs, memo_output)) = memo {
+                let same_measure = memo_id == node_id
+                    && LayoutInput {
+                        available_space: Size {
+                            height: inputs.available_space.height,
+                            ..memo_inputs.available_space
+                        },
+                        ..memo_inputs
+                    } == inputs;
+                if same_measure {
+                    // What the measurement would have done besides returning its output:
+                    // the block offset and lines are those of the previous one already.
+                    #[cfg(feature = "floats")]
+                    {
+                        let contribution = block_ctx.floated_content_height_contribution();
+                        drop(block_ctx);
+                        outer_block_ctx.add_child_floated_content_height_contribution(
+                            container_pb.top + contribution,
+                        );
+                    }
+                    self.nodes[node_id]
+                        .data
+                        .downcast_element_mut()
+                        .unwrap()
+                        .inline_layout_data = Some(inline_layout);
+                    self.inline_measure_memo = Some((memo_id, memo_inputs, memo_output.clone()));
+                    return memo_output;
+                }
+            }
+        }
 
         if inputs.run_mode == taffy::RunMode::ComputeSize
             && inputs.axis == RequestedAxis::Horizontal
@@ -1126,7 +1177,7 @@ impl LayoutPassState<'_> {
             bottom: border.bottom + scrollbar_gutter.y,
         };
 
-        LayoutOutput {
+        let output = LayoutOutput {
             size: final_size,
             scrollable_overflow_rect: {
                 let content_extent = taffy::Size {
@@ -1157,7 +1208,11 @@ impl LayoutPassState<'_> {
                     y: oof_position_inset.top,
                 },
             }),
+        };
+        if memoizable {
+            self.inline_measure_memo = Some((node_id, inputs, output.clone()));
         }
+        output
     }
 }
 

@@ -101,6 +101,9 @@ pub(crate) struct LayoutPassState<'doc> {
     /// size, against which its percentage padding resolves (see `layout::writing_mode`).
     #[cfg(feature = "writing-mode")]
     pub(crate) orthogonal_percent_basis: Option<(crate::NodeId, f32)>,
+    /// wkhtmltopdf-rs: the last block-size measurement of an inline formatting context
+    /// (see `compute_inline_layout_inner`).
+    pub(crate) inline_measure_memo: Option<(crate::NodeId, taffy::LayoutInput, taffy::LayoutOutput)>,
 }
 
 impl<'doc> LayoutPassState<'doc> {
@@ -138,6 +141,7 @@ impl<'doc> LayoutPassState<'doc> {
             current_align_axis_is_inline: false,
             #[cfg(feature = "writing-mode")]
             orthogonal_percent_basis: None,
+            inline_measure_memo: None,
         }
     }
 }
