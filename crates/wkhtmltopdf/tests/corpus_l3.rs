@@ -145,6 +145,9 @@ fn run_in_copy(src: &Path, tag: &str, args: impl Fn(&Path) -> Vec<String>) -> Ve
         .args(args(&dir))
         .env("LC_ALL", "C")
         .env("TZ", "UTC")
+        // The moment tests/parts/hf-text-vars/ref.pdf was made, so `[date]`/`[time]` in its
+        // footers render the same text and the raster score does not drift with the clock.
+        .env("SOURCE_DATE_EPOCH", "1791990835")
         .env("WKHTMLTOPDF_SYSTEM_FONTS", "0")
         .env("WKHTMLTOPDF_SLOW_SCRIPT_LOOPS", "200000")
         .current_dir(&dir)
