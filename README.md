@@ -183,6 +183,10 @@ Vendored crates (`vendor/`, wired through `[patch.crates-io]`), each change mark
 | `taffy` 0.15.0 | BFC roots keep their bottom padding/border below their floats |
 | `parley` 0.12.0 | `line-height: normal` rounds ascent and descent up (QtWebKit/FreeType); glyph runs expose their cluster range |
 | `parley_engine` 0.12.0 | QtWebKit's text measurement: linear 26.6 advances, "spaces + word" segments rounded to whole pixels |
+| `boa_engine` 0.22 | `Script::with_realm`: the DOM prelude compiled once per thread |
+| `krilla` 0.8.2 | hhea ascent/descent in font descriptors, cheaper deflate, fonts subset in parallel, page drafts drawn on other threads (`draft.rs`) |
+| `pdf-writer` 0.15.0 | colour components and short decimals without ryu (same bytes) |
+| `dlmalloc` 0.2.14 | freed pages given back to the system; the shared heap of the musl build's allocator (`crates/wkhtmltopdf/src/alloc.rs`) |
 
 ## Build and test (development)
 
