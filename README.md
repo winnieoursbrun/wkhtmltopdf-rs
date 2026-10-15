@@ -66,9 +66,9 @@ equivalent pages. Every number below is produced by tests in this repository.
 | L1 | Conversions: progress output, warnings, load errors and exit codes (stderr + exit code, byte for byte) | **13 / 13 (100 %)** |
 | L1 | pdfkit gem 0.8.7.3: same outcome (PDF or the same exception) for 16 real-world call patterns | **16 / 16 (100 %)** |
 | L2 | Same page count and page size (22 benchmark cases + 12 corpus documents + 22 document-parts cases + 13 JavaScript cases) | **69 / 69 (100 %)** |
-| L2 | Extracted text, word-level similarity (mean over the 22 benchmark cases) | **99.7 %** (21 cases ≥ 99 %) |
+| L2 | Extracted text, word-level similarity (mean over the 22 benchmark cases) | **99.9 %** (22 cases ≥ 99 %) |
 | L2 | Outline, links, named destinations, TOC entries, header/footer text (`tests/parts`) | **22 / 22** |
-| L3 | Visual similarity, mean per-page SSIM at 96 dpi (22 benchmark cases) | **0.92** (16 cases ≥ 0.85) |
+| L3 | Visual similarity, mean per-page SSIM at 96 dpi (22 benchmark cases) | **0.96** (22 cases ≥ 0.85) |
 
 How to read L3: the port uses a different layout engine than QtWebKit 2.2, so pixel identity is a
 non-goal. Glyphs are rasterised and antialiased differently and words can sit half a pixel apart,
