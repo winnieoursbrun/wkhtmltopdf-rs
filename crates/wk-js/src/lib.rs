@@ -274,7 +274,7 @@ impl Session {
             dom::wrap_in(h, r)
         });
         global.set(JsString::from("document"), document, false, &mut ctx).expect("document global");
-        host::eval(&mut ctx, PRELUDE, host::PRELUDE_URL, 1);
+        host::eval_prelude(&mut ctx, PRELUDE);
         Session { ctx, wk, body_onload_done: false }
     }
 

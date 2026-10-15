@@ -324,6 +324,35 @@ pub(crate) fn eval(ctx: &mut Context, code: &str, url: &str, first_line: u32) ->
     r
 }
 
+/// Evaluate the DOM prelude in `ctx`'s realm, like [`eval`] does. The prelude is parsed
+/// and compiled once per thread (a conversion creates one realm per page with scripts:
+/// every header and footer page has its own), then its bytecode is run in each new realm
+/// (`Script::with_realm`): its global code declares nothing, so the bytecode does not
+/// depend on the realm it was compiled for.
+pub(crate) fn eval_prelude(ctx: &mut Context, code: &'static str) {
+    thread_local! {
+        /// The compiled prelude and the source path it was compiled with.
+        static PRELUDE: RefCell<Option<(String, boa_engine::Script)>> = const { RefCell::new(None) };
+    }
+    let path = with_host(|h| h.add_script(PRELUDE_URL, 1, Rc::from(code)));
+    let cached = PRELUDE.with(|p| p.borrow().clone()).filter(|(p, _)| *p == path);
+    let script = match cached {
+        Some((_, script)) => script.with_realm(ctx.realm().clone(), ctx),
+        None => {
+            let src = Source::from_bytes(code.as_bytes()).with_path(std::path::Path::new(&path));
+            boa_engine::Script::parse(src, None, ctx).and_then(|script| {
+                script.codeblock(ctx)?;
+                PRELUDE.with(|p| *p.borrow_mut() = Some((path.clone(), script.clone())));
+                Ok(script)
+            })
+        }
+    };
+    if let Err(e) = script.and_then(|script| script.evaluate(ctx)) {
+        report_error(&e, ctx);
+    }
+    run_jobs(ctx);
+}
+
 pub(crate) fn run_jobs(ctx: &mut Context) {
     if let Err(e) = ctx.run_jobs() {
         report_error(&e, ctx);
