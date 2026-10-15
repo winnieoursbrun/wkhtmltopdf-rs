@@ -226,6 +226,15 @@ pub struct WebPage {
     canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
 }
 
+/// The box standing in for an image that failed to load (`WebPage::broken_images`).
+struct AltBox {
+    span: NodeId,
+    /// The alt text node.
+    text: NodeId,
+    /// Both dimensions given: the box does not take the size of its text.
+    sized: bool,
+}
+
 fn tag(node: &Node) -> &str {
     node.element_data().map(|e| &*e.name.local).unwrap_or("")
 }
@@ -528,6 +537,7 @@ impl WebPage {
         let base_h = printable_h_pt / 0.75 / zoom;
         let mut layout_w = (base_w * min_shrink).round().max(1.0);
         let vh = (base_h * min_shrink).round().max(1.0);
+        let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
         if self.settings.smart_shrinking {
             let content_w = self.content_width();
@@ -535,6 +545,9 @@ impl WebPage {
                 layout_w = content_w.min((base_w * max_shrink).round()).ceil();
                 self.set_viewport(layout_w, vh);
             }
+        }
+        if self.settle_alt_boxes(&alt_boxes) {
+            self.set_viewport(layout_w, vh);
         }
         let pt_per_px = printable_w_pt / layout_w;
 
@@ -643,6 +656,120 @@ impl WebPage {
             }
         }
         out
+    }
+
+    /// QtWebKit's `RenderImage::paintReplaced` for an image that failed to load: a 1px light
+    /// gray (`Color::lightGray`) rectangle on its content box, and the `alt` text at its top
+    /// left when it fits. Not with `--no-images`, where the 0.12.6 binary draws nothing.
+    ///
+    /// Each such image becomes an inline-block span with its `id`, `class` and `style`, sized
+    /// by its `width`/`height` attributes or inline style, holding the alt text. A dimension
+    /// given neither way is the alt text's (width plus 4px; 4px when there is no text), and
+    /// QtWebKit then leaves the text out. Sizes from style sheet rules on `img` are lost.
+    /// Returns the boxes for [`settle_alt_boxes`](Self::settle_alt_boxes).
+    fn broken_images(&mut self) -> Vec<AltBox> {
+        if !self.settings.load_images {
+            return Vec::new();
+        }
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if tag(n) != "img" {
+                continue;
+            }
+            let Some(el) = n.element_data() else { continue };
+            if matches!(el.image_data(), Some(d) if !matches!(d, blitz_dom::node::ImageData::None)) {
+                continue;
+            }
+            let inline = n.attr(local_name!("style")).unwrap_or("").to_ascii_lowercase();
+            let in_style =
+                |prop: &str| inline.split(';').any(|d| d.split(':').next().is_some_and(|p| p.trim() == prop));
+            let size = |name, prop: &str| {
+                if in_style(prop) {
+                    return Some(String::new());
+                }
+                let v = n.attr(name)?.trim();
+                let num: f32 = v.trim_end_matches('%').trim().parse().ok().filter(|x: &f32| *x >= 0.0)?;
+                Some(if v.ends_with('%') { format!("{prop}:{num}%;") } else { format!("{prop}:{num}px;") })
+            };
+            let w = size(local_name!("width"), "width");
+            let h = size(local_name!("height"), "height");
+            let block = n.primary_styles().is_some_and(|s| {
+                s.get_box().display.outside() == style::values::specified::box_::DisplayOutside::Block
+            });
+            let alt = n.attr(local_name!("alt")).unwrap_or("").to_string();
+            found.push((id, w, h, block, alt, el.attrs.to_vec()));
+        }
+        let mut out = Vec::new();
+        let mut m = self.doc.mutate();
+        for (id, w, h, block, alt, attrs) in found {
+            let display = if block { "block" } else { "inline-block" };
+            let (sized_w, sized_h) = (w.is_some(), h.is_some());
+            // An empty alt text sizes the box like a 4px padding alone.
+            let pad_w = if sized_w { "" } else { "padding-right:4px;" };
+            let pad_h = if sized_h || !alt.is_empty() { "" } else { "padding-bottom:4px;" };
+            let mut style = format!(
+                "display:{display};box-sizing:content-box;{}{}{pad_w}{pad_h}overflow:hidden;\
+                 white-space:pre;line-height:normal;text-indent:0;text-align:left;\
+                 outline:1px solid #c0c0c0;outline-offset:-1px;",
+                w.unwrap_or_default(),
+                h.unwrap_or_default(),
+            );
+            let mut kept = Vec::new();
+            for a in attrs {
+                match &*a.name.local {
+                    "style" => style.push_str(&a.value),
+                    "id" | "class" | "title" | "lang" | "dir" => kept.push(a),
+                    _ => {}
+                }
+            }
+            kept.push(blitz_dom::Attribute {
+                name: blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("style")),
+                value: style,
+            });
+            let span = m.create_element(
+                blitz_dom::QualName::new(None, blitz_dom::ns!(html), local_name!("span")),
+                kept,
+            );
+            let text = m.create_text_node(&alt);
+            m.append_children(span, &[text]);
+            m.replace_node_with(id, &[span]);
+            out.push(AltBox { span, text, sized: sized_w && sized_h });
+        }
+        drop(m);
+        out
+    }
+
+    /// After a layout: a box sized by its alt text keeps that size without the text, and a
+    /// sized box drops a text that does not fit (QtWebKit draws it only when it fits).
+    /// Returns whether the layout must be redone.
+    fn settle_alt_boxes(&mut self, boxes: &[AltBox]) -> bool {
+        let mut changes = Vec::new();
+        for b in boxes {
+            let Some(n) = self.doc.get_node(b.span) else { continue };
+            let l = n.final_layout();
+            let (cw, ch) = (l.content_box_width(), l.content_box_height());
+            let text = n.element_data().and_then(|e| e.inline_layout_data.as_ref());
+            if !b.sized {
+                changes.push((b.span, Some((cw, ch)), b.text));
+            } else if text.is_some_and(|t| {
+                t.layout.width() > cw + 0.01 || t.layout.lines().count() > 1 || t.layout.height() > ch + 0.01
+            }) {
+                changes.push((b.span, None, b.text));
+            }
+        }
+        let mut m = self.doc.mutate();
+        for &(span, size, text) in &changes {
+            if let Some((w, h)) = size {
+                m.set_style_property(span, "width", &format!("{w}px"));
+                m.set_style_property(span, "height", &format!("{h}px"));
+            }
+            m.set_node_text(text, "");
+        }
+        drop(m);
+        !changes.is_empty()
     }
 
     fn set_viewport(&mut self, w: f32, h: f32) {

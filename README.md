@@ -105,6 +105,9 @@ Not yet matched:
 
 - QtWebKit's pagination of tall table rows (one page of `tests/corpus/statement` differs).
 - `<select>` boxes are not drawn; canvas is painted as vectors where the original rasterises it.
+- Quirks mode (no DOCTYPE) is rendered as standards mode: a line holding only an image keeps the
+  text strut's descent (4 px taller at 16 px than in QtWebKit).
+- A broken image (the alt-text box) loses the sizes given to `img` by style-sheet rules.
 - `-webkit-text-stroke`, a float placed before a collapsing margin, flex/grid text extraction order
   in the WebKit-2012 profile.
 - `--image-quality`, `--lowquality`, `--cache-dir` and client certificates have no effect.

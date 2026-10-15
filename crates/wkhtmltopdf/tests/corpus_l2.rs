@@ -129,6 +129,23 @@ fn image_dpi_scales_down_non_jpeg_images() {
     assert!(dims(&got).contains(&(116, 87)));
 }
 
+/// QtWebKit prints the alt text of an image that failed to load when it fits the image box
+/// (verified on the 0.12.6 binary), and nothing with `--no-images`.
+#[test]
+fn broken_image_prints_its_alt_text() {
+    let html = b"<p>a <img src=\"missing.png\" alt=\"fits\" width=\"200\" height=\"100\"> \
+        <img src=\"missing.png\" alt=\"far too long to fit\" width=\"40\" height=\"40\"> b</p>";
+    let words = |extra: &[&str]| {
+        let mut args: Vec<String> = extra.iter().map(|s| s.to_string()).collect();
+        args.extend(
+            ["--load-error-handling", "ignore", "--load-media-error-handling", "ignore"].map(String::from),
+        );
+        words_by_page(&common::ours(html, &args)).concat().join(" ")
+    };
+    assert_eq!(words(&[]), "fits a b");
+    assert_eq!(words(&["--no-images"]), "a b");
+}
+
 #[test]
 fn similarity_ratio() {
     let w = |s: &str| s.split_whitespace().map(str::to_string).collect::<Vec<_>>();
