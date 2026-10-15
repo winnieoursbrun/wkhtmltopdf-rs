@@ -18,16 +18,22 @@
 //! (`vendor/dlmalloc`, `purge_freed`): plain dlmalloc only returns the top of its segments,
 //! and kept the peak RSS of script-heavy pages 10 % above musl's.
 //!
-//! A block of a small class is exactly the chunk dlmalloc would have used for the request,
-//! so the classes add no padding. A cached block can be reused only by the thread that holds
+//! A block of a small class is a request of the class's usable size, which dlmalloc pads to
+//! the same chunk size as any request of that class: the classes add no padding (dlmalloc
+//! may still hand out a chunk up to 16 bytes larger when the rest of a free chunk is too
+//! small to split off, as it would for the original request). A cached block can be reused only by the thread that holds
 //! it; each list is capped ([`cache_cap`]), so a thread holds at most a few hundred KiB that
 //! other threads cannot use. Caches of exited threads are not given back (the conversion's
 //! threads live as long as the process).
 
 use std::alloc::{GlobalAlloc, Layout};
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::ptr;
 use std::sync::Mutex;
+
+// The size classes below are those of 64-bit dlmalloc (8 bytes of overhead, chunks of at
+// least 32 bytes aligned to 16); `lib.rs` only builds this module on 64-bit targets.
+const _: () = assert!(size_of::<usize>() == 8, "the size classes assume 64-bit dlmalloc");
 
 /// dlmalloc's alignment: requests with a larger one bypass the caches.
 const ALIGN: usize = 16;
@@ -76,10 +82,34 @@ unsafe impl Send for Heap {}
 
 static HEAP: Mutex<Heap> = Mutex::new(Heap(UnsafeCell::new(dlmalloc::Dlmalloc::new())));
 
+thread_local! {
+    /// The thread holds `HEAP`'s lock (no destructor: accessing it never allocates).
+    static IN_HEAP: Cell<bool> = const { Cell::new(false) };
+}
+
 fn with_heap<R>(f: impl FnOnce(&mut dlmalloc::Dlmalloc) -> R) -> R {
+    // A thread allocating while it holds the lock can only come from a panic inside
+    // dlmalloc (its consistency checks: a bad pointer or size given to `free`/`realloc`):
+    // the panic machinery allocates, and locking again would deadlock silently. Abort
+    // instead, the heap being corrupt anyway.
+    if IN_HEAP.with(|h| h.replace(true)) {
+        heap_failure();
+    }
     let guard = HEAP.lock().unwrap_or_else(|e| e.into_inner());
     // SAFETY: the guard gives exclusive access.
-    f(unsafe { &mut *guard.0.get() })
+    let r = f(unsafe { &mut *guard.0.get() });
+    drop(guard);
+    IN_HEAP.with(|h| h.set(false));
+    r
+}
+
+/// Report a failure inside the shared heap without allocating, and abort.
+#[cold]
+fn heap_failure() -> ! {
+    const MSG: &[u8] = b"wkhtmltopdf: allocator failure (heap corrupted), aborting\n";
+    // SAFETY: writes a static buffer to stderr.
+    unsafe { libc::write(2, MSG.as_ptr().cast(), MSG.len()) };
+    std::process::abort()
 }
 
 /// A free list of one class: blocks linked through their first word.

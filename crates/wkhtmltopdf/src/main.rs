@@ -15,9 +15,11 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 #[global_allocator]
 static ALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
 
-// The static musl build: musl's malloc is slow and serialises threads (src/alloc.rs).
+// The static musl build: musl's malloc is slow and serialises threads (src/alloc.rs, 64-bit
+// only: 32-bit builds keep musl's malloc).
 #[cfg(all(
     target_env = "musl",
+    target_pointer_width = "64",
     not(any(feature = "dhat-heap", feature = "dlmalloc", feature = "system-alloc"))
 ))]
 #[global_allocator]
