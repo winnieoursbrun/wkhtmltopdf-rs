@@ -2,8 +2,14 @@
 //! `QWebPrinter` (patched QtWebKit used by `pdfconverter.cc`): the document
 //! is laid out once on a tall page, then cut into page-high slices.
 //!
-//! Rules: a cut never falls inside a line box, a table row, a replaced
-//! element or a `break-inside: avoid` box; forced breaks (`page-break-*` /
+//! Rules, after QtWebKit 2.2's legacy truncation (`adjustPageHeight`): a page
+//! is full height unless something unbreakable straddles its bottom edge — a
+//! line's content area (ascent + descent, without the half-leading), a table
+//! row, a replaced element, a `break-inside: avoid` box — and then it ends at
+//! the top of that thing (of the line box for the first line of a block). The
+//! next page starts at the cut when a box is cut through (the rest of it shows
+//! at the top), else at the next content (margins in the gap are truncated).
+//! Forced breaks (`page-break-*` /
 //! `break-*`) start a new page, adjacent ones merge; when a cut falls inside
 //! a table, its `thead` is repeated at the top of the next page and its
 //! `tfoot` at the bottom of the cut page, as wkhtmltopdf 0.12.6 does.
@@ -86,6 +92,24 @@ fn next_content(g: &Geometry, y: f32) -> f32 {
         .max(y)
 }
 
+/// QtWebKit's legacy print rect for a page from `y` to `limit`: its bottom edge in whole px.
+fn print_bottom(y: f32, limit: f32) -> f32 {
+    y.floor() + (limit - y).ceil()
+}
+
+/// Whether something that must not be cut straddles the bottom of the page `[y, limit)`:
+/// QtWebKit's `adjustPageHeight` paints the page with `truncatedAt = floor(limit)` and moves
+/// the cut up to an object that starts above `truncatedAt` but ends below the print rect.
+fn crosses(g: &Geometry, y: f32, limit: f32) -> bool {
+    let (trunc, bottom) = (limit.floor(), print_bottom(y, limit));
+    g.straddlers.iter().any(|&(a, b)| a < trunc && b > bottom && a > y + 1.0)
+}
+
+/// Whether a line box or an unbreakable box spans `y`.
+fn straddled(g: &Geometry, y: f32) -> bool {
+    g.content_boxes.iter().any(|&(a, b)| a < y - 0.01 && b > y + 0.01)
+}
+
 /// Cut `g` into pages of `page_h` CSS px.
 pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
     let mut pages = vec![];
@@ -124,13 +148,18 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
             f
         } else if limit >= g.doc_height {
             g.doc_height
-        } else {
+        } else if crosses(g, y, limit) {
+            // QtWebKit's `bestTruncatedAt`: the page ends at the top of what straddles it.
             g.candidates
                 .iter()
                 .copied()
-                .filter(|&c| c > y + 1.0 && c <= limit && atomic.is_safe(c))
+                .filter(|&c| c > y + 1.0 && c <= print_bottom(y, limit) && atomic.is_safe(c))
                 .fold(None, |acc: Option<f32>, c| Some(acc.map_or(c, |a| a.max(c))))
                 .unwrap_or(limit)
+        } else {
+            // Nothing straddles the cut: the page is full height, and the next one starts
+            // inside whatever gap (margins) the cut falls in.
+            limit
         };
         // The footer is only repeated when the table really continues.
         let tfoot = tfoot.filter(|_| g.tables.iter().any(|t| t.tfoot == tfoot && t.bottom > end + 0.5));
@@ -144,7 +173,10 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
             .next_back();
         // A page after an unforced break starts at the next content: the
         // margins adjoining the break are truncated.
-        y = if forced.is_some() || thead.is_some() { end } else { next_content(g, end) };
+        // The next page starts at the cut (QtWebKit's `printedPagesHeight`) when content
+        // straddles it, so the rest of a box cut through shows at its top; a cut in a gap
+        // between boxes moves to the next content: the adjoining margins are truncated.
+        y = if forced.is_some() || thead.is_some() || straddled(g, end) { end } else { next_content(g, end) };
         // Skip the real footer of a table that ends right after the cut.
         if let Some((fa, fb)) = tfoot {
             if (y - fa).abs() < 0.5 {
@@ -154,6 +186,12 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
     }
     if pages.is_empty() {
         pages.push(PageSlice { y0: 0.0, y1: page_h, thead: None, tfoot: None });
+    }
+    if std::env::var_os("WKHTMLTOPDF_DEBUG_PAGES").is_some() {
+        eprintln!("paginate: page_h={page_h} doc_h={}", g.doc_height);
+        for (i, p) in pages.iter().enumerate() {
+            eprintln!("  page {}: [{}, {}) thead={:?} tfoot={:?}", i + 1, p.y0, p.y1, p.thead, p.tfoot);
+        }
     }
     pages
 }
@@ -175,6 +213,7 @@ mod tests {
         for i in 0..10 {
             let a = i as f32 * 25.0;
             g.atomic.push((a, a + 25.0));
+            g.straddlers.push((a, a + 25.0));
             g.candidates.extend([a, a + 25.0]);
         }
         let p = paginate(&g, 110.0);
@@ -184,12 +223,51 @@ mod tests {
         assert_eq!(p[0].y1, 50.0);
     }
 
+    /// A paragraph of 20px lines with an 18px content area (1px half-leading).
+    fn paragraph(g: &mut Geometry, top: f32, lines: usize) {
+        for i in 0..lines {
+            let a = top + i as f32 * 20.0;
+            let (ca, cb) = (a + 1.0, a + 19.0);
+            g.atomic.push((if i == 0 { a } else { ca }, cb));
+            g.straddlers.push((ca, cb));
+            g.content_boxes.push((a, a + 20.0));
+            g.content_starts.push(a);
+            g.candidates.extend([a, a + 20.0, ca, cb]);
+        }
+    }
+
+    #[test]
+    fn breaks_follow_qtwebkit_truncation() {
+        // A line whose content area straddles the page bottom moves the cut to the top of its
+        // content area (first line of a block: its line box top).
+        let mut g = Geometry { doc_height: 300.0, ..Default::default() };
+        paragraph(&mut g, 0.0, 15);
+        let p = paginate(&g, 110.0);
+        assert_eq!(p[0].y1, 101.0);
+        assert_eq!(p[1].y0, 101.0);
+        let mut g = Geometry { doc_height: 300.0, ..Default::default() };
+        paragraph(&mut g, 0.0, 5);
+        paragraph(&mut g, 105.0, 5);
+        assert_eq!(paginate(&g, 110.0)[0].y1, 105.0);
+        // A line box whose content area ends above the page bottom stays: the page is full
+        // height, and the next one starts at the cut, inside that line box.
+        let mut g = Geometry { doc_height: 300.0, ..Default::default() };
+        paragraph(&mut g, 0.0, 5);
+        paragraph(&mut g, 120.0, 5);
+        let p = paginate(&g, 159.5);
+        assert_eq!((p[0].y1, p[1].y0), (159.5, 159.5));
+        // A cut in the gap between two blocks: the next page starts at the next content.
+        let p = paginate(&g, 110.0);
+        assert_eq!((p[0].y1, p[1].y0), (110.0, 120.0));
+    }
+
     #[test]
     fn thead_and_tfoot_repeat() {
         let mut g = Geometry { doc_height: 400.0, ..Default::default() };
         for i in 0..20 {
             let a = i as f32 * 20.0;
             g.atomic.push((a, a + 20.0));
+            g.straddlers.push((a, a + 20.0));
             g.candidates.extend([a, a + 20.0]);
         }
         g.tables.push(TableInfo {

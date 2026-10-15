@@ -11,7 +11,7 @@ members = [
     "crates/wk-print",
     "crates/wk-converter",
 ]
-exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/boa_engine", "spikes"]
+exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/krilla", "vendor/boa_engine", "spikes"]
 
 [workspace.package]
 version = "0.1.0-alpha.1"
@@ -71,6 +71,8 @@ parley_engine = { path = "vendor/parley_engine" }
 # boa_engine with Script::with_realm, so the DOM prelude is parsed and compiled once per
 # thread and evaluated in each page's realm (vendor/boa_engine/src/script.rs).
 boa_engine = { path = "vendor/boa_engine" }
+# krilla writing the hhea ascent/descent in font descriptors, as Qt does (vendor/krilla/src/text/font.rs).
+krilla = { path = "vendor/krilla" }
 
 [profile.release]
 lto = true

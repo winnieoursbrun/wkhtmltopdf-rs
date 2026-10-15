@@ -25,6 +25,8 @@
 //! restricts the run to some pages.
 
 mod common;
+#[path = "support/paths.rs"]
+mod paths;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -134,15 +136,18 @@ fn copy_inputs(from: &Path, to: &Path) {
 
 /// Run our binary with `args` in a fresh copy of `src` and return `out.pdf`
 /// (the last argument), like `parts.rs` and `js_corpus.rs`.
-fn run_in_copy(src: &Path, tag: &str, args: impl Fn(&str) -> Vec<String>) -> Vec<u8> {
+fn run_in_copy(src: &Path, tag: &str, args: impl Fn(&Path) -> Vec<String>) -> Vec<u8> {
     let tmp = std::env::temp_dir().join(format!("wk-l3-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy_inputs(src, &tmp);
     let dir = std::fs::canonicalize(&tmp).unwrap();
     let o = Command::new(env!("CARGO_BIN_EXE_wkhtmltopdf"))
-        .args(args(&dir.display().to_string()))
+        .args(args(&dir))
         .env("LC_ALL", "C")
         .env("TZ", "UTC")
+        // The moment tests/parts/hf-text-vars/ref.pdf was made, so `[date]`/`[time]` in its
+        // footers render the same text and the raster score does not drift with the clock.
+        .env("SOURCE_DATE_EPOCH", "1791990835")
         .env("WKHTMLTOPDF_SYSTEM_FONTS", "0")
         .env("WKHTMLTOPDF_SLOW_SCRIPT_LOOPS", "200000")
         .current_dir(&dir)
@@ -200,7 +205,7 @@ fn js_l3_raster() {
         }
         let raw: Vec<String> = f.map(str::to_string).collect();
         let got = run_in_copy(&root, &case, |dir| {
-            let mut v: Vec<String> = raw.iter().map(|a| a.replace("{DIR}", dir)).collect();
+            let mut v: Vec<String> = raw.iter().map(|a| paths::substitute_dir(a, dir)).collect();
             v.push("out.pdf".into());
             v
         });

@@ -21,15 +21,15 @@ large      *  0.95
 layout     *  0.84  # list markers, rowspan/colspan table, badge padding
 medium     1  0.92
 medium     2  0.94
-medium     3  0.77  # a table row breaks differently (QtWebKit pagination strut)
-medium     4  0.77  # follows page 3
+medium     3  0.90
+medium     4  0.90
 report     1  0.72  # cover: centred heading glyph positions
 report     2  0.90
-report     3  0.76  # two lines only: glyph positions dominate
+report     3  0.88  # two lines only: glyph positions dominate
 report     4  0.90
-report     5  0.80  # short page: glyph positions dominate
+report     5  0.92
 report     6  0.92
-report     7  0.87  # short page: glyph positions dominate
+report     7  0.98
 statement  1  0.98
 statement  2  0.17  # QtWebKit pushes a row across a page boundary with a strut (tall row); not reproduced
 statement  3  0.52  # follows page 2

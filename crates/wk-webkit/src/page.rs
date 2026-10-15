@@ -138,6 +138,12 @@ pub struct Geometry {
     /// `orphans`/`widows`, which the 0.12.6 binary does not apply by
     /// default).
     pub paragraphs: Vec<Vec<(f32, f32)>>,
+    /// Painted content: line boxes and the unbreakable boxes (rows, replaced
+    /// elements). A page that starts in a gap between them starts at the next one.
+    pub content_boxes: Vec<(f32, f32)>,
+    /// What moves an unforced break up when it straddles the page bottom: the
+    /// content area of each line, the unbreakable boxes.
+    pub straddlers: Vec<(f32, f32)>,
 }
 
 /// An `<a href>` hit area, in document px.
@@ -224,6 +230,15 @@ pub struct WebPage {
     pub url: Url,
     /// Canvas content recorded by script.
     canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
+}
+
+/// The box standing in for an image that failed to load (`WebPage::broken_images`).
+struct AltBox {
+    span: NodeId,
+    /// The alt text node.
+    text: NodeId,
+    /// Both dimensions given: the box does not take the size of its text.
+    sized: bool,
 }
 
 fn tag(node: &Node) -> &str {
@@ -542,6 +557,8 @@ impl WebPage {
         let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
         let max_shrink = if self.settings.smart_shrinking { MAX_SHRINK } else { 1.0 };
         let base_w = printable_w_pt / 0.75 / zoom;
+        self.qt_selects();
+        let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
         if self.settings.smart_shrinking {
             let content_w = self.content_width();
@@ -549,6 +566,9 @@ impl WebPage {
                 layout_w = content_w.min((base_w * max_shrink).round()).ceil();
                 self.set_viewport(layout_w, vh);
             }
+        }
+        if self.settle_alt_boxes(&alt_boxes) {
+            self.set_viewport(layout_w, vh);
         }
         let pt_per_px = printable_w_pt / layout_w;
 
@@ -657,6 +677,265 @@ impl WebPage {
             }
         }
         out
+    }
+
+    /// `<select>` as QtWebKit 2.2 paints it with Qt's default (Windows) style, measured on the
+    /// 0.12.6 binary: a combo box is a 2px sunken frame (#6a6864 and black above and left,
+    /// white and #d4d0c8 below and right) around a white field holding the selected option
+    /// (2px left padding, as wide as the widest option plus 4px) and a 16px raised button
+    /// with a 7px black arrow; a list box (`multiple` or `size` > 1) shows its options one per
+    /// line, the selected ones in white on navy, beside a 16px scroll bar, at least 4 rows.
+    /// blitz-dom has no select layout: each one is rebuilt here as nested spans (the hidden
+    /// options of a combo box only give it its width).
+    fn qt_selects(&mut self) {
+        struct Select {
+            id: NodeId,
+            options: Vec<(String, bool)>,
+            list_rows: Option<usize>,
+            attrs: Vec<blitz_dom::Attribute>,
+        }
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            if tag(n) != "select" {
+                stack.extend(n.children.iter().copied());
+                continue;
+            }
+            let mut options = Vec::new();
+            let mut inner: Vec<NodeId> = n.children.iter().rev().copied().collect();
+            while let Some(c) = inner.pop() {
+                let Some(o) = self.doc.get_node(c) else { continue };
+                match tag(o) {
+                    "option" => {
+                        let text = o.text_content().split_whitespace().collect::<Vec<_>>().join(" ");
+                        options.push((text, o.attr(local_name!("selected")).is_some()));
+                    }
+                    "optgroup" => inner.extend(o.children.iter().rev().copied()),
+                    _ => {}
+                }
+            }
+            let multiple = n.attr(local_name!("multiple")).is_some();
+            let size: usize = n.attr(local_name!("size")).and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+            let list_rows = (multiple || size > 1).then(|| size.max(4));
+            if list_rows.is_none() {
+                // A combo box shows the last selected option, else the first one.
+                let shown = options.iter().rposition(|o| o.1).unwrap_or(0);
+                for (i, o) in options.iter_mut().enumerate() {
+                    o.1 = i == shown;
+                }
+            }
+            let attrs = n.element_data().map(|e| e.attrs.to_vec()).unwrap_or_default();
+            found.push(Select { id, options, list_rows, attrs });
+        }
+        if found.is_empty() {
+            return;
+        }
+        let span = blitz_dom::QualName::new(None, blitz_dom::ns!(html), local_name!("span"));
+        let style_name = blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("style"));
+        let mut m = self.doc.mutate();
+        let el = |m: &mut blitz_dom::DocumentMutator, style: String, children: &[NodeId]| {
+            let attrs = vec![blitz_dom::Attribute { name: style_name.clone(), value: style }];
+            let e = m.create_element(span.clone(), attrs);
+            m.append_children(e, children);
+            e
+        };
+        const SUNKEN: &str = "border:1px solid;border-color:#6a6864 white white #6a6864;";
+        const SUNKEN_IN: &str = "border:1px solid;border-color:black #d4d0c8 #d4d0c8 black;";
+        const RAISED: &str =
+            "border:1px solid;border-color:#d4d0c8 black black #d4d0c8;background-color:#d4d0c8;";
+        const RAISED_IN: &str = "border:1px solid;border-color:white #6a6864 #6a6864 white;";
+        let button = |m: &mut blitz_dom::DocumentMutator, pos: &str, down: bool| {
+            let arrow = if down { "border-top:4px solid black" } else { "border-bottom:4px solid black" };
+            let a = el(
+                m,
+                format!(
+                    "position:absolute;left:3px;top:{}px;width:1px;height:0;border-left:3px solid transparent;border-right:3px solid transparent;{arrow};",
+                    if down { 7 } else { 5 }
+                ),
+                &[],
+            );
+            let inner = el(m, format!("position:absolute;left:0;top:0;right:0;bottom:0;{RAISED_IN}"), &[]);
+            el(m, format!("position:absolute;{pos}width:14px;{RAISED}"), &[inner, a])
+        };
+        for s in found {
+            let mut outer_style = format!(
+                "display:inline-block;box-sizing:border-box;vertical-align:baseline;white-space:pre;\
+                 text-indent:0;text-align:left;line-height:normal;font:inherit;color:black;margin:2px;{SUNKEN}"
+            );
+            if s.list_rows.is_some() {
+                // QtWebKit puts the last row on the baseline; here the box has no baseline
+                // (it sits on it), lowered by a descent and the bottom frame.
+                outer_style.push_str("overflow:hidden;vertical-align:-0.375em;");
+            }
+            let mut kept = Vec::new();
+            for a in s.attrs {
+                match &*a.name.local {
+                    "style" => outer_style.push_str(&a.value),
+                    "id" | "class" | "title" | "lang" | "dir" => kept.push(a),
+                    _ => {}
+                }
+            }
+            let field = if let Some(rows) = s.list_rows {
+                // The first `rows` options, then empty rows: the list is `rows` lines high.
+                let mut lines = Vec::new();
+                for i in 0..rows {
+                    let (text, selected) = s.options.get(i).map_or(("", false), |o| (o.0.as_str(), o.1));
+                    let t = m.create_text_node(if text.is_empty() { "\u{a0}" } else { text });
+                    let colors = if selected { "background-color:#000080;color:white;" } else { "" };
+                    lines.push(el(&mut m, format!("display:block;padding:0 2px 1px;{colors}"), &[t]));
+                }
+                let list = el(&mut m, "display:block;".into(), &lines);
+                let up = button(&mut m, "top:0;right:0;height:14px;", false);
+                let down = button(&mut m, "bottom:0;right:0;height:14px;", true);
+                let track = el(
+                    &mut m,
+                    "position:absolute;top:0;bottom:0;right:0;width:16px;background-color:#eae8e4;".into(),
+                    &[up, down],
+                );
+                let style = format!(
+                    "display:block;position:relative;overflow:hidden;background-color:white;padding-right:16px;{SUNKEN_IN}"
+                );
+                el(&mut m, style, &[list, track])
+            } else {
+                // The shown option first (the box's baseline), then the hidden ones.
+                let shown = s.options.iter().find(|o| o.1).map_or("", |o| o.0.as_str());
+                let t = m.create_text_node(if shown.is_empty() { "\u{a0}" } else { shown });
+                let mut children = vec![el(&mut m, "display:block;".into(), &[t])];
+                for (text, _) in s.options.iter().filter(|o| !o.1) {
+                    let t = m.create_text_node(text);
+                    children.push(el(
+                        &mut m,
+                        "display:block;height:0;overflow:hidden;visibility:hidden;".into(),
+                        &[t],
+                    ));
+                }
+                children.push(button(&mut m, "top:0;right:0;bottom:0;", true));
+                let style = format!(
+                    "display:block;position:relative;overflow:hidden;background-color:white;\
+                     padding:1px 20px 1px 2px;{SUNKEN_IN}"
+                );
+                el(&mut m, style, &children)
+            };
+            kept.push(blitz_dom::Attribute { name: style_name.clone(), value: outer_style });
+            let outer = m.create_element(span.clone(), kept);
+            m.append_children(outer, &[field]);
+            m.replace_node_with(s.id, &[outer]);
+        }
+    }
+
+    /// QtWebKit's `RenderImage::paintReplaced` for an image that failed to load: a 1px light
+    /// gray (`Color::lightGray`) rectangle on its content box, and the `alt` text at its top
+    /// left when it fits. Not with `--no-images`, where the 0.12.6 binary draws nothing.
+    ///
+    /// Each such image becomes an inline-block span with its `id`, `class` and `style`, sized
+    /// by its `width`/`height` attributes or inline style, holding the alt text. A dimension
+    /// given neither way is the alt text's (width plus 4px; 4px when there is no text), and
+    /// QtWebKit then leaves the text out. Sizes from style sheet rules on `img` are lost.
+    /// Returns the boxes for [`settle_alt_boxes`](Self::settle_alt_boxes).
+    fn broken_images(&mut self) -> Vec<AltBox> {
+        if !self.settings.load_images {
+            return Vec::new();
+        }
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if tag(n) != "img" {
+                continue;
+            }
+            let Some(el) = n.element_data() else { continue };
+            if matches!(el.image_data(), Some(d) if !matches!(d, blitz_dom::node::ImageData::None)) {
+                continue;
+            }
+            let inline = n.attr(local_name!("style")).unwrap_or("").to_ascii_lowercase();
+            let in_style =
+                |prop: &str| inline.split(';').any(|d| d.split(':').next().is_some_and(|p| p.trim() == prop));
+            let size = |name, prop: &str| {
+                if in_style(prop) {
+                    return Some(String::new());
+                }
+                let v = n.attr(name)?.trim();
+                let num: f32 = v.trim_end_matches('%').trim().parse().ok().filter(|x: &f32| *x >= 0.0)?;
+                Some(if v.ends_with('%') { format!("{prop}:{num}%;") } else { format!("{prop}:{num}px;") })
+            };
+            let w = size(local_name!("width"), "width");
+            let h = size(local_name!("height"), "height");
+            let block = n.primary_styles().is_some_and(|s| {
+                s.get_box().display.outside() == style::values::specified::box_::DisplayOutside::Block
+            });
+            let alt = n.attr(local_name!("alt")).unwrap_or("").to_string();
+            found.push((id, w, h, block, alt, el.attrs.to_vec()));
+        }
+        let mut out = Vec::new();
+        let mut m = self.doc.mutate();
+        for (id, w, h, block, alt, attrs) in found {
+            let display = if block { "block" } else { "inline-block" };
+            let (sized_w, sized_h) = (w.is_some(), h.is_some());
+            // An empty alt text sizes the box like a 4px padding alone.
+            let pad_w = if sized_w { "" } else { "padding-right:4px;" };
+            let pad_h = if sized_h || !alt.is_empty() { "" } else { "padding-bottom:4px;" };
+            let mut style = format!(
+                "display:{display};box-sizing:content-box;{}{}{pad_w}{pad_h}overflow:hidden;\
+                 white-space:pre;line-height:normal;text-indent:0;text-align:left;\
+                 outline:1px solid #c0c0c0;outline-offset:-1px;",
+                w.unwrap_or_default(),
+                h.unwrap_or_default(),
+            );
+            let mut kept = Vec::new();
+            for a in attrs {
+                match &*a.name.local {
+                    "style" => style.push_str(&a.value),
+                    "id" | "class" | "title" | "lang" | "dir" => kept.push(a),
+                    _ => {}
+                }
+            }
+            kept.push(blitz_dom::Attribute {
+                name: blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("style")),
+                value: style,
+            });
+            let span = m.create_element(
+                blitz_dom::QualName::new(None, blitz_dom::ns!(html), local_name!("span")),
+                kept,
+            );
+            let text = m.create_text_node(&alt);
+            m.append_children(span, &[text]);
+            m.replace_node_with(id, &[span]);
+            out.push(AltBox { span, text, sized: sized_w && sized_h });
+        }
+        drop(m);
+        out
+    }
+
+    /// After a layout: a box sized by its alt text keeps that size without the text, and a
+    /// sized box drops a text that does not fit (QtWebKit draws it only when it fits).
+    /// Returns whether the layout must be redone.
+    fn settle_alt_boxes(&mut self, boxes: &[AltBox]) -> bool {
+        let mut changes = Vec::new();
+        for b in boxes {
+            let Some(n) = self.doc.get_node(b.span) else { continue };
+            let l = n.final_layout();
+            let (cw, ch) = (l.content_box_width(), l.content_box_height());
+            let text = n.element_data().and_then(|e| e.inline_layout_data.as_ref());
+            if !b.sized {
+                changes.push((b.span, Some((cw, ch)), b.text));
+            } else if text.is_some_and(|t| {
+                t.layout.width() > cw + 0.01 || t.layout.lines().count() > 1 || t.layout.height() > ch + 0.01
+            }) {
+                changes.push((b.span, None, b.text));
+            }
+        }
+        let mut m = self.doc.mutate();
+        for &(span, size, text) in &changes {
+            if let Some((w, h)) = size {
+                m.set_style_property(span, "width", &format!("{w}px"));
+                m.set_style_property(span, "height", &format!("{h}px"));
+            }
+            m.set_node_text(text, "");
+        }
+        drop(m);
+        !changes.is_empty()
     }
 
     fn set_viewport(&mut self, w: f32, h: f32) {
@@ -955,6 +1234,8 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
     if atomic && bottom > top {
         g.content_starts.push(top);
         g.atomic.push((top, bottom));
+        g.straddlers.push((top, bottom));
+        g.content_boxes.push((top, bottom));
         return;
     }
 
@@ -1000,13 +1281,20 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
         if lines.len() > 1 {
             g.paragraphs.push(lines);
         }
-        for line in text.layout.lines() {
+        for (i, line) in text.layout.lines().enumerate() {
             let m = line.metrics();
             let (a, b) = (y0 + m.block_min_coord, y0 + m.block_max_coord);
-            g.atomic.push((a, b));
+            // QtWebKit 2.2 paginates on the root inline box's lineTop/lineBottom, which leave
+            // out the half-leading: a line straddles the cut when its content area (ascent and
+            // descent) does, and the page then ends at the top of that content area, or at the
+            // line box top for the first line of a block (both verified on the 0.12.6 binary).
+            let (ca, cb) = (y0 + m.content_block_min_coord, y0 + m.content_block_max_coord);
+            let cb = cb.max(ca);
+            g.straddlers.push((ca, cb));
+            g.atomic.push((if i == 0 { ca.min(a) } else { ca }, cb));
+            g.content_boxes.push((a, b));
             g.content_starts.push(a);
-            g.candidates.push(a);
-            g.candidates.push(b);
+            g.candidates.extend([a, b, ca, cb]);
         }
     }
 

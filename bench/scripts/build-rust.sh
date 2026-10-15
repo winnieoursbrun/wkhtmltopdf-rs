@@ -8,6 +8,8 @@
 # inside an arm64 rust:alpine container (alpine's host target *is* aarch64-unknown-linux-musl).
 # Both build with the workspace's [profile.release] (lto, codegen-units = 1).
 # Prints the path of the produced binary on the last line of stdout.
+# WITH_INPROC=1 also builds bin/wkhtmltopdf-inproc (feature bench-inproc, used by bench/java/),
+# next to the CLI binary.
 set -euo pipefail
 
 BENCH_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,6 +18,8 @@ TARGET=aarch64-unknown-linux-musl
 TARGET_DIR="$BENCH_DIR/.target"
 BIN="$TARGET_DIR/$TARGET/release/wkhtmltopdf"
 RUST_IMAGE="${RUST_IMAGE:-rust:1.90-alpine}"
+FEATURES=""
+[[ "${WITH_INPROC:-0}" == 1 ]] && FEATURES="--features bench-inproc"
 
 export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
 
@@ -34,7 +38,7 @@ build_lld() {
   CFLAGS_aarch64_unknown_linux_musl="--target=$TARGET -U__musl__" \
   AR_aarch64_unknown_linux_musl="$llvm_ar" \
     cargo build --release --locked --manifest-path "$ROOT/Cargo.toml" \
-      --target "$TARGET" --target-dir "$TARGET_DIR" -p wkhtmltopdf >&2
+      --target "$TARGET" --target-dir "$TARGET_DIR" -p wkhtmltopdf $FEATURES >&2
 }
 
 build_docker() {
@@ -42,7 +46,7 @@ build_docker() {
     -v "$ROOT":/src:ro -v "$TARGET_DIR":/target \
     -v wkbench-cargo-registry:/usr/local/cargo/registry \
     -e CARGO_TARGET_DIR=/target \
-    "$RUST_IMAGE" sh -c "apk add --no-cache musl-dev >/dev/null && cd /src && cargo build --release --locked --target $TARGET -p wkhtmltopdf" >&2
+    "$RUST_IMAGE" sh -c "apk add --no-cache musl-dev >/dev/null && cd /src && cargo build --release --locked --target $TARGET -p wkhtmltopdf $FEATURES" >&2
 }
 
 mkdir -p "$TARGET_DIR"

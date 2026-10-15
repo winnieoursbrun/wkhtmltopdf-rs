@@ -66,14 +66,14 @@ equivalent pages. Every number below is produced by tests in this repository.
 | L1 | Conversions: progress output, warnings, load errors and exit codes (stderr + exit code, byte for byte) | **13 / 13 (100 %)** |
 | L1 | pdfkit gem 0.8.7.3: same outcome (PDF or the same exception) for 16 real-world call patterns | **16 / 16 (100 %)** |
 | L2 | Same page count and page size (22 benchmark cases + 12 corpus documents + 22 document-parts cases + 13 JavaScript cases) | **69 / 69 (100 %)** |
-| L2 | Extracted text, word-level similarity (mean over the 22 benchmark cases) | **99.7 %** (21 cases ≥ 99 %) |
+| L2 | Extracted text, word-level similarity (mean over the 22 benchmark cases) | **99.9 %** (22 cases ≥ 99 %) |
 | L2 | Outline, links, named destinations, TOC entries, header/footer text (`tests/parts`) | **22 / 22** |
-| L3 | Visual similarity, mean per-page SSIM at 96 dpi (22 benchmark cases) | **0.92** (16 cases ≥ 0.85) |
+| L3 | Visual similarity, mean per-page SSIM at 96 dpi (22 benchmark cases) | **0.96** (22 cases ≥ 0.85) |
 
 How to read L3: the port uses a different layout engine than QtWebKit 2.2, so pixel identity is a
-non-goal. Text sits on average 1–3 pt lower than in the original, and some tall table rows break at
-a different place, which costs SSIM even when the content is identical. Per-page side-by-side
-images are produced by `bench/run.sh --visual`.
+non-goal. Glyphs are rasterised and antialiased differently and words can sit half a pixel apart,
+and some tall table rows break at a different place, which costs SSIM even when the content is
+identical. Per-page side-by-side images are produced by `bench/run.sh --visual`.
 
 Test suite: 182 tests (`cargo test --workspace`), run on Linux, macOS and Windows in CI, plus a
 parity job that replays the fixtures captured from the original binary.
@@ -104,8 +104,11 @@ Deliberate:
 Not yet matched:
 
 - QtWebKit's pagination of tall table rows (one page of `tests/corpus/statement` differs).
-- A4 landscape pages with long tables can break one row differently (pdfkit `options_a4` case).
-- `<select>` boxes are not drawn; canvas is painted as vectors where the original rasterises it.
+- `<select>` boxes are drawn by hand in Qt's style (list box scroll bars are plain); canvas is painted
+  as vectors where the original rasterises it.
+- Quirks mode (no DOCTYPE) is rendered as standards mode: a line holding only an image keeps the
+  text strut's descent (4 px taller at 16 px than in QtWebKit).
+- A broken image (the alt-text box) loses the sizes given to `img` by style-sheet rules.
 - `-webkit-text-stroke`, a float placed before a collapsing margin, flex/grid text extraction order
   in the WebKit-2012 profile.
 - `--image-quality`, `--lowquality`, `--cache-dir` and client certificates have no effect.
@@ -118,7 +121,7 @@ Not yet matched:
 | P2 — static pipeline | Loader, HTML/CSS layout, paginator, PDF output | **P2a done**: pdfkit's invocation (stdin → stdout) and file/URL inputs produce real PDFs. 13 of 13 `conversion` fixtures reproduce stderr and exit code exactly (`toc` included). L2 on `tests/corpus`: page count and size match on 6/6 pages, and text similarity is ≥ 0.95 on every corpus page. **P2b done** (rendering fidelity): see below the table |
 | P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | **Done**: text and HTML headers/footers with every variable, cover/TOC/page objects with per-object options, default and custom-XSL TOCs, outline and `--dump-outline`, named-destination links, `--page-offset`, forms, copies/collate, grayscale, including the upstream quirks of spec §10. `tests/parts`: 22 of 22 reference cases pass at L2 (`parts.rs`). Deviations: see below the table |
 | P4 — JavaScript | Boa, DOM bindings, `--javascript-delay`, `--window-status` | **Done** (`crates/wk-js`): scripts run in document order with a script-pausing parser, `document.write`, events, timers and `Date` on a virtual clock, `--window-status`, `--run-script`, `window.print()`, `--debug-javascript`, dialogs, the slow-script budget, XMLHttpRequest over the loader, canvas 2D painted as vector. `warn` and `info_b` reproduce exactly; `tests/js` (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution, …) is at L2 parity on 13/13 cases. Gaps: see below the table |
-| P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: QtWebKit's table-row pagination struts (statement page 2), `<select>` boxes, canvas painted as vector where the reference rasterises it |
+| P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: QtWebKit's table-row pagination struts (statement page 2), canvas painted as vector where the reference rasterises it |
 | P6 — release | Static musl builds, pdfkit test suite | **Alpha**: static musl/macOS/Windows release builds, pdfkit integration run, benchmark and visual parity reports (`bench/`) |
 
 P4 gaps: timers fire on a virtual clock that stops at the end of the wait, so a timer set

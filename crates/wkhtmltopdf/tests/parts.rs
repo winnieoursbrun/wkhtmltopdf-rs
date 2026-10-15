@@ -17,6 +17,8 @@
 //! by placeholders on both sides.
 
 mod common;
+#[path = "support/paths.rs"]
+mod paths;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -84,9 +86,11 @@ fn run_case(case: &str) -> Run {
         .expect("run wkhtmltopdf");
     let exe = fs::canonicalize(env!("CARGO_BIN_EXE_wkhtmltopdf")).unwrap();
     let exe_url = url_of(&exe);
-    let stderr = String::from_utf8_lossy(&o.stderr)
-        .replace(&exe_url, REF_EXE_URL)
-        .replace(&dir.display().to_string(), &format!("/work/{case}"));
+    let stderr = paths::replace_dir(
+        &String::from_utf8_lossy(&o.stderr).replace(&exe_url, REF_EXE_URL),
+        &dir,
+        &format!("/work/{case}"),
+    );
     let run = Run {
         rc: o.status.code().expect("exit code"),
         stdout: o.stdout,
@@ -99,7 +103,12 @@ fn run_case(case: &str) -> Run {
     run
 }
 
+/// The `file://` URL the binary uses for `p` (links, XSLT messages).
 fn url_of(p: &Path) -> String {
+    if cfg!(windows) {
+        // `file:///C:/…`, also for a canonical `\\?\C:\…` path.
+        return paths::file_url(p);
+    }
     let mut s = String::from("file://");
     for c in p.display().to_string().chars() {
         match c {

@@ -326,7 +326,10 @@ fn repeatable_options_append() {
 #[test]
 fn every_one_of_the_122_long_options_is_registered() {
     let parser = PdfCommandLineParser::new();
-    assert_eq!(parser.base.handlers.len(), 122);
+    // `--use-xserver` is registered only on Unix (upstream's
+    // `#if defined(Q_OS_UNIX)`), so other platforms have 121.
+    let expected = if cfg!(unix) { 122 } else { 121 };
+    assert_eq!(parser.base.handlers.len(), expected);
 }
 
 #[test]
