@@ -267,6 +267,27 @@ impl<'a> Page<'a> {
         )
     }
 
+    /// wkhtmltopdf-rs: use the content of `draft` (made with [`crate::draft::draft_page`] and
+    /// the settings of this page and document) as this page's content, as if it had been
+    /// drawn on [`surface`](Self::surface) here. Returns the draft back when it cannot be
+    /// used (it needed the document while drawing): the page must then be drawn here.
+    pub fn apply_draft(&mut self, draft: crate::draft::PageDraft) -> Result<(), crate::draft::PageDraft> {
+        let compatible = std::sync::Arc::ptr_eq(&draft.settings, &self.sc.serialize_settings())
+            && draft.root_transform == self.root_transform()
+            && draft.bbox_important == self.page_settings.media_box().is_none();
+        if draft.content.log.failed || !compatible {
+            return Err(draft);
+        }
+        self.page_stream = ContentBuilder::merge_draft(
+            self.root_transform(),
+            draft.content,
+            self.sc,
+            self.chunk_container,
+        );
+        self.num_mcids = 0;
+        Ok(())
+    }
+
     /// A shorthand for `std::mem::drop`.
     pub fn finish(self) {}
 }

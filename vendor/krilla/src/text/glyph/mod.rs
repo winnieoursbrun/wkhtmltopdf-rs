@@ -103,6 +103,20 @@ pub trait Glyph {
     /// A location identifying the glyph. If set, `krilla` will automatically call
     /// `set_location` before processing the glyph.
     fn location(&self) -> Option<crate::surface::Location>;
+
+    /// wkhtmltopdf-rs: the glyph as a [`KrillaGlyph`] giving the same values at every size
+    /// (a drafted page keeps the glyphs of its text until the draft is merged).
+    fn to_krilla_glyph(&self) -> KrillaGlyph {
+        KrillaGlyph::new(
+            self.glyph_id(),
+            self.x_advance(1.0),
+            self.x_offset(1.0),
+            self.y_offset(1.0),
+            self.y_advance(1.0),
+            self.text_range(),
+            self.location(),
+        )
+    }
 }
 
 /// A glyph type that implements `Glyph`.
@@ -154,6 +168,10 @@ impl Glyph for KrillaGlyph {
 
     fn location(&self) -> Option<crate::surface::Location> {
         self.location
+    }
+
+    fn to_krilla_glyph(&self) -> KrillaGlyph {
+        self.clone()
     }
 }
 

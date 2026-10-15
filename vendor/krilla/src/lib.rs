@@ -161,6 +161,7 @@ pub(crate) mod data;
 
 pub mod configure;
 pub mod document;
+pub mod draft;
 pub mod error;
 pub mod geom;
 pub mod num;

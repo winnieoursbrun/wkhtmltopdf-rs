@@ -10,7 +10,7 @@ use crate::chunk_container::ChunkContainer;
 use crate::color::rgb;
 use crate::configure::validate::VersionedFeature;
 use crate::configure::ValidationError;
-use crate::content::ContentBuilder;
+use crate::content::{ContentBuilder, DraftContent};
 use crate::geom::Path;
 #[cfg(any(feature = "raster-images", feature = "pdf"))]
 use crate::geom::Size;
@@ -78,6 +78,8 @@ pub struct Surface<'a> {
     push_instructions: Vec<PushInstruction>,
     page_identifier: Option<PageTagIdentifier>,
     finish_fn: Box<dyn FnMut(Stream, i32) + 'a>,
+    /// wkhtmltopdf-rs: where a drafted page's content goes (see `crate::draft`).
+    draft_out: Option<&'a mut Option<DraftContent>>,
 }
 
 impl<'a> Surface<'a> {
@@ -97,11 +99,31 @@ impl<'a> Surface<'a> {
             stroke: None,
             push_instructions: vec![],
             finish_fn,
+            draft_out: None,
         }
+    }
+
+    /// wkhtmltopdf-rs: the surface of a page drafted away from its document; `root_builder`
+    /// carries the draft log, and the content goes to `out` when the surface is dropped.
+    pub(crate) fn new_draft(
+        sc: &'a mut SerializeContext,
+        chunk_container: &'a mut ChunkContainer,
+        root_builder: ContentBuilder,
+        out: &'a mut Option<DraftContent>,
+    ) -> Surface<'a> {
+        let mut surface = Surface::new(sc, chunk_container, root_builder, None, Box::new(|_, _| {}));
+        surface.draft_out = Some(out);
+        surface
+    }
+
+    /// wkhtmltopdf-rs: the page being drafted uses something a draft cannot express.
+    fn draft_fail(&mut self) {
+        self.bd.root_builder.draft_fail();
     }
 
     /// Return a `StreamBuilder` to allow drawing on a sub-context.
     pub fn stream_builder(&mut self) -> StreamBuilder<'_> {
+        self.draft_fail();
         StreamBuilder::new(self.sc, self.chunk_container)
     }
 
@@ -244,6 +266,7 @@ impl<'a> Surface<'a> {
         font: Font,
         font_size: f32,
     ) {
+        self.draft_fail();
         let (mut cur_x, y) = (start.x, start.y);
 
         for glyph in glyphs {
@@ -430,6 +453,7 @@ impl<'a> Surface<'a> {
 
     /// Push a new mask.
     pub fn push_mask(&mut self, mask: Mask) {
+        self.draft_fail();
         self.push_instructions
             .push(PushInstruction::Mask(Box::new(mask)));
         self.bd
@@ -441,6 +465,7 @@ impl<'a> Surface<'a> {
     /// Embed a single PDF page with the given dimensions.
     pub fn draw_pdf_page(&mut self, pdf: &PdfDocument, size: Size, page_idx: usize) {
         use crate::geom::Rect;
+        self.draft_fail();
 
         let obj_ref = self.sc.embed_pdf_page_as_xobject(pdf, page_idx);
         // If the user provided an invalid page index, we will detect this later on anyway, so
@@ -478,6 +503,7 @@ impl<'a> Surface<'a> {
             .push(PushInstruction::Opacity(opacity));
 
         if opacity != NormalizedF32::ONE {
+            self.draft_fail();
             self.bd
                 .sub_builders
                 .push(ContentBuilder::new(Transform::identity(), true, self.sc));
@@ -486,6 +512,7 @@ impl<'a> Surface<'a> {
 
     /// Push a new isolated layer.
     pub fn push_isolated(&mut self) {
+        self.draft_fail();
         self.push_instructions.push(PushInstruction::Isolated);
         self.bd
             .sub_builders
@@ -623,6 +650,10 @@ impl Drop for Surface<'_> {
         assert!(self.push_instructions.is_empty());
         assert!(!root_builder.active_marked_content);
 
+        if let Some(out) = self.draft_out.take() {
+            *out = Some(root_builder.finish_draft());
+            return;
+        }
         (self.finish_fn)(root_builder.finish(self.sc), num_mcids)
     }
 }

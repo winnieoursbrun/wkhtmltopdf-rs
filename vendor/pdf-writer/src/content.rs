@@ -78,6 +78,12 @@ impl Content {
         }
         self.buf
     }
+
+    /// wkhtmltopdf-rs: the buffer as written, without [`finish`](Self::finish)'s removal of
+    /// the last newline (for operations spliced into another content stream).
+    pub fn into_raw(self) -> Buf {
+        self.buf
+    }
 }
 
 /// Writer for an _operation_ in a content stream.

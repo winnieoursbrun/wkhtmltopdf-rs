@@ -37,8 +37,45 @@ use crate::stream::Stream;
 use crate::text::group::{use_text_spanner, GlyphGroup, GlyphGrouper, GlyphSpan, GlyphSpanner};
 use crate::text::type3::ColoredGlyph;
 use crate::text::{Font, FontContainer, FontIdentifier, PdfFont, PDF_UNITS_PER_EM};
-use crate::text::{Glyph, GlyphId};
+use crate::text::{Glyph, GlyphId, KrillaGlyph};
 use crate::util::{calculate_stroke_bbox, NameExt};
+
+/// wkhtmltopdf-rs: what a page drafted away from the document (`crate::draft`) still has to
+/// do in the document, in order: register its graphics states, and write its text, whose
+/// encoding depends on the glyphs and texts of the pages before it.
+#[derive(Default)]
+pub(crate) struct DraftLog {
+    pub(crate) events: Vec<DraftEvent>,
+    /// The page used something a draft cannot express; it must be drawn in the document.
+    pub(crate) failed: bool,
+}
+
+pub(crate) enum DraftEvent {
+    ExtGState(ExtGState),
+    Text(Box<TextHole>),
+}
+
+/// The inside of a `BT` … `ET` text object left out of a draft, at byte `offset`.
+pub(crate) struct TextHole {
+    pub(crate) offset: usize,
+    pub(crate) x: f32,
+    pub(crate) y: f32,
+    pub(crate) mode: TextRenderingMode,
+    pub(crate) glyphs: Vec<KrillaGlyph>,
+    pub(crate) font: Font,
+    pub(crate) context_color: rgb::Color,
+    pub(crate) text: String,
+    pub(crate) font_size: f32,
+}
+
+/// wkhtmltopdf-rs: a drafted page content stream (`ContentBuilder::finish_draft`).
+pub(crate) struct DraftContent {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) limits: pdf_writer::Limits,
+    pub(crate) bbox: Rect,
+    pub(crate) validation_errors: Vec<ValidationError>,
+    pub(crate) log: DraftLog,
+}
 
 pub(crate) struct ContentBuilder {
     rd_builder: ResourceDictionaryBuilder,
@@ -56,6 +93,8 @@ pub(crate) struct ContentBuilder {
     /// A temporary buffer that's reused across the builder.
     scratch: Vec<u8>,
     pub(crate) active_marked_content: bool,
+    /// wkhtmltopdf-rs: set on the root builder of a page drafted away from its document.
+    pub(crate) draft: Option<DraftLog>,
 }
 
 /// Stores either a device-specific color space,
@@ -83,7 +122,88 @@ impl ContentBuilder {
             bbox: None,
             scratch: Vec::new(),
             active_marked_content: false,
+            draft: None,
         }
+    }
+
+    /// wkhtmltopdf-rs: mark a draft as unusable (no-op outside a draft).
+    pub(crate) fn draft_fail(&mut self) {
+        if let Some(d) = &mut self.draft {
+            d.failed = true;
+        }
+    }
+
+    /// wkhtmltopdf-rs: the content of a drafted page, as [`finish`](Self::finish) would
+    /// make it, without registering anything in a serializer.
+    pub(crate) fn finish_draft(mut self) -> DraftContent {
+        let log = self.draft.take().unwrap_or_default();
+        let buf = self.content.finish();
+        DraftContent {
+            limits: buf.limits().clone(),
+            bytes: buf.to_vec(),
+            bbox: self
+                .bbox
+                .unwrap_or(Rect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap()),
+            validation_errors: self.validation_errors.into_iter().collect(),
+            log,
+        }
+    }
+
+    /// wkhtmltopdf-rs: the page stream of a draft made in the document: its graphics states
+    /// registered and its text written in order, as if the page had been drawn here.
+    pub(crate) fn merge_draft(
+        root_transform: Transform,
+        draft: DraftContent,
+        sc: &mut SerializeContext,
+        chunk_container: &mut ChunkContainer,
+    ) -> Stream {
+        let DraftContent {
+            bytes,
+            limits,
+            bbox,
+            mut validation_errors,
+            log,
+        } = draft;
+        let mut sb = ContentBuilder::new(root_transform, false, sc);
+        // Where each text object goes in the draft, and its operations in `sb.content`.
+        let mut holes: Vec<(usize, usize, usize)> = Vec::new();
+        for event in log.events {
+            match event {
+                DraftEvent::ExtGState(state) => {
+                    sb.rd_builder.register_resource::<resource::ExtGState>(
+                        sc.register_resourceable(chunk_container, state),
+                    );
+                }
+                DraftEvent::Text(h) => {
+                    let start = sb.content.len();
+                    sb.text_object_body(
+                        h.x,
+                        h.y,
+                        sc,
+                        h.mode,
+                        &h.glyphs,
+                        h.font,
+                        h.context_color,
+                        &h.text,
+                        h.font_size,
+                    );
+                    holes.push((h.offset, start, sb.content.len()));
+                }
+            }
+        }
+        let text = std::mem::replace(&mut sb.content, Content::new()).into_raw();
+        sc.register_limits(text.limits());
+        sc.register_limits(&limits);
+        let mut out = Vec::with_capacity(bytes.len() + text.len());
+        let mut pos = 0;
+        for (offset, start, end) in holes {
+            out.extend_from_slice(&bytes[pos..offset]);
+            out.extend_from_slice(&text[start..end]);
+            pos = offset;
+        }
+        out.extend_from_slice(&bytes[pos..]);
+        validation_errors.extend(sb.validation_errors);
+        Stream::new(out, bbox, validation_errors, sb.rd_builder.finish(), false)
     }
 
     pub(crate) fn content_save_state(&mut self) {
@@ -131,6 +251,7 @@ impl ContentBuilder {
         tag: ContentTag,
     ) {
         self.start_marked_content_prelude();
+        self.draft_fail();
 
         let mut mc = self
             .content
@@ -681,78 +802,124 @@ impl ContentBuilder {
         self.apply_isolated_op(
             |_, _, _| {},
             |sb, sc, chunk_container| {
-                let mut cur_x = x;
-                let mut cur_y = ys;
-
-                // When the glyph ranges are monotonically decreasing, the glyphs are in reverse
-                // order and we should write `/ReversedChars` marked content.
-                let reversed = glyphs.len() > 1
-                    && glyphs
-                        .windows(2)
-                        .all(|w| w[0].text_range().start >= w[1].text_range().end);
-
                 action(sb, sc, chunk_container);
                 sb.content.begin_text();
-
-                let font_container = sc.register_font_container(font.clone());
-                let do_text_span = reversed
-                    || use_text_spanner(
-                        glyphs,
-                        text,
-                        context_color,
-                        &mut font_container.borrow_mut(),
-                    );
-
-                if do_text_span {
-                    // Separate into distinct glyph runs that either are encoded using actual text, or are
-                    // not.
-                    let spanned = GlyphSpanner::new(
-                        glyphs,
-                        text,
-                        reversed,
-                        sc.serialize_settings()
-                            .validators()
-                            .requires_codepoint_mappings(),
-                        context_color,
-                        font_container.clone(),
-                    );
-
-                    for fragment in spanned {
-                        sb.fill_stroke_glyph_span(
-                            &mut cur_x,
-                            &mut cur_y,
-                            fragment,
-                            sc,
-                            fill_render_mode,
-                            font_container.clone(),
-                            context_color,
-                            text,
-                            font_size,
-                            reversed,
-                        )
+                if let Some(draft) = &mut sb.draft {
+                    // wkhtmltopdf-rs: the text is written when the draft is merged.
+                    if sb.bbox_important {
+                        draft.failed = true;
                     }
+                    draft.events.push(DraftEvent::Text(Box::new(TextHole {
+                        offset: sb.content.len(),
+                        x,
+                        y: ys,
+                        mode: fill_render_mode,
+                        glyphs: glyphs.iter().map(Glyph::to_krilla_glyph).collect(),
+                        font: font.clone(),
+                        context_color,
+                        text: text.to_string(),
+                        font_size,
+                    })));
                 } else {
-                    let glyph_span = GlyphSpan::Unspanned(glyphs);
-
-                    sb.fill_stroke_glyph_span(
-                        &mut cur_x,
-                        &mut cur_y,
-                        glyph_span,
+                    sb.text_object_body(
+                        x,
+                        ys,
                         sc,
                         fill_render_mode,
-                        font_container.clone(),
+                        glyphs,
+                        font.clone(),
                         context_color,
                         text,
                         font_size,
-                        reversed,
-                    )
+                    );
                 }
-
                 sb.content.end_text();
             },
             sc,
             chunk_container,
         )
+    }
+
+    /// The operations inside the `BT` … `ET` of a glyph run (wkhtmltopdf-rs: split out of
+    /// `fill_stroke_glyph_run` so that a draft's text can be written when it is merged).
+    #[allow(clippy::too_many_arguments)]
+    fn text_object_body(
+        &mut self,
+        x: f32,
+        ys: f32,
+        sc: &mut SerializeContext,
+        fill_render_mode: TextRenderingMode,
+        glyphs: &[impl Glyph],
+        font: Font,
+        context_color: rgb::Color,
+        text: &str,
+        font_size: f32,
+    ) {
+        let sb = self;
+        let mut cur_x = x;
+        let mut cur_y = ys;
+
+        // When the glyph ranges are monotonically decreasing, the glyphs are in reverse
+        // order and we should write `/ReversedChars` marked content.
+        let reversed = glyphs.len() > 1
+            && glyphs
+                .windows(2)
+                .all(|w| w[0].text_range().start >= w[1].text_range().end);
+
+        let font_container = sc.register_font_container(font.clone());
+        let do_text_span = reversed
+            || use_text_spanner(
+                glyphs,
+                text,
+                context_color,
+                &mut font_container.borrow_mut(),
+            );
+
+        if do_text_span {
+            // Separate into distinct glyph runs that either are encoded using actual text, or are
+            // not.
+            let spanned = GlyphSpanner::new(
+                glyphs,
+                text,
+                reversed,
+                sc.serialize_settings()
+                    .validators()
+                    .requires_codepoint_mappings(),
+                context_color,
+                font_container.clone(),
+            );
+
+            for fragment in spanned {
+                sb.fill_stroke_glyph_span(
+                    &mut cur_x,
+                    &mut cur_y,
+                    fragment,
+                    sc,
+                    fill_render_mode,
+                    font_container.clone(),
+                    context_color,
+                    text,
+                    font_size,
+                    reversed,
+                )
+            }
+        } else {
+            let glyph_span = GlyphSpan::Unspanned(glyphs);
+
+            sb.fill_stroke_glyph_span(
+                &mut cur_x,
+                &mut cur_y,
+                glyph_span,
+                sc,
+                fill_render_mode,
+                font_container.clone(),
+                context_color,
+                text,
+                font_size,
+                reversed,
+            )
+        }
+
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -858,6 +1025,7 @@ impl ContentBuilder {
         x_object: XObject,
         state: &ExtGState,
     ) {
+        self.draft_fail();
         let bbox = x_object.bbox();
         self.apply_isolated_op(
             |sb, _, _| {
@@ -884,6 +1052,7 @@ impl ContentBuilder {
         x_object: Ref,
     ) {
         // TODO: Consider bbox of XObject somehow?
+        self.draft_fail();
         self.apply_isolated_op(
             |sb, _, _| {
                 sb.expand_bbox(bbox);
@@ -945,6 +1114,7 @@ impl ContentBuilder {
         sc: &mut SerializeContext,
         chunk_container: &mut ChunkContainer,
     ) {
+        self.draft_fail();
         self.apply_isolated_op(
             |sb, _, _| {
                 // Scale the image from 1x1 to the actual dimensions.
@@ -971,6 +1141,7 @@ impl ContentBuilder {
         sc: &mut SerializeContext,
         chunk_container: &mut ChunkContainer,
     ) {
+        self.draft_fail();
         self.apply_isolated_op(
             |_, _, _| {},
             move |sb, sc, chunk_container| {
@@ -1019,6 +1190,9 @@ impl ContentBuilder {
         let state = self.graphics_states.cur().ext_g_state().clone();
 
         if !state.empty() {
+            if let Some(draft) = &mut self.draft {
+                draft.events.push(DraftEvent::ExtGState(state.clone()));
+            }
             let ext = self.rd_builder.register_resource::<resource::ExtGState>(
                 sc.register_resourceable(chunk_container, state),
             );
@@ -1042,6 +1216,9 @@ impl ContentBuilder {
         mut set_pattern_fn: impl FnMut(&mut Content, String),
         mut set_solid_fn: impl FnMut(&mut Content, ContentColorSpace, &Color),
     ) {
+        if !matches!(&paint.0, InnerPaint::Color(_)) {
+            self.draft_fail();
+        }
         let pattern_transform = |transform: Transform| -> Transform {
             transform.post_concat(self.cur_transform_with_root_transform())
         };
@@ -1144,6 +1321,7 @@ impl ContentBuilder {
     ) -> ContentColorSpace {
         match sc.register_colorspace(chunk_container, cs) {
             MaybeDeviceColorSpace::ColorSpace(s) => {
+                content_builder.draft_fail();
                 ContentColorSpace::Named(content_builder.rd_builder.register_resource(s))
             }
             MaybeDeviceColorSpace::DeviceGray => ContentColorSpace::Device,
