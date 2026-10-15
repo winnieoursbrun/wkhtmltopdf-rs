@@ -14,7 +14,7 @@ members = [
 exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/krilla", "vendor/boa_engine", "vendor/pdf-writer", "vendor/dlmalloc", "spikes"]
 
 [workspace.package]
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 edition = "2024"
 license = "LGPL-3.0-or-later"
 rust-version = "1.85"

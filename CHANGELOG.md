@@ -8,6 +8,28 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] - 2026-10-15
+
+### Changed
+
+- Performance pass 5 (`docs/perf.md`): Stylo traversal and inline layout construction on a
+  bounded worker pool (min(CPUs, 4) threads, `RAYON_NUM_THREADS` overrides), PDF pages drafted
+  in parallel and applied in order, document drop and system font scan off the critical path,
+  and a dlmalloc-based allocator with per-thread caches for the static musl build (64-bit).
+  Large invoice: 148 → 95 ms in the benchmark container. Output is byte-identical.
+- `wkhtmltopdf-inproc` (benchmark harness) uses the same allocator as the CLI.
+
+### Fixed
+
+- The allocator purges whole pages of the kernel's real page size (16/64 KiB page kernels).
+- A panic while drafting a page no longer hangs the conversion; allocator consistency failures
+  abort instead of deadlocking.
+
+### Added
+
+- CI runs the test suite on `x86_64-unknown-linux-musl`.
+- `tests/threads.rs`: drafted pages give the same PDF as pages drawn sequentially.
+
 ## [0.1.0-alpha.2] - 2026-10-15
 
 ### Added
@@ -55,6 +77,7 @@ First public pre-release. Not a drop-in replacement yet: see the status table in
 
 -
 
-[Unreleased]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.2...HEAD
+[Unreleased]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.3...HEAD
+[0.1.0-alpha.3]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/releases/tag/v0.1.0-alpha.1
