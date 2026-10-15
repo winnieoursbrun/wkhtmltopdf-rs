@@ -44,6 +44,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --locked --no-fail-fast
 
+  test-musl:
+    # The release binaries are static musl builds, which use the custom allocator of
+    # crates/wkhtmltopdf/src/alloc.rs; the jobs above run with the system allocator.
+    name: test (x86_64-unknown-linux-musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - run: cargo test --workspace --locked --no-fail-fast --target x86_64-unknown-linux-musl
+
   parity:
     name: parity (CLI fixtures + L2 corpus)
     runs-on: ubuntu-latest
