@@ -1017,13 +1017,16 @@ fn draw_page(
 }
 
 /// Pages drafted on the rayon pool (`krilla::draft`) while the document takes them in order.
-/// At most `window` pages are drafted ahead of the one the document waits for, to bound the
+/// At most `window` pages are drafted ahead of the one the document is at, to bound the
 /// memory they hold. A page nobody has started drafting when the document reaches it is
-/// drawn in the document directly.
+/// drawn in the document directly; while it waits for a draft, the document drafts the next
+/// page nobody has started.
+type Draft = Option<krilla::draft::PageDraft>;
+
 struct Drafts {
     /// Per page: 0 not started, 1 taken by a thread, 2 taken by the document.
     state: Vec<AtomicU8>,
-    done: Mutex<Vec<Option<Option<krilla::draft::PageDraft>>>>,
+    done: Mutex<Vec<Option<Draft>>>,
     ready: Condvar,
 }
 
@@ -1036,11 +1039,32 @@ impl Drafts {
         }
     }
 
-    /// The draft of page `i` (made by a pool thread), or `None` when the document must draw
-    /// it: nobody had started it, or the draft cannot be used.
-    fn take(&self, i: usize) -> Option<krilla::draft::PageDraft> {
-        if self.state[i].compare_exchange(0, 2, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+    /// Take page `i` for drafting (`by` 1) or for drawing in the document (`by` 2), unless
+    /// someone already did.
+    fn claim(&self, i: usize, by: u8) -> bool {
+        self.state[i].compare_exchange(0, by, Ordering::AcqRel, Ordering::Acquire).is_ok()
+    }
+
+    fn put(&self, i: usize, draft: Draft) {
+        self.done.lock().unwrap()[i] = Some(draft);
+        self.ready.notify_all();
+    }
+
+    /// The draft of page `i`, or `None` when the document must draw it: nobody had started
+    /// it, or the draft cannot be used. While page `i` is being drafted, drafts the next pages
+    /// below `end` nobody has started with `make`.
+    fn take(&self, i: usize, end: usize, make: &dyn Fn(usize) -> Draft) -> Draft {
+        if self.claim(i, 2) {
             return None;
+        }
+        loop {
+            if let Some(d) = self.done.lock().unwrap()[i].take() {
+                return d;
+            }
+            match (i + 1..end).find(|&j| self.claim(j, 1)) {
+                Some(j) => self.put(j, make(j)),
+                None => break,
+            }
         }
         let mut done = self.done.lock().unwrap();
         loop {
@@ -1096,19 +1120,19 @@ pub fn write_pdf(
     rayon::in_place_scope(|scope| {
         let drafts = &drafts;
         let (shared, draft_settings, page_settings) = (&shared, &draft_settings, &page_settings);
+        let make = move |i: usize| -> Draft {
+            let mut caches = Caches::new(shared);
+            let mut usable = true;
+            let draft = krilla::draft::draft_page(draft_settings, page_settings, |surface| {
+                usable = draw_page(surface, &pages[i], width, &mut caches, opts, true);
+            });
+            (usable && draft.is_usable()).then_some(draft)
+        };
         let spawn = |i: usize| {
             scope.spawn(move |_| {
-                if drafts.state[i].compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire).is_err() {
-                    return;
+                if drafts.claim(i, 1) {
+                    drafts.put(i, make(i));
                 }
-                let mut caches = Caches::new(shared);
-                let mut usable = true;
-                let draft = krilla::draft::draft_page(draft_settings, page_settings, |surface| {
-                    usable = draw_page(surface, &pages[i], width, &mut caches, opts, true);
-                });
-                let draft = (usable && draft.is_usable()).then_some(draft);
-                drafts.done.lock().unwrap()[i] = Some(draft);
-                drafts.ready.notify_all();
             });
         };
         let window = threads * 2;
@@ -1141,7 +1165,9 @@ pub fn write_pdf(
                     None,
                 ));
             }
-            let applied = match (threads > 0).then(|| drafts.take(i)).flatten() {
+            let end = (i + window).min(pages.len());
+            let d = (threads > 0).then(|| drafts.take(i, end, &make)).flatten();
+            let applied = match d {
                 Some(draft) => page.apply_draft(draft).is_ok(),
                 None => false,
             };
@@ -1155,6 +1181,7 @@ pub fn write_pdf(
         }
     });
     wk_webkit::timing(&format!("pages drawn from drafts: {drafted} of {}", pages.len()));
+
     for (name, xyz) in &named {
         let _ = doc.register_named_destination(krilla::destination::NamedDestination::new(
             name.clone(),

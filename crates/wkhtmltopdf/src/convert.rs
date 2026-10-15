@@ -21,7 +21,10 @@ fn configure_worker_pool() {
             std::thread::available_parallelism().map_or(1, |n| n.get()),
         );
         // Fails only if the pool already exists, which is then used as it is.
-        let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).build_global();
+        let _ = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .thread_name(|i| format!("wk-worker-{i}"))
+            .build_global();
         wk_converter::set_parallelism(rayon::current_num_threads());
         rayon::spawn(wk_converter::warm_up);
     });
