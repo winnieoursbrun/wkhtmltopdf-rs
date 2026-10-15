@@ -312,6 +312,14 @@ pub(crate) struct FilterStream<'a> {
 }
 
 impl FilterStream<'_> {
+    /// wkhtmltopdf-rs: a stream that owns its data (prepared on another thread).
+    pub(crate) fn into_owned(self) -> FilterStream<'static> {
+        FilterStream {
+            content: Cow::Owned(self.content.into_owned()),
+            filters: self.filters,
+        }
+    }
+
     pub(crate) fn encoded_data(&self) -> &[u8] {
         &self.content
     }

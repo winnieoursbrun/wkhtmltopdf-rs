@@ -755,6 +755,29 @@ impl SerializeContext {
 
     fn serialize_fonts(&mut self, chunk_container: &mut ChunkContainer) -> KrillaResult<()> {
         let fonts = self.global_objects.font_map.take();
+        // wkhtmltopdf-rs: subsetting and compressing a font program depends on nothing but
+        // the font and its glyphs: with rayon, those of all CID fonts are prepared in parallel
+        // before the fonts are written in their usual order.
+        #[cfg(feature = "rayon")]
+        let mut programs = {
+            use rayon::prelude::*;
+            let borrowed: Vec<_> = fonts.values().map(|f| f.borrow()).collect();
+            let cid_fonts: Vec<_> = borrowed
+                .iter()
+                .map(|f| f.cid_font())
+                .filter(|f| !f.is_empty())
+                .collect();
+            let settings = self.serialize_settings();
+            let programs: Vec<_> = if cid_fonts.len() > 1 {
+                cid_fonts
+                    .par_iter()
+                    .map(|f| f.font_program(&settings))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            programs.into_iter()
+        };
         for font_container in fonts.values() {
             let borrowed = font_container.borrow();
 
@@ -767,9 +790,13 @@ impl SerializeContext {
 
             if !borrowed.cid_font().is_empty() {
                 let f = self.register_font_identifier(borrowed.cid_font().identifier());
+                #[cfg(feature = "rayon")]
+                let program = programs.next();
+                #[cfg(not(feature = "rayon"))]
+                let program = None;
                 borrowed
                     .cid_font()
-                    .serialize(self, chunk_container, f.get_ref())?;
+                    .serialize(self, chunk_container, f.get_ref(), program)?;
             }
         }
 

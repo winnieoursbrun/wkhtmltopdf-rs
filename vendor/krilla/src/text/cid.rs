@@ -18,7 +18,8 @@ use crate::configure::ValidationError;
 use crate::error::{KrillaError, KrillaResult};
 use crate::geom::Rect;
 use crate::serialize::SerializeContext;
-use crate::stream::FilterStreamBuilder;
+use crate::SerializeSettings;
+use crate::stream::{FilterStream, FilterStreamBuilder};
 use crate::surface::Location;
 use crate::text::outline::OutlineBuilder;
 use crate::text::Font;
@@ -35,6 +36,13 @@ pub(crate) const SYSTEM_INFO: SystemInfo = SystemInfo {
 };
 
 pub(crate) type Cid = u16;
+
+/// wkhtmltopdf-rs: a CID font's subset program (see [`CIDFont::font_program`]).
+pub(crate) struct FontProgram {
+    num_glyphs: u32,
+    global_bbox: Rect,
+    stream: FilterStream<'static>,
+}
 
 /// A shared function for CID fonts and Type3 fonts to write the cmap entries.
 pub(crate) fn write_cmap_entry<G>(
@@ -184,11 +192,44 @@ impl CIDFont {
         FontIdentifier::Cid(CIDIdentifier(self.font.clone()))
     }
 
+    /// wkhtmltopdf-rs: the subset font program and its encoded stream, which depend on
+    /// nothing but the font and its glyph set, so `SerializeContext::serialize_fonts` can
+    /// prepare those of all fonts in parallel.
+    pub(crate) fn font_program(
+        &self,
+        serialize_settings: &SerializeSettings,
+    ) -> KrillaResult<FontProgram> {
+        let (subsetted, global_bbox) = subset_font(self.font.clone(), &self.glyph_remapper)?;
+        let num_glyphs = subsetted.num_glyphs();
+        let subsetted_data = subsetted.font_data().0;
+        let mut data = subsetted_data.as_ref().as_ref();
+
+        // If we have a CFF font, only embed the standalone CFF program.
+        let subsetted_ref = skrifa::FontRef::new(data).map_err(|_| {
+            KrillaError::Font(self.font.clone(), "failed to read font subset".to_string())
+        })?;
+
+        if let Some(cff) = subsetted_ref.data_for_tag(Cff::TAG) {
+            data = cff.as_bytes();
+        }
+
+        let stream = FilterStreamBuilder::new_from_binary_data(data)
+            .finish(serialize_settings)
+            .into_owned();
+        Ok(FontProgram {
+            num_glyphs,
+            global_bbox,
+            stream,
+        })
+    }
+
+    /// `program`: the result of [`Self::font_program`] if already computed.
     pub(crate) fn serialize(
         &self,
         sc: &mut SerializeContext,
         chunk_container: &mut ChunkContainer,
         root_ref: Ref,
+        program: Option<KrillaResult<FontProgram>>,
     ) -> KrillaResult<()> {
         let chunk = &mut chunk_container.non_stream.fonts;
         let mut stream_chunk = sc.new_chunk();
@@ -198,8 +239,6 @@ impl CIDFont {
         let cmap_ref = sc.new_ref();
         let cid_set_ref = sc.new_ref();
         let data_ref = sc.new_ref();
-
-        let glyph_remapper = &self.glyph_remapper;
 
         let is_glyf = self.font.font_ref().glyf().is_ok();
         let is_cff = self.font.font_ref().cff().is_ok();
@@ -234,23 +273,13 @@ impl CIDFont {
             sc.register_validation_error(ValidationError::RestrictedLicense(self.font.clone()));
         }
 
-        let (subsetted, global_bbox) = subset_font(self.font.clone(), glyph_remapper)?;
-        let num_glyphs = subsetted.num_glyphs();
-        let subsetted_data = subsetted.font_data().0;
-
-        let font_stream = {
-            let mut data = subsetted_data.as_ref().as_ref();
-
-            // If we have a CFF font, only embed the standalone CFF program.
-            let subsetted_ref = skrifa::FontRef::new(data).map_err(|_| {
-                KrillaError::Font(self.font.clone(), "failed to read font subset".to_string())
-            })?;
-
-            if let Some(cff) = subsetted_ref.data_for_tag(Cff::TAG) {
-                data = cff.as_bytes();
-            }
-
-            FilterStreamBuilder::new_from_binary_data(data).finish(&sc.serialize_settings())
+        let FontProgram {
+            num_glyphs,
+            global_bbox,
+            stream: font_stream,
+        } = match program {
+            Some(program) => program?,
+            None => self.font_program(&sc.serialize_settings())?,
         };
 
         let base_font = base_font_name(&self.font, &self.glyph_remapper);
