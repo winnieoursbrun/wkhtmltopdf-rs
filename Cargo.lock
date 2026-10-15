@@ -4159,6 +4159,7 @@ dependencies = [
  "kurbo",
  "lopdf",
  "peniko",
+ "rayon",
  "skrifa 0.44.0",
  "wk-webkit",
 ]

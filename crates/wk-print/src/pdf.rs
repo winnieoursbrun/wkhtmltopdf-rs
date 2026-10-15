@@ -13,7 +13,8 @@
 //! `--lowquality`, `--image-dpi`/`--image-quality`, `--no-pdf-compression`.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use anyrender::Paint;
 use anyrender::recording::RenderCommand;
@@ -207,37 +208,41 @@ pub struct DocInfo {
     pub creation_time: Option<u64>,
 }
 
+/// A face of the display list, shared by the threads drawing pages.
 struct FontEntry {
     font: Font,
     /// Smallest code point mapped to each glyph id (`u32::MAX`: none), built on first use:
     /// only runs without source text need it.
-    rev_cmap: std::cell::OnceCell<Vec<u32>>,
-    /// Advance width of each glyph id in em (NaN: not read yet), read on first use: only
-    /// the last glyph of a run needs it.
-    advances: std::cell::RefCell<Vec<f32>>,
+    rev_cmap: OnceLock<Vec<u32>>,
+    /// Bits of the advance width of each glyph id in em (those of NaN: not read yet), read on
+    /// first use: only the last glyph of a run needs it. Two threads reading the same glyph
+    /// store the same value.
+    advances: Vec<AtomicU32>,
 }
 
 impl FontEntry {
     fn advance(&self, fd: &peniko::FontData, gid: u32) -> f32 {
-        let mut advances = self.advances.borrow_mut();
-        let Some(a) = advances.get_mut(gid as usize) else { return 0.0 };
-        if a.is_nan() {
-            *a = skrifa::FontRef::from_index(fd.data.data(), fd.index)
-                .map(|fref| {
-                    let size = skrifa::instance::Size::unscaled();
-                    let upem =
-                        f32::from(fref.metrics(size, skrifa::instance::LocationRef::default()).units_per_em);
-                    let gm = fref.glyph_metrics(size, skrifa::instance::LocationRef::default());
-                    gm.advance_width(skrifa::GlyphId::new(gid)).unwrap_or(0.0) / upem
-                })
-                .unwrap_or(0.0);
+        let Some(slot) = self.advances.get(gid as usize) else { return 0.0 };
+        let a = f32::from_bits(slot.load(Ordering::Relaxed));
+        if !a.is_nan() {
+            return a;
         }
-        *a
+        let a = skrifa::FontRef::from_index(fd.data.data(), fd.index)
+            .map(|fref| {
+                let size = skrifa::instance::Size::unscaled();
+                let upem =
+                    f32::from(fref.metrics(size, skrifa::instance::LocationRef::default()).units_per_em);
+                let gm = fref.glyph_metrics(size, skrifa::instance::LocationRef::default());
+                gm.advance_width(skrifa::GlyphId::new(gid)).unwrap_or(0.0) / upem
+            })
+            .unwrap_or(0.0);
+        slot.store(a.to_bits(), Ordering::Relaxed);
+        a
     }
 
     fn char_of(&self, fd: &peniko::FontData, gid: u32) -> Option<char> {
         let map = self.rev_cmap.get_or_init(|| {
-            let mut map = vec![u32::MAX; self.advances.borrow().len()];
+            let mut map = vec![u32::MAX; self.advances.len()];
             let Ok(fref) = skrifa::FontRef::from_index(fd.data.data(), fd.index) else {
                 return map;
             };
@@ -257,13 +262,45 @@ impl FontEntry {
     }
 }
 
+/// The faces of the display lists, by blob id and index.
+type FontMap = HashMap<(u64, u32), Option<Arc<FontEntry>>>;
+
+/// What the threads drawing pages share: the faces, and the culling data of each display
+/// list (keyed by its address), computed by the first thread that needs it.
 #[derive(Default)]
-struct Caches {
-    fonts: HashMap<(u64, u32), Option<FontEntry>>,
+struct Shared {
+    fonts: Mutex<FontMap>,
+    cullings: Mutex<HashMap<usize, Arc<OnceLock<Culling>>>>,
+    /// Faces of the header/footer texts, keyed by the address of their data.
+    text_fonts: Mutex<HashMap<(usize, u32), Option<Font>>>,
+}
+
+/// One thread's view of [`Shared`], and its images.
+struct Caches<'s> {
+    shared: &'s Shared,
+    fonts: FontMap,
     images: HashMap<(u64, u32, u32), Option<krilla::image::Image>>,
     /// Culling box ([`bbox`]) of every command of a display list, keyed by
     /// its address: computed once, not once per page and band.
-    bboxes: HashMap<usize, std::rc::Rc<Culling>>,
+    bboxes: HashMap<usize, Arc<OnceLock<Culling>>>,
+}
+
+impl<'s> Caches<'s> {
+    fn new(shared: &'s Shared) -> Self {
+        Caches { shared, fonts: HashMap::new(), images: HashMap::new(), bboxes: HashMap::new() }
+    }
+
+    fn culling(&mut self, commands: &DisplayList) -> Arc<OnceLock<Culling>> {
+        let key = commands as *const DisplayList as usize;
+        let shared = self.shared;
+        let cell = self
+            .bboxes
+            .entry(key)
+            .or_insert_with(|| shared.cullings.lock().unwrap().entry(key).or_default().clone())
+            .clone();
+        cell.get_or_init(|| Culling::new(commands));
+        cell
+    }
 }
 
 /// Culling data of a display list: the [`bbox`] of every command, and the commands
@@ -468,24 +505,35 @@ fn paint_fill(
 }
 
 fn font_entry<'a>(caches: &'a mut Caches, fd: &peniko::FontData) -> Option<&'a FontEntry> {
+    let shared = caches.shared;
     caches
         .fonts
         .entry((fd.data.id(), fd.index))
         .or_insert_with(|| {
-            let fref = skrifa::FontRef::from_index(fd.data.data(), fd.index).ok()?;
-            let fm =
-                fref.metrics(skrifa::instance::Size::unscaled(), skrifa::instance::LocationRef::default());
-            let glyph_count = usize::from(fm.glyph_count);
-            // krilla shares the blob's bytes: no copy of the font file per face.
-            let data: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(fd.data.clone());
-            let font = Font::new(data.into(), fd.index)?;
-            Some(FontEntry {
-                font,
-                rev_cmap: std::cell::OnceCell::new(),
-                advances: std::cell::RefCell::new(vec![f32::NAN; glyph_count]),
-            })
+            shared
+                .fonts
+                .lock()
+                .unwrap()
+                .entry((fd.data.id(), fd.index))
+                .or_insert_with(|| {
+                    let fref = skrifa::FontRef::from_index(fd.data.data(), fd.index).ok()?;
+                    let fm = fref.metrics(
+                        skrifa::instance::Size::unscaled(),
+                        skrifa::instance::LocationRef::default(),
+                    );
+                    let glyph_count = usize::from(fm.glyph_count);
+                    // krilla shares the blob's bytes: no copy of the font file per face.
+                    let data: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(fd.data.clone());
+                    let font = Font::new(data.into(), fd.index)?;
+                    Some(Arc::new(FontEntry {
+                        font,
+                        rev_cmap: OnceLock::new(),
+                        advances: (0..glyph_count).map(|_| AtomicU32::new(f32::NAN.to_bits())).collect(),
+                    }))
+                })
+                .clone()
         })
-        .as_ref()
+        .as_deref()
 }
 
 /// Glyph outlines as one path (text that must not be extractable, such as
@@ -551,16 +599,20 @@ fn bbox(cmd: &RenderCommand) -> Option<kurbo::Rect> {
     }
 }
 
-struct Replayer<'a> {
+struct Replayer<'a, 's> {
     page: &'a RenderedPage,
     /// Culling boxes of the page's scene.
     culling: &'a Culling,
-    caches: &'a mut Caches,
+    caches: &'a mut Caches<'s>,
     image_dpi: u32,
     gray: bool,
+    /// Drawing a page draft (`krilla::draft`), which cannot hold images: they are skipped
+    /// and `refused` set, the page being drawn again in the document.
+    draft: bool,
+    refused: bool,
 }
 
-impl Replayer<'_> {
+impl Replayer<'_, '_> {
     /// The PDF image for `img` drawn with `transform` (image pixels to CSS px).
     /// JPEG sources are embedded as they are; other images drawn above
     /// `--image-dpi` are scaled down to it (smooth), as the 0.12.6 binary does
@@ -752,6 +804,7 @@ impl Replayer<'_> {
                     }
                 }
                 RenderCommand::Fill(c) => match &c.brush {
+                    Paint::Image(_) if self.draft => self.refused = true,
                     Paint::Image(img) => {
                         let to_px = c.transform * c.brush_transform.unwrap_or(Affine::IDENTITY);
                         let Some(kimg) = self.image(img, to_px) else { continue };
@@ -863,24 +916,30 @@ fn outline_node(n: &OutlineNode, named: &BTreeMap<String, XyzDestination>) -> kr
 }
 
 /// Draw one band: its document range (plus repeated table groups) placed at
-/// `band.origin`, clipped horizontally to the paper.
-fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut Caches, opts: PdfOptions) {
+/// `band.origin`, clipped horizontally to the paper. Returns `false` when drawing a draft
+/// that cannot hold the band (an image).
+fn draw_band(
+    surface: &mut Surface,
+    band: &Band<'_>,
+    paper_w: f32,
+    caches: &mut Caches,
+    opts: PdfOptions,
+    draft: bool,
+) -> bool {
     let s = band.page.pt_per_px;
     let (ox, oy) = band.origin;
     let (cx0, cx1) = (-ox / s, (paper_w - ox) / s);
     surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ox, oy));
     let commands = &band.page.recorder.commands;
-    let bboxes = caches
-        .bboxes
-        .entry(commands as *const DisplayList as usize)
-        .or_insert_with(|| std::rc::Rc::new(Culling::new(commands)))
-        .clone();
+    let culling = caches.culling(commands);
     let mut r = Replayer {
         page: band.page,
-        culling: &bboxes,
+        culling: culling.get().expect("culling computed"),
         caches,
         gray: opts.grayscale,
         image_dpi: opts.image_dpi,
+        draft,
+        refused: false,
     };
     let p = band.slice;
     let mut dy = 0.0;
@@ -896,11 +955,115 @@ fn draw_band(surface: &mut Surface, band: &Band<'_>, paper_w: f32, caches: &mut 
         dy += b1 - b0;
     }
     surface.pop();
+    !r.refused
+}
+
+/// Draw everything of `p` on its page's surface. Returns `false` when drawing a draft that
+/// cannot hold the page.
+fn draw_page(
+    surface: &mut Surface,
+    p: &OutPage<'_>,
+    width: f32,
+    caches: &mut Caches,
+    opts: PdfOptions,
+    draft: bool,
+) -> bool {
+    let mut ok = true;
+    for band in &p.bands {
+        ok &= draw_band(surface, band, width, caches, opts, draft);
+    }
+    for l in &p.lines {
+        let h = l.width / 2.0;
+        let mut b = PathBuilder::new();
+        if let Some(rect) = Rect::from_xywh(l.x0 - h, l.y - h, l.x1 - l.x0 + l.width, l.width) {
+            b.push_rect(rect);
+        }
+        if let Some(path) = b.finish() {
+            surface.set_stroke(None);
+            surface.set_fill(Some(Fill { paint: rgb::Color::new(0, 0, 0).into(), ..Default::default() }));
+            surface.draw_path(&path);
+        }
+    }
+    for t in &p.texts {
+        if t.text.is_empty() {
+            continue;
+        }
+        let key = (Arc::as_ptr(&t.face.data) as usize, t.face.index);
+        let font = caches
+            .shared
+            .text_fonts
+            .lock()
+            .unwrap()
+            .entry(key)
+            .or_insert_with(|| Font::new(t.face.data.clone().into(), t.face.index))
+            .clone();
+        let Some(font) = font else { continue };
+        surface.set_stroke(None);
+        surface.set_fill(Some(Fill {
+            paint: rgb::Color::new(0, 0, 0).into(),
+            opacity: NormalizedF32::ONE,
+            rule: FillRule::NonZero,
+        }));
+        surface.draw_text(
+            Point::from_xy(t.x, t.baseline),
+            font,
+            t.size,
+            &t.text,
+            false,
+            krilla::text::TextDirection::Auto,
+        );
+    }
+    ok
+}
+
+/// Pages drafted on the rayon pool (`krilla::draft`) while the document takes them in order.
+/// At most `window` pages are drafted ahead of the one the document waits for, to bound the
+/// memory they hold. A page nobody has started drafting when the document reaches it is
+/// drawn in the document directly.
+struct Drafts {
+    /// Per page: 0 not started, 1 taken by a thread, 2 taken by the document.
+    state: Vec<AtomicU8>,
+    done: Mutex<Vec<Option<Option<krilla::draft::PageDraft>>>>,
+    ready: Condvar,
+}
+
+impl Drafts {
+    fn new(n: usize) -> Self {
+        Drafts {
+            state: (0..n).map(|_| AtomicU8::new(0)).collect(),
+            done: Mutex::new((0..n).map(|_| None).collect()),
+            ready: Condvar::new(),
+        }
+    }
+
+    /// The draft of page `i` (made by a pool thread), or `None` when the document must draw
+    /// it: nobody had started it, or the draft cannot be used.
+    fn take(&self, i: usize) -> Option<krilla::draft::PageDraft> {
+        if self.state[i].compare_exchange(0, 2, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+            return None;
+        }
+        let mut done = self.done.lock().unwrap();
+        loop {
+            if let Some(d) = done[i].take() {
+                return d;
+            }
+            done = self.ready.wait(done).unwrap();
+        }
+    }
+}
+
+/// Threads for page drafts: the rayon pool, when it has more than one thread.
+fn draft_threads(pages: usize) -> usize {
+    let threads = rayon::current_num_threads();
+    if threads > 1 && pages > 1 { threads } else { 0 }
 }
 
 /// Write the PDF: `pages` in order on `width` × `height` pt paper.
 /// `outline_mode` adds `/PageMode /UseOutlines` to the catalog, like Qt
 /// does whenever the outline is enabled.
+///
+/// With a rayon pool of several threads, pages are drafted on it while the document takes
+/// them in order (`krilla::draft`); the output is the same as drawing every page here.
 pub fn write_pdf(
     width: f32,
     height: f32,
@@ -915,7 +1078,7 @@ pub fn write_pdf(
     let settings =
         SerializeSettings { xmp_metadata: false, enable_tagging: false, configuration, ..Default::default() };
     let mut doc = Document::new_with(settings);
-    let mut caches = Caches::default();
+    let shared = Shared::default();
     let page_settings = PageSettings::from_wh(width, height).ok_or("invalid page size")?;
     // Named destinations: like Qt's anchor table, the last definition of a
     // name wins (with copies, the last copy). Ordered, so destinations are
@@ -926,74 +1089,72 @@ pub fn write_pdf(
             named.insert(a.name.clone(), XyzDestination::new(i, Point::from_xy(a.x, a.y)));
         }
     }
-    let mut fonts: HashMap<(usize, u32), Font> = HashMap::new();
-    for p in pages {
-        let mut page = doc.start_page_with(page_settings.clone());
-        for l in &p.links {
-            let Some(rect) = Rect::from_ltrb(l.rect.0, l.rect.1, l.rect.2, l.rect.3) else { continue };
-            let target = match &l.target {
-                LinkTarget::Uri(u) => {
-                    krilla::annotation::Target::Action(krilla::action::LinkAction::new(u.clone()).into())
+    let threads = draft_threads(pages.len());
+    let drafts = Drafts::new(if threads > 0 { pages.len() } else { 0 });
+    let draft_settings = doc.draft_settings();
+    let mut drafted = 0;
+    rayon::in_place_scope(|scope| {
+        let drafts = &drafts;
+        let (shared, draft_settings, page_settings) = (&shared, &draft_settings, &page_settings);
+        let spawn = |i: usize| {
+            scope.spawn(move |_| {
+                if drafts.state[i].compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire).is_err() {
+                    return;
                 }
-                LinkTarget::Named(n) => {
-                    let Some(xyz) = named.get(n) else { continue };
-                    krilla::annotation::Target::Destination(
-                        krilla::destination::NamedDestination::new(n.clone(), xyz.clone()).into(),
-                    )
-                }
+                let mut caches = Caches::new(shared);
+                let mut usable = true;
+                let draft = krilla::draft::draft_page(draft_settings, page_settings, |surface| {
+                    usable = draw_page(surface, &pages[i], width, &mut caches, opts, true);
+                });
+                let draft = (usable && draft.is_usable()).then_some(draft);
+                drafts.done.lock().unwrap()[i] = Some(draft);
+                drafts.ready.notify_all();
+            });
+        };
+        let window = threads * 2;
+        if threads > 0 {
+            for i in 0..window.min(pages.len()) {
+                spawn(i);
+            }
+        }
+        let mut caches = Caches::new(shared);
+        for (i, p) in pages.iter().enumerate() {
+            if threads > 0 && i + window < pages.len() {
+                spawn(i + window);
+            }
+            let mut page = doc.start_page_with(page_settings.clone());
+            for l in &p.links {
+                let Some(rect) = Rect::from_ltrb(l.rect.0, l.rect.1, l.rect.2, l.rect.3) else { continue };
+                let target = match &l.target {
+                    LinkTarget::Uri(u) => {
+                        krilla::annotation::Target::Action(krilla::action::LinkAction::new(u.clone()).into())
+                    }
+                    LinkTarget::Named(n) => {
+                        let Some(xyz) = named.get(n) else { continue };
+                        krilla::annotation::Target::Destination(
+                            krilla::destination::NamedDestination::new(n.clone(), xyz.clone()).into(),
+                        )
+                    }
+                };
+                page.add_annotation(krilla::annotation::Annotation::new_link(
+                    krilla::annotation::LinkAnnotation::new(rect, target),
+                    None,
+                ));
+            }
+            let applied = match (threads > 0).then(|| drafts.take(i)).flatten() {
+                Some(draft) => page.apply_draft(draft).is_ok(),
+                None => false,
             };
-            page.add_annotation(krilla::annotation::Annotation::new_link(
-                krilla::annotation::LinkAnnotation::new(rect, target),
-                None,
-            ));
-        }
-        let mut surface = page.surface();
-        for band in &p.bands {
-            draw_band(&mut surface, band, width, &mut caches, opts);
-        }
-        for l in &p.lines {
-            let h = l.width / 2.0;
-            let mut b = PathBuilder::new();
-            if let Some(rect) = Rect::from_xywh(l.x0 - h, l.y - h, l.x1 - l.x0 + l.width, l.width) {
-                b.push_rect(rect);
+            drafted += usize::from(applied);
+            if !applied {
+                let mut surface = page.surface();
+                draw_page(&mut surface, p, width, &mut caches, opts, false);
+                surface.finish();
             }
-            if let Some(path) = b.finish() {
-                surface.set_stroke(None);
-                surface.set_fill(Some(Fill { paint: rgb::Color::new(0, 0, 0).into(), ..Default::default() }));
-                surface.draw_path(&path);
-            }
+            page.finish();
         }
-        for t in &p.texts {
-            if t.text.is_empty() {
-                continue;
-            }
-            let key = (Arc::as_ptr(&t.face.data) as usize, t.face.index);
-            let font = match fonts.get(&key) {
-                Some(f) => f.clone(),
-                None => {
-                    let Some(f) = Font::new(t.face.data.clone().into(), t.face.index) else { continue };
-                    fonts.insert(key, f.clone());
-                    f
-                }
-            };
-            surface.set_stroke(None);
-            surface.set_fill(Some(Fill {
-                paint: rgb::Color::new(0, 0, 0).into(),
-                opacity: NormalizedF32::ONE,
-                rule: FillRule::NonZero,
-            }));
-            surface.draw_text(
-                Point::from_xy(t.x, t.baseline),
-                font,
-                t.size,
-                &t.text,
-                false,
-                krilla::text::TextDirection::Auto,
-            );
-        }
-        surface.finish();
-        page.finish();
-    }
+    });
+    wk_webkit::timing(&format!("pages drawn from drafts: {drafted} of {}", pages.len()));
     for (name, xyz) in &named {
         let _ = doc.register_named_destination(krilla::destination::NamedDestination::new(
             name.clone(),
