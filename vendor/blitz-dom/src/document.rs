@@ -396,17 +396,7 @@ impl BaseDocument {
         let font_ctx = Arc::new(Mutex::new(font_ctx));
 
         // Make sure we turn on stylo features *before* creating the Stylist
-        style_config::set_pref!("layout.grid.enabled", true);
-        style_config::set_pref!("layout.flexbox.balance", true);
-        style_config::set_pref!("layout.unimplemented", true);
-        style_config::set_pref!("layout.columns.enabled", true);
-        style_config::set_pref!("layout.css.basic-shape-shape.enabled", true);
-        style_config::set_pref!("layout.css.tree-counting-functions.enabled", true);
-        style_config::set_pref!("layout.css.progress-function.enabled", true);
-        style_config::set_pref!("layout.variable_fonts.enabled", true);
-        #[cfg(feature = "writing-mode")]
-        style_config::set_pref!("layout.writing-mode.enabled", true);
-        style_config::set_pref!("layout.threads", -1);
+        set_style_prefs();
 
         let viewport = config.viewport.unwrap_or_default();
         let media_type = config.media_type.unwrap_or_else(MediaType::screen);
@@ -1169,39 +1159,20 @@ impl BaseDocument {
         self.stylist.append_stylesheet(sheet, &self.guard.read());
     }
 
-    /// wkhtmltopdf-rs: user-agent sheets are parsed once per thread and shared by every
+    /// wkhtmltopdf-rs: user-agent sheets are parsed once per process and shared by every
     /// document (a conversion loads one document per object, header and footer page). A
     /// shared sheet is parsed under a read-only lock, which any document's guard can read,
     /// and stylo reuses the cascade data of an identical set of user-agent sheets. Only
     /// sheets whose meaning does not depend on the document are shared: no `@import` (it
-    /// is fetched by the document) and no relative `url()` (resolved against its URL).
+    /// is fetched by the document) and no relative `url()` (resolved against its URL), so
+    /// they are parsed against `about:blank`. [`preparse_user_agent_stylesheet`] parses one
+    /// ahead of time, on another thread.
     fn user_agent_stylesheet(&self, css: &str) -> DocumentStyleSheet {
-        thread_local! {
-            static SHARED_UA_SHEETS: std::cell::RefCell<HashMap<String, DocumentStyleSheet>> =
-                std::cell::RefCell::new(HashMap::new());
-        }
         let shareable = !css.contains("@import") && (css == DEFAULT_CSS || !css.contains("url("));
         if !shareable {
             return self.make_stylesheet(css, Origin::UserAgent);
         }
-        if let Some(sheet) = SHARED_UA_SHEETS.with(|m| m.borrow().get(css).cloned()) {
-            return sheet;
-        }
-        let lock = SharedRwLock::read_only();
-        let data = Stylesheet::from_str(
-            css,
-            self.url.url_extra_data(),
-            Origin::UserAgent,
-            ServoArc::new(lock.wrap(MediaList::empty())),
-            lock,
-            None,
-            None,
-            QuirksMode::NoQuirks,
-            AllowImportRules::Yes,
-        );
-        let sheet = DocumentStyleSheet(ServoArc::new(data));
-        SHARED_UA_SHEETS.with(|m| m.borrow_mut().insert(css.to_string(), sheet.clone()));
-        sheet
+        shared_user_agent_stylesheet(css)
     }
 
     pub fn make_stylesheet(&self, css: impl AsRef<str>, origin: Origin) -> DocumentStyleSheet {
@@ -2822,6 +2793,66 @@ impl BoundingRect {
 /// otherwise end at `55.0000005` and appear to overflow their 55px container.
 fn snap_to_layout_unit(value: f64) -> f64 {
     (value * 64.0).round() / 64.0
+}
+
+/// The stylo features blitz enables. They decide what parses, so they are set before any
+/// stylesheet is parsed or `Stylist` created (also by a sheet parsed ahead of time).
+fn set_style_prefs() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        style_config::set_pref!("layout.grid.enabled", true);
+        style_config::set_pref!("layout.flexbox.balance", true);
+        style_config::set_pref!("layout.unimplemented", true);
+        style_config::set_pref!("layout.columns.enabled", true);
+        style_config::set_pref!("layout.css.basic-shape-shape.enabled", true);
+        style_config::set_pref!("layout.css.tree-counting-functions.enabled", true);
+        style_config::set_pref!("layout.css.progress-function.enabled", true);
+        style_config::set_pref!("layout.variable_fonts.enabled", true);
+        #[cfg(feature = "writing-mode")]
+        style_config::set_pref!("layout.writing-mode.enabled", true);
+        style_config::set_pref!("layout.threads", -1);
+    });
+}
+
+/// wkhtmltopdf-rs: the process-wide user-agent sheet for `css` (see
+/// `BaseDocument::user_agent_stylesheet`), parsed on first use. Concurrent callers for the
+/// same text wait for one parse.
+fn shared_user_agent_stylesheet(css: &str) -> DocumentStyleSheet {
+    static SHEETS: OnceLock<Mutex<HashMap<String, Arc<OnceLock<DocumentStyleSheet>>>>> =
+        OnceLock::new();
+    let cell = {
+        let mut sheets = SHEETS.get_or_init(Default::default).lock().unwrap();
+        match sheets.get(css) {
+            Some(cell) => Arc::clone(cell),
+            None => Arc::clone(sheets.entry(css.to_string()).or_default()),
+        }
+    };
+    cell.get_or_init(|| {
+        set_style_prefs();
+        let lock = SharedRwLock::read_only();
+        let url = url::Url::parse("about:blank").expect("about:blank");
+        let data = Stylesheet::from_str(
+            css,
+            style::stylesheets::UrlExtraData(ServoArc::new(url)),
+            Origin::UserAgent,
+            ServoArc::new(lock.wrap(MediaList::empty())),
+            lock,
+            None,
+            None,
+            QuirksMode::NoQuirks,
+            AllowImportRules::Yes,
+        );
+        DocumentStyleSheet(ServoArc::new(data))
+    })
+    .clone()
+}
+
+/// wkhtmltopdf-rs: parse the user-agent sheet `css` (as passed to
+/// [`BaseDocument::add_user_agent_stylesheet`], e.g. [`DEFAULT_CSS`]) ahead of the first
+/// document that uses it, typically on another thread while the input is read. A document
+/// created meanwhile waits for this parse instead of starting its own.
+pub fn preparse_user_agent_stylesheet(css: &str) {
+    let _ = shared_user_agent_stylesheet(css);
 }
 
 impl AsRef<BaseDocument> for BaseDocument {

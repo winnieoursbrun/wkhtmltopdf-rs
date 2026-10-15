@@ -18,3 +18,10 @@ pub use page::{
     Anchors, FormElement, Geometry, Heading, LinkBox, RenderedPage, TableInfo, WebPage, WebSettings,
 };
 pub use paint::{Command, DisplayList, Recorder};
+
+/// Work every conversion needs whatever its input, done ahead of time on the calling
+/// thread (the binary runs it on a worker while the input is read and parsed): the
+/// user-agent stylesheet's parse. A page created meanwhile waits for it.
+pub fn warm_up() {
+    blitz_dom::preparse_user_agent_stylesheet(blitz_dom::DEFAULT_CSS);
+}

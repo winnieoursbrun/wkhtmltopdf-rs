@@ -10,7 +10,8 @@ use wk_settings::{PdfGlobal, PdfObject};
 /// The PDF writer compresses each page's content stream on the rayon pool while the next
 /// page is built. One worker keeps up with the page builder; a pool of one thread per CPU
 /// (rayon's default) only costs thread creation on short documents. `RAYON_NUM_THREADS`
-/// still overrides it.
+/// still overrides it. The pool also does the input-independent start-up work
+/// ([`wk_converter::warm_up`]) while the input is read and parsed.
 fn configure_worker_pool() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -20,6 +21,7 @@ fn configure_worker_pool() {
                 .num_threads(2)
                 .build_global();
         }
+        rayon::spawn(wk_converter::warm_up);
     });
 }
 
