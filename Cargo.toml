@@ -11,7 +11,7 @@ members = [
     "crates/wk-print",
     "crates/wk-converter",
 ]
-exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/krilla", "vendor/boa_engine", "vendor/pdf-writer", "spikes"]
+exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/krilla", "vendor/boa_engine", "vendor/pdf-writer", "vendor/dlmalloc", "spikes"]
 
 [workspace.package]
 version = "0.1.0-alpha.2"
@@ -79,6 +79,9 @@ krilla = { path = "vendor/krilla" }
 # pdf-writer formatting colour components and short decimals without ryu, byte for byte as
 # ryu does (vendor/pdf-writer/src/float.rs).
 pdf-writer = { path = "vendor/pdf-writer" }
+# dlmalloc giving the pages of large free chunks back to the system (vendor/dlmalloc/src/dlmalloc.rs),
+# the shared heap of the musl build's allocator (crates/wkhtmltopdf/src/alloc.rs).
+dlmalloc = { path = "vendor/dlmalloc" }
 
 [profile.release]
 lto = true
