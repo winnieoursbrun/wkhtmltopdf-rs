@@ -320,12 +320,23 @@ impl Culling {
     const MAX_BUCKETS: usize = 1 << 14;
 
     fn new(commands: &DisplayList) -> Culling {
+        Self::with_bboxes(commands.iter().map(command_bbox).collect())
+    }
+
+    /// [`new`](Self::new), the boxes computed on the rayon pool, a chunk of the display list
+    /// per task (not from a thread a pool task may wait for: see `write_pdf`).
+    fn new_parallel(commands: &DisplayList) -> Culling {
+        use rayon::prelude::*;
+        let chunks: Vec<Vec<Option<kurbo::Rect>>> =
+            commands.chunks().par_iter().map(|chunk| chunk.iter().map(command_bbox).collect()).collect();
         let mut bboxes = Vec::with_capacity(commands.len());
-        bboxes.extend(commands.iter().map(|c| match c.as_rect_fill() {
-            // The bounding box of the rectangle's path, which is the rectangle.
-            Some((_, transform, _, rect)) => Some(transform.transform_rect_bbox(rect.abs())),
-            None => bbox(&c.get()),
-        }));
+        for chunk in chunks {
+            bboxes.extend(chunk);
+        }
+        Self::with_bboxes(bboxes)
+    }
+
+    fn with_bboxes(bboxes: Vec<Option<kurbo::Rect>>) -> Culling {
         let bottom = bboxes.iter().flatten().map(|b| b.y1).filter(|y| y.is_finite()).fold(0.0f64, f64::max);
         let n = ((bottom / Self::BUCKET_H) as usize + 1).min(Self::MAX_BUCKETS);
         let mut c = Culling { bboxes: Vec::new(), always: Vec::new(), buckets: vec![Vec::new(); n] };
@@ -577,6 +588,15 @@ fn glyph_outlines(fd: &peniko::FontData, size: f32, glyphs: &[anyrender::Glyph])
         }
     }
     b.finish()
+}
+
+/// The culling box of a display-list command.
+fn command_bbox(c: &Command) -> Option<kurbo::Rect> {
+    match c.as_rect_fill() {
+        // The bounding box of the rectangle's path, which is the rectangle.
+        Some((_, transform, _, rect)) => Some(transform.transform_rect_bbox(rect.abs())),
+        None => bbox(&c.get()),
+    }
 }
 
 /// Bounding box of a command in scene coordinates, for page culling.
@@ -1115,6 +1135,29 @@ pub fn write_pdf(
     }
     let threads = draft_threads(pages.len());
     let drafts = Drafts::new(if threads > 0 { pages.len() } else { 0 });
+    if threads > 0 {
+        // The culling data of every display list, computed on the pool before the drafts
+        // need it (a draft waiting for it would block its pool thread).
+        use rayon::prelude::*;
+        let mut lists: Vec<&DisplayList> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for band in pages.iter().flat_map(|p| &p.bands) {
+            let list = &band.page.recorder.commands;
+            if seen.insert(list as *const DisplayList as usize) {
+                lists.push(list);
+            }
+        }
+        let cells: Vec<Arc<OnceLock<Culling>>> = {
+            let mut cullings = shared.cullings.lock().unwrap();
+            lists
+                .iter()
+                .map(|l| cullings.entry(*l as *const DisplayList as usize).or_default().clone())
+                .collect()
+        };
+        lists.par_iter().zip(&cells).for_each(|(list, cell)| {
+            cell.get_or_init(|| Culling::new_parallel(list));
+        });
+    }
     let draft_settings = doc.draft_settings();
     let mut drafted = 0;
     rayon::in_place_scope(|scope| {

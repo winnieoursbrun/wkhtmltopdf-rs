@@ -93,6 +93,11 @@ impl DisplayList {
         self.chunks.iter().flatten()
     }
 
+    /// The commands in chunks of at most 4096, in order.
+    pub fn chunks(&self) -> &[Vec<Command>] {
+        &self.chunks
+    }
+
     fn push(&mut self, c: Command) {
         match self.chunks.last_mut() {
             Some(last) if last.len() < Self::CHUNK => last.push(c),
