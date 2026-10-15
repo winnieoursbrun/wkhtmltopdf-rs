@@ -232,6 +232,17 @@ pub struct WebPage {
     canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
 }
 
+/// A document moved to a pool thread only to be dropped there ([`WebPage::render_final`]).
+struct DroppedDocument(#[allow(dead_code)] BaseDocument);
+
+// SAFETY: the only fields that make `BaseDocument` not `Send` are two trait objects whose
+// traits do not require `Send`: its `Arc<dyn HtmlParserProvider>` and, inside Stylo's
+// device, its `Box<dyn FontMetricsProvider>`. The implementations used here are
+// `blitz_html::HtmlProvider` (a unit struct) and blitz-dom's `BlitzFontMetricsProvider` (an
+// `Arc<Mutex<FontContext>>`), both `Send`. Once wrapped, the document is not reachable from
+// anywhere else and is only dropped, by one thread.
+unsafe impl Send for DroppedDocument {}
+
 /// The box standing in for an image that failed to load (`WebPage::broken_images`).
 struct AltBox {
     span: NodeId,
@@ -568,19 +579,16 @@ impl WebPage {
     /// path of the conversion.
     pub fn render_final(mut self, printable_w_pt: f32, printable_h_pt: f32) -> RenderedPage {
         let rendered = self.render_inner(printable_w_pt, printable_h_pt, true);
-        /// The page, moved to a pool thread only to be dropped there.
-        struct Dropped(#[allow(dead_code)] WebPage);
-        // SAFETY: what makes `WebPage` neither `Send` nor `Sync` is reference counting and
-        // providers that are only ever used by the thread working on the page: `Rc`s of
-        // canvas pictures (their only other clones, lent to the painter, are released by
-        // `render_inner` before it returns) and the `dyn` HTML parser and font metrics
-        // providers of the document, which hold no thread-bound state (no thread-local and
-        // no JavaScript value: the script engine of a scripted page is dropped when its load
-        // ends). Nothing else refers to the page: once moved here it is only dropped, by one
-        // thread.
-        unsafe impl Send for Dropped {}
-        let page = Dropped(self);
-        rayon::spawn(move || drop(page));
+        let WebPage { doc, net, settings, bodies, password_values, url, canvases } = self;
+        // The canvas pictures are reference counted without atomics: released here.
+        drop(canvases);
+        let rest = (net, settings, bodies, password_values, url);
+        let doc = DroppedDocument(doc);
+        rayon::spawn(move || {
+            // A panic in a destructor would abort the process from a pool thread: ignore it,
+            // the page being of no further use.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || drop((doc, rest))));
+        });
         rendered
     }
 
