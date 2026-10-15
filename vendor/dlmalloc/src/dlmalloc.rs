@@ -1270,17 +1270,21 @@ impl<A: Allocator> Dlmalloc<A> {
     /// Freed memory then stops counting in the resident set, as with the C library's
     /// allocator, instead of staying resident for good (dlmalloc only returns the top of its
     /// segments); it is faulted in again, zeroed, when reused. Only the pages of `freed` are
-    /// given back, so that freeing next to a large free chunk does not give it back again.
+    /// given back, so that freeing next to a large free chunk does not give it back again,
+    /// and only when they add up to `PURGE_MIN` bytes or more.
     unsafe fn purge_freed(&mut self, p: *mut Chunk, size: usize, freed: (usize, usize)) {
-        let page = self.system_allocator.page_size();
-        if size < page {
+        // Fewer, larger calls: 4 KiB gave 0.5 MiB less peak RSS on a script-heavy page but
+        // several times more `madvise` calls (5 % of the main thread of a 30-page document).
+        const PURGE_MIN: usize = 16 * 1024;
+        if size < PURGE_MIN {
             return;
         }
+        let page = self.system_allocator.page_size();
         let lo = (p as usize + 64 + page - 1) & !(page - 1);
         let hi = (p as usize + size) & !(page - 1);
         let start = lo.max(freed.0 & !(page - 1));
         let end = hi.min((freed.0 + freed.1 + page - 1) & !(page - 1));
-        if end > start {
+        if end > start && end - start >= PURGE_MIN {
             self.system_allocator.purge(start as *mut u8, end - start);
         }
     }
