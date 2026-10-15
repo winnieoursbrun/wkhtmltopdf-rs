@@ -1096,10 +1096,13 @@ impl Drafts {
     }
 }
 
-/// Threads for page drafts: the rayon pool, when it has more than one thread.
+/// Threads for page drafts: the rayon pool, when it has more than one thread and the
+/// document at least four pages per thread.
 fn draft_threads(pages: usize) -> usize {
     let threads = rayon::current_num_threads();
-    if threads > 1 && pages > 1 { threads } else { 0 }
+    // A short document gains little (0.5 to 1 ms on the 4- and 8-page bench documents) and
+    // holds most of its pages' drafts at once (0.5 MiB more peak RSS, 3 %).
+    if threads > 1 && pages >= 4 * threads { threads } else { 0 }
 }
 
 /// Write the PDF: `pages` in order on `width` × `height` pt paper.
