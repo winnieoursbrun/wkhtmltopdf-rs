@@ -71,9 +71,9 @@ equivalent pages. Every number below is produced by tests in this repository.
 | L3 | Visual similarity, mean per-page SSIM at 96 dpi (22 benchmark cases) | **0.92** (16 cases ≥ 0.85) |
 
 How to read L3: the port uses a different layout engine than QtWebKit 2.2, so pixel identity is a
-non-goal. Text sits on average 1–3 pt lower than in the original, and some tall table rows break at
-a different place, which costs SSIM even when the content is identical. Per-page side-by-side
-images are produced by `bench/run.sh --visual`.
+non-goal. Glyphs are rasterised and antialiased differently and words can sit half a pixel apart,
+and some tall table rows break at a different place, which costs SSIM even when the content is
+identical. Per-page side-by-side images are produced by `bench/run.sh --visual`.
 
 Test suite: 182 tests (`cargo test --workspace`), run on Linux, macOS and Windows in CI, plus a
 parity job that replays the fixtures captured from the original binary.

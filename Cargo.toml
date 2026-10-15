@@ -11,7 +11,7 @@ members = [
     "crates/wk-print",
     "crates/wk-converter",
 ]
-exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "spikes"]
+exclude = ["vendor/stylo", "vendor/blitz-dom", "vendor/stylo_taffy", "vendor/taffy", "vendor/blitz-paint", "vendor/parley", "vendor/parley_engine", "vendor/krilla", "spikes"]
 
 [workspace.package]
 version = "0.1.0-alpha.1"
@@ -68,6 +68,8 @@ taffy = { path = "vendor/taffy" }
 parley = { path = "vendor/parley" }
 # parley_engine with QtWebKit's linear glyph advances (vendor/parley_engine/src/shape/shaped_text.rs).
 parley_engine = { path = "vendor/parley_engine" }
+# krilla writing the hhea ascent/descent in font descriptors, as Qt does (vendor/krilla/src/text/font.rs).
+krilla = { path = "vendor/krilla" }
 
 [profile.release]
 lto = true
