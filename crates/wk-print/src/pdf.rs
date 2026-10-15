@@ -240,7 +240,11 @@ impl Culling {
 
     fn new(commands: &DisplayList) -> Culling {
         let mut bboxes = Vec::with_capacity(commands.len());
-        bboxes.extend(commands.iter().map(|c| bbox(&c.get())));
+        bboxes.extend(commands.iter().map(|c| match c.as_rect_fill() {
+            // The bounding box of the rectangle's path, which is the rectangle.
+            Some((_, transform, _, rect)) => Some(transform.transform_rect_bbox(rect.abs())),
+            None => bbox(&c.get()),
+        }));
         let bottom = bboxes.iter().flatten().map(|b| b.y1).filter(|y| y.is_finite()).fold(0.0f64, f64::max);
         let n = ((bottom / Self::BUCKET_H) as usize + 1).min(Self::MAX_BUCKETS);
         let mut c = Culling { bboxes: Vec::new(), always: Vec::new(), buckets: vec![Vec::new(); n] };
@@ -295,9 +299,13 @@ fn tf(a: Affine) -> Transform {
 }
 
 fn to_path(p: &BezPath) -> Option<Path> {
+    path_from_elements(p.elements().iter().copied())
+}
+
+fn path_from_elements(elements: impl Iterator<Item = PathEl>) -> Option<Path> {
     let mut b = PathBuilder::new();
-    for el in p.elements() {
-        match *el {
+    for el in elements {
+        match el {
             PathEl::MoveTo(a) => b.move_to(a.x as f32, a.y as f32),
             PathEl::LineTo(a) => b.line_to(a.x as f32, a.y as f32),
             PathEl::QuadTo(a, c) => b.quad_to(a.x as f32, a.y as f32, c.x as f32, c.y as f32),
@@ -668,6 +676,19 @@ impl Replayer<'_> {
                 if b.y1 < y0d || b.y0 > y1d || (is_text && (b.y0 < y0d || b.y0 >= y1d)) {
                     continue;
                 }
+            }
+            if let Some((rule, transform, color, rect)) = cmd.as_rect_fill() {
+                // The `Fill` command `cmd.get()` expands to, without building its path.
+                let Some(fill) = paint_fill(&Paint::Solid(color), None, 1.0, rule, self.gray) else {
+                    continue;
+                };
+                let Some(p) = path_from_elements(rect.path_elements(0.1)) else { continue };
+                surface.push_transform(&tf(transform));
+                surface.set_fill(Some(fill));
+                surface.set_stroke(None);
+                surface.draw_path(&p);
+                surface.pop();
+                continue;
             }
             match &*cmd.get() {
                 RenderCommand::PushLayer(c) => {

@@ -40,6 +40,16 @@ pub enum Command {
 }
 
 impl Command {
+    /// A solid rectangle fill as its fill rule, transform, colour and rectangle: what
+    /// [`get`](Self::get) expands into a `Fill` command with the rectangle's path, read
+    /// without building that path.
+    pub fn as_rect_fill(&self) -> Option<(Fill, Affine, Color, Rect)> {
+        match self {
+            Command::RectFill(r) => Some((r.fill, r.transform, r.color, r.rect)),
+            _ => None,
+        }
+    }
+
     /// The command as `anyrender::Scene` records it.
     pub fn get(&self) -> Cow<'_, RenderCommand> {
         match self {
