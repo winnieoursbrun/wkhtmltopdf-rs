@@ -11,7 +11,7 @@ use pdf_writer::{Chunk, Finish, Ref, TextStr};
 use crate::chunk_container::ChunkContainer;
 use crate::configure::validate::VersionedFeature;
 use crate::configure::ValidationError;
-use crate::content::ContentBuilder;
+use crate::content::{ContentBuilder, PendingContent};
 use crate::error::KrillaResult;
 use crate::geom::{Rect, Size, Transform};
 use crate::interactive::annotation::Annotation;
@@ -193,6 +193,8 @@ pub struct Page<'a> {
     page_settings: PageSettings,
     page_index: usize,
     page_stream: Stream,
+    /// wkhtmltopdf-rs: the content of an applied draft, put together when compressed.
+    pending: Option<PendingContent>,
     num_mcids: i32,
     annotations: Vec<Annotation>,
 }
@@ -211,6 +213,7 @@ impl<'a> Page<'a> {
             page_index,
             num_mcids: 0,
             page_stream: Stream::empty(),
+            pending: None,
             annotations: vec![],
         }
     }
@@ -278,12 +281,14 @@ impl<'a> Page<'a> {
         if draft.content.log.failed || !compatible {
             return Err(draft);
         }
-        self.page_stream = ContentBuilder::merge_draft(
+        let (stream, pending) = ContentBuilder::merge_draft(
             self.root_transform(),
             draft.content,
             self.sc,
             self.chunk_container,
         );
+        self.page_stream = stream;
+        self.pending = Some(pending);
         self.num_mcids = 0;
         Ok(())
     }
@@ -310,6 +315,7 @@ impl Drop for Page<'_> {
         let stream = std::mem::replace(&mut self.page_stream, Stream::empty());
         let page = InternalPage::new(
             stream,
+            self.pending.take(),
             self.sc,
             annotations,
             struct_parent,
@@ -347,10 +353,17 @@ impl NumberingStyle {
     }
 }
 
+/// wkhtmltopdf-rs: the chunk of a page's content stream, and the limits of the content
+/// written when it was compressed (registered when the chunk is written).
+pub(crate) struct PageChunk {
+    pub(crate) chunk: Chunk,
+    pub(crate) limits: Option<pdf_writer::Limits>,
+}
+
 pub(crate) struct InternalPage {
     pub stream_ref: Ref,
     pub stream_resources: ResourceDictionary,
-    pub stream_chunk: Deferred<Chunk>,
+    pub stream_chunk: Deferred<PageChunk>,
     pub page_settings: PageSettings,
     pub page_index: usize,
     pub struct_parent: Option<i32>,
@@ -361,6 +374,7 @@ pub(crate) struct InternalPage {
 impl InternalPage {
     pub(crate) fn new(
         mut stream: Stream,
+        pending: Option<PendingContent>,
         sc: &mut SerializeContext,
         annotations: Vec<Annotation>,
         struct_parent: Option<i32>,
@@ -376,16 +390,25 @@ impl InternalPage {
         let stream_resources = std::mem::take(&mut stream.resource_dictionary);
         let mut chunk = sc.new_chunk();
 
+        let content = std::mem::take(&mut stream.content);
         let stream_chunk = Deferred::new(move || {
+            // wkhtmltopdf-rs: the content of an applied draft is put together here.
+            let (content, limits) = match pending {
+                Some(p) => {
+                    let (content, limits) = p.assemble();
+                    (content, Some(limits))
+                }
+                None => (content, None),
+            };
             let page_stream =
-                FilterStreamBuilder::new_from_content_stream(&stream.content, &serialize_settings)
+                FilterStreamBuilder::new_from_content_stream(&content, &serialize_settings)
                     .finish(&serialize_settings.clone());
 
             let mut stream = chunk.stream(stream_ref, page_stream.encoded_data());
             page_stream.write_filters(stream.deref_mut());
 
             stream.finish();
-            chunk
+            PageChunk { chunk, limits }
         });
 
         Self {

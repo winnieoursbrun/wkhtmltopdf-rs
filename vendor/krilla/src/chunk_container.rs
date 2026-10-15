@@ -10,7 +10,6 @@ use crate::metadata::PageLayout;
 use crate::serialize::SerializeContext;
 use crate::util::{stable_hash_base64, Deferred};
 
-type DChunk = Deferred<Chunk>;
 
 /// Collects all chunks that we create while building
 /// the PDF and then writes them out in an orderly manner.
@@ -25,7 +24,7 @@ pub(crate) struct StreamChunks {
     pub(crate) fonts: Vec<Chunk>,
     pub(crate) shading_functions: Vec<Chunk>,
     pub(crate) patterns: Vec<Chunk>,
-    pub(crate) pages: Vec<DChunk>,
+    pub(crate) pages: Vec<Deferred<crate::page::PageChunk>>,
     pub(crate) embedded_files: Vec<Chunk>,
     pub(crate) icc_profiles: Vec<Chunk>,
     pub(crate) x_objects: Vec<Chunk>,
@@ -438,6 +437,16 @@ impl Visit for NonStreamChunks {
         self.pages.visit(sc, f)?;
         self.embedded_files.visit(sc, f)?;
 
+        Ok(())
+    }
+}
+
+impl Visit for crate::page::PageChunk {
+    fn visit(&self, sc: &mut SerializeContext, f: &mut impl FnMut(&Chunk)) -> KrillaResult<()> {
+        if let Some(limits) = &self.limits {
+            sc.register_limits(limits);
+        }
+        f(&self.chunk);
         Ok(())
     }
 }

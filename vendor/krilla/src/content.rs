@@ -37,7 +37,7 @@ use crate::stream::Stream;
 use crate::text::group::{use_text_spanner, GlyphGroup, GlyphGrouper, GlyphSpan, GlyphSpanner};
 use crate::text::type3::ColoredGlyph;
 use crate::text::{Font, FontContainer, FontIdentifier, PdfFont, PDF_UNITS_PER_EM};
-use crate::text::{Glyph, GlyphId, KrillaGlyph};
+use crate::text::{Glyph, GlyphId, KrillaGlyph, PDFGlyph};
 use crate::util::{calculate_stroke_bbox, NameExt};
 
 /// wkhtmltopdf-rs: what a page drafted away from the document (`crate::draft`) still has to
@@ -66,6 +66,153 @@ pub(crate) struct TextHole {
     pub(crate) context_color: rgb::Color,
     pub(crate) text: String,
     pub(crate) font_size: f32,
+}
+
+/// wkhtmltopdf-rs: a text object of a merged draft whose operators are written by the
+/// thread that compresses the page ([`PendingContent::assemble`]): plain text in one CID
+/// font, whose glyphs got their CIDs and font its resource name when the draft was merged.
+pub(crate) struct DeferredText {
+    x: f32,
+    y: f32,
+    mode: TextRenderingMode,
+    glyphs: Vec<KrillaGlyph>,
+    cids: Vec<u16>,
+    font: Font,
+    font_name: String,
+    font_size: f32,
+}
+
+/// What goes where a text object was left out of a draft: operators written when merging
+/// (`start..end` of [`PendingContent::text`]), or a [`DeferredText`].
+enum TextPiece {
+    Written(usize, usize),
+    Deferred(usize),
+}
+
+/// wkhtmltopdf-rs: the content stream of a merged draft, put together on the thread that
+/// compresses it.
+pub(crate) struct PendingContent {
+    bytes: Vec<u8>,
+    text: Vec<u8>,
+    holes: Vec<(usize, TextPiece)>,
+    deferred: Vec<DeferredText>,
+    /// Where the deferred text is written (empty, with the document's settings).
+    content: Content,
+}
+
+impl PendingContent {
+    /// The page's content stream, and the limits of the operators written here.
+    pub(crate) fn assemble(self) -> (Vec<u8>, pdf_writer::Limits) {
+        let mut content = self.content;
+        let mut written = Vec::with_capacity(self.deferred.len());
+        for t in &self.deferred {
+            let start = content.len();
+            write_deferred_text(&mut content, t);
+            written.push((start, content.len()));
+        }
+        let deferred = content.into_raw();
+        let mut out = Vec::with_capacity(self.bytes.len() + self.text.len() + deferred.len());
+        let mut pos = 0;
+        for (offset, piece) in &self.holes {
+            out.extend_from_slice(&self.bytes[pos..*offset]);
+            match *piece {
+                TextPiece::Written(start, end) => out.extend_from_slice(&self.text[start..end]),
+                TextPiece::Deferred(i) => {
+                    let (start, end) = written[i];
+                    out.extend_from_slice(&deferred[start..end]);
+                }
+            }
+            pos = *offset;
+        }
+        out.extend_from_slice(&self.bytes[pos..]);
+        (out, deferred.limits().clone())
+    }
+}
+
+/// The operators `ContentBuilder::text_object_body` writes for `t` when its text needs no
+/// `/ActualText` span and all its glyphs are in the CID font (the `GlyphSpan::Unspanned`
+/// path, with the CIDs looked up beforehand).
+fn write_deferred_text(content: &mut Content, t: &DeferredText) {
+    let size = t.font_size;
+    let units_per_em = PDF_UNITS_PER_EM;
+    let (mut cur_x, mut cur_y) = (t.x, t.y);
+    let mut glyphs: &[KrillaGlyph] = &t.glyphs;
+    let mut cids: &[u16] = &t.cids;
+    let mut encoded = Vec::new();
+    while let Some(first) = glyphs.first() {
+        // `GlyphGrouper`, with a single font.
+        let (y_offset, y_advance) = (first.y_offset(1.0), first.y_advance(1.0));
+        let mut count = 1;
+        for next in &glyphs[1..] {
+            if y_offset != next.y_offset(1.0) || y_advance != 0.0 || next.y_advance(1.0) != 0.0 {
+                break;
+            }
+            count += 1;
+        }
+        let (group, rest) = glyphs.split_at(count);
+        let (group_cids, rest_cids) = cids.split_at(count);
+        glyphs = rest;
+        cids = rest_cids;
+
+        // `fill_stroke_glyph_group` (a CID font is never forced to fill).
+        content.set_text_rendering_mode(match t.mode {
+            TextRenderingMode::Fill => TextRenderingMode::Fill,
+            TextRenderingMode::FillStroke => TextRenderingMode::FillStroke,
+            _ => TextRenderingMode::Stroke,
+        });
+        // `encode_consecutive_glyph_run`.
+        content.set_font(t.font_name.to_pdf_name(), size);
+        content.set_text_matrix(
+            Transform::from_row(1.0, 0.0, 0.0, -1.0, cur_x, cur_y - y_offset * size)
+                .to_pdf_transform(),
+        );
+        if let ([glyph], [cid]) = (group, group_cids) {
+            if approx_eq!(f32, glyph.x_offset(1.0), 0.0, epsilon = 0.001) {
+                // `encode_single_glyph`.
+                encoded.clear();
+                PDFGlyph::Cid(*cid).encode_into(&mut encoded);
+                content.show(Str(&encoded));
+                cur_x += glyph.x_advance(size);
+                cur_y -= y_advance * size;
+                continue;
+            }
+        }
+        // `encode_glyphs_with_individual_positioning`.
+        encoded.clear();
+        let mut adjustment = 0.0;
+        let mut positioned = content.show_positioned();
+        let mut items = positioned.items();
+        for (glyph, cid) in group.iter().zip(group_cids) {
+            let scale = |val| val * units_per_em;
+            let x_advance = scale(glyph.x_advance(1.0));
+            let font_advance = t
+                .font
+                .advance_width(glyph.glyph_id())
+                .map(|n| scale(n / t.font.units_per_em()));
+            let x_offset = scale(glyph.x_offset(1.0));
+            adjustment += x_offset;
+            if !approx_eq!(f32, adjustment, 0.0, epsilon = 0.001) {
+                if !encoded.is_empty() {
+                    items.show(Str(&encoded));
+                    encoded.clear();
+                }
+                items.adjust(-(adjustment / units_per_em * PDF_UNITS_PER_EM));
+                adjustment = 0.0;
+            }
+            PDFGlyph::Cid(*cid).encode_into(&mut encoded);
+            if let Some(font_advance) = font_advance {
+                adjustment += x_advance - font_advance;
+            }
+            adjustment -= x_offset;
+            cur_x += glyph.x_advance(size);
+        }
+        if !encoded.is_empty() {
+            items.show(Str(&encoded));
+        }
+        items.finish();
+        positioned.finish();
+        cur_y -= y_advance * size;
+    }
 }
 
 /// wkhtmltopdf-rs: a drafted page content stream (`ContentBuilder::finish_draft`).
@@ -156,7 +303,7 @@ impl ContentBuilder {
         draft: DraftContent,
         sc: &mut SerializeContext,
         chunk_container: &mut ChunkContainer,
-    ) -> Stream {
+    ) -> (Stream, PendingContent) {
         let DraftContent {
             bytes,
             limits,
@@ -165,8 +312,9 @@ impl ContentBuilder {
             log,
         } = draft;
         let mut sb = ContentBuilder::new(root_transform, false, sc);
-        // Where each text object goes in the draft, and its operations in `sb.content`.
-        let mut holes: Vec<(usize, usize, usize)> = Vec::new();
+        // Where each text object goes in the draft, and what goes there.
+        let mut holes: Vec<(usize, TextPiece)> = Vec::new();
+        let mut deferred: Vec<DeferredText> = Vec::new();
         for event in log.events {
             match event {
                 DraftEvent::ExtGState(state) => {
@@ -175,6 +323,47 @@ impl ContentBuilder {
                     );
                 }
                 DraftEvent::Text(h) => {
+                    let h = *h;
+                    // The glyphs and their texts are registered in the font in document
+                    // order; the operators of plain text in the CID font are written on the
+                    // thread that compresses the page.
+                    let font_container = sc.register_font_container(h.font.clone());
+                    let span = is_reversed(&h.glyphs)
+                        || use_text_spanner(
+                            &h.glyphs,
+                            &h.text,
+                            h.context_color,
+                            &mut font_container.borrow_mut(),
+                        );
+                    let cids = (!span)
+                        .then(|| {
+                            let fc = font_container.borrow();
+                            h.glyphs
+                                .iter()
+                                .map(|g| match fc.font_identifier(ColoredGlyph::new(g.glyph_id(), h.context_color)) {
+                                    Some(FontIdentifier::Cid(_)) => fc.cid_font().get_cid(g.glyph_id()),
+                                    _ => None,
+                                })
+                                .collect::<Option<Vec<u16>>>()
+                        })
+                        .flatten();
+                    if let Some(cids) = cids {
+                        let id = font_container.borrow().cid_font().identifier();
+                        let font_name =
+                            sb.rd_builder.register_resource(sc.register_font_identifier(id));
+                        holes.push((h.offset, TextPiece::Deferred(deferred.len())));
+                        deferred.push(DeferredText {
+                            x: h.x,
+                            y: h.y,
+                            mode: h.mode,
+                            glyphs: h.glyphs,
+                            cids,
+                            font: h.font,
+                            font_name,
+                            font_size: h.font_size,
+                        });
+                        continue;
+                    }
                     let start = sb.content.len();
                     sb.text_object_body(
                         h.x,
@@ -186,24 +375,24 @@ impl ContentBuilder {
                         h.context_color,
                         &h.text,
                         h.font_size,
+                        Some(span),
                     );
-                    holes.push((h.offset, start, sb.content.len()));
+                    holes.push((h.offset, TextPiece::Written(start, sb.content.len())));
                 }
             }
         }
         let text = std::mem::replace(&mut sb.content, Content::new()).into_raw();
         sc.register_limits(text.limits());
         sc.register_limits(&limits);
-        let mut out = Vec::with_capacity(bytes.len() + text.len());
-        let mut pos = 0;
-        for (offset, start, end) in holes {
-            out.extend_from_slice(&bytes[pos..offset]);
-            out.extend_from_slice(&text[start..end]);
-            pos = offset;
-        }
-        out.extend_from_slice(&bytes[pos..]);
         validation_errors.extend(sb.validation_errors);
-        Stream::new(out, bbox, validation_errors, sb.rd_builder.finish(), false)
+        let pending = PendingContent {
+            bytes,
+            text: text.to_vec(),
+            holes,
+            deferred,
+            content: sc.new_content(),
+        };
+        (Stream::new(Vec::new(), bbox, validation_errors, sb.rd_builder.finish(), false), pending)
     }
 
     pub(crate) fn content_save_state(&mut self) {
@@ -831,6 +1020,7 @@ impl ContentBuilder {
                         context_color,
                         text,
                         font_size,
+                        None,
                     );
                 }
                 sb.content.end_text();
@@ -854,6 +1044,7 @@ impl ContentBuilder {
         context_color: rgb::Color,
         text: &str,
         font_size: f32,
+        span: Option<bool>,
     ) {
         let sb = self;
         let mut cur_x = x;
@@ -861,19 +1052,20 @@ impl ContentBuilder {
 
         // When the glyph ranges are monotonically decreasing, the glyphs are in reverse
         // order and we should write `/ReversedChars` marked content.
-        let reversed = glyphs.len() > 1
-            && glyphs
-                .windows(2)
-                .all(|w| w[0].text_range().start >= w[1].text_range().end);
+        let reversed = is_reversed(glyphs);
 
         let font_container = sc.register_font_container(font.clone());
-        let do_text_span = reversed
-            || use_text_spanner(
-                glyphs,
-                text,
-                context_color,
-                &mut font_container.borrow_mut(),
-            );
+        // wkhtmltopdf-rs: `span` is the decision of a caller (merging a draft) that already
+        // registered the glyphs and their texts in the font.
+        let do_text_span = span.unwrap_or_else(|| {
+            reversed
+                || use_text_spanner(
+                    glyphs,
+                    text,
+                    context_color,
+                    &mut font_container.borrow_mut(),
+                )
+        });
 
         if do_text_span {
             // Separate into distinct glyph runs that either are encoded using actual text, or are
@@ -1527,4 +1719,13 @@ fn get_glyphs_bbox(glyphs: &[impl Glyph], x: f32, y: f32, size: f32, font: Font)
     }
 
     Rect::from_ltrb(bl, bt, br, bb).unwrap()
+}
+
+/// Whether the glyph ranges are monotonically decreasing: the glyphs are in reverse order
+/// and are written in `/ReversedChars` marked content.
+fn is_reversed(glyphs: &[impl Glyph]) -> bool {
+    glyphs.len() > 1
+        && glyphs
+            .windows(2)
+            .all(|w| w[0].text_range().start >= w[1].text_range().end)
 }
