@@ -8,6 +8,34 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 
 ## [Unreleased]
 
+### Added
+
+- Rendering fidelity corpus (`tests/fidelity/`): 75 feature-focused cases compared with PDFs
+  rendered by wkhtmltopdf 0.12.6, per-page SSIM thresholds and a scoreboard (`REPORT.md`).
+
+### Fixed
+
+Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.940.
+
+- Pagination: page-top margins are truncated like QtWebKit, the CSS3 `break-*` names are ignored,
+  fixed and absolute boxes are placed against the document span, pages are clipped horizontally
+  to the printable area, `position: relative` moves inline elements.
+- Tables: HTML table attributes (`border`, `frame`, `rules`, `cellpadding`, `cellspacing`,
+  `align`, `valign`, `nowrap`), captions, WebKit's column and row sizing (spans, fixed layout,
+  `<col>`), collapsed border styles, `empty-cells: hide`.
+- Text: QtWebKit's word measurement and line breaking, glyphs at unrounded advances, whole-pixel
+  `letter-spacing`, `word-spacing` and `line-height`, kerning and ligatures on spaced text,
+  `@font-face` naming and failed loads, the bold fallback run bug, sub/super offsets, text
+  decorations, CSS counters and quotes, all list marker types and WebKit bullet shapes.
+- Forms drawn in Qt's Windows style (checkboxes, radios, buttons, list boxes, fieldset legends,
+  range/progress/meter/file inputs, placeholders).
+- `--zoom` and `--dpi` round lengths in device pixels and truncate border widths; `--no-images`
+  keeps unsized images on their line.
+- Inline boxes take their margin, border and padding in the line and paint them per fragment;
+  outlines, Qt dash patterns, inset/outset/groove/ridge colours, blurred shadows, repeated
+  backgrounds as tiling patterns, `unicode-bidi` embeddings and overrides, right-to-left list
+  markers, `visibility: hidden` inline text.
+
 ## [0.1.0-rc.1] - 2026-10-16
 
 First release candidate for 0.1.0. No functional change since 0.1.0-alpha.3: the command-line
