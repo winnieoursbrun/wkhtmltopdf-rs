@@ -18,12 +18,12 @@ a          *  0.98
 fonts      *  0.98  # QtWebKit picks web fonts by their internal family name (BrandMono -> DejaVu Sans Mono regular)
 invoice    *  0.97
 large      *  0.98
-layout     *  0.88  # list markers, badge padding
+layout     *  0.94  # list markers
 medium     1  0.99
 medium     2  0.99
 medium     3  0.99
 medium     4  0.99
-report     1  0.81  # cover: centred heading glyph positions
+report     1  0.84  # cover: centred heading glyph positions
 report     2  0.96
 report     3  0.99  # two lines only: glyph positions dominate
 report     4  0.95

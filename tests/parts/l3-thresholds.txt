@@ -20,7 +20,7 @@ copies-nocollate       3  0.99
 copies-nocollate       4  0.99
 cover-toc-pages        1  0.99
 cover-toc-pages        2  0.99
-cover-toc-pages        3  0.93
+cover-toc-pages        3  0.94
 cover-toc-pages        4  0.99
 cover-toc-pages        5  0.99
 cover-toc-pages        6  0.99
@@ -70,7 +70,7 @@ page-offset            1  0.98
 page-offset            2  0.98
 page-offset            3  0.98
 page-offset            4  0.98
-toc-default            1  0.97
+toc-default            1  0.98
 toc-default            2  0.99
 toc-default            3  0.99
 toc-default            4  0.99
