@@ -109,6 +109,7 @@ type WinAscentCache = HashMap<(u64, u32), Option<f32>>;
 /// This is the ascent browsers use as the top of the "em box" when positioning overlines. It
 /// is typically taller than the hhea ascent Parley exposes via [`parley::layout::run::RunMetrics`].
 /// Returns `None` when the font has no OS/2 table.
+#[allow(dead_code)]
 fn win_ascent(cache: &mut WinAscentCache, font: &parley::FontData, font_size: f32) -> Option<f32> {
     let ratio = *cache
         .entry((font.data.id(), font.index))
@@ -118,6 +119,7 @@ fn win_ascent(cache: &mut WinAscentCache, font: &parley::FontData, font_size: f3
 
 /// The unitless `usWinAscent / unitsPerEm` ratio for a font face, or `None` when the font
 /// has no usable head/OS/2 table.
+#[allow(dead_code)]
 fn win_ascent_ratio(font: &parley::FontData) -> Option<f32> {
     use skrifa::raw::{FontRef, TableProvider as _};
     let font_ref = FontRef::from_index(font.data.as_ref(), font.index).ok()?;
@@ -242,6 +244,7 @@ fn resolve_decoration_entry(doc: &BaseDocument, node_id: NodeId) -> DecorationSt
 /// the box's own font, so we prefer the values from a run whose innermost node *is* the
 /// decorating box (its own text), falling back to the first run it covers.
 #[derive(Clone)]
+#[allow(dead_code)]
 struct DecorationRunGeometry {
     /// The baseline the decoration is positioned from (the run's own, `vertical-align`
     /// shifted, baseline).
@@ -305,6 +308,8 @@ fn ellipsis_glyph(font: &peniko::FontData, size: f32) -> Option<(u32, f64)> {
 ///
 /// The result is floored to a whole number of device pixels (minimum 1), matching
 /// browsers, which snap decoration thickness to whole pixels.
+// wkhtmltopdf-rs: unused, decorations are 1px lines as in QtWebKit 2.2 (kept for upstream).
+#[allow(dead_code)]
 fn decoration_size(
     thickness: &TextDecorationLength,
     metric_size: f32,
