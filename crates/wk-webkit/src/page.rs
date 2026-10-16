@@ -886,24 +886,30 @@ impl WebPage {
             "border:1px solid;border-color:#d4d0c8 black black #d4d0c8;background-color:#d4d0c8;";
         const RAISED_IN: &str = "border:1px solid;border-color:white #6a6864 #6a6864 white;";
         let button = |m: &mut blitz_dom::DocumentMutator, pos: &str, down: bool, enabled: bool| {
-            // A disabled scroll bar (every option visible) draws its arrows in Qt's
-            // disabled-text grey.
+            // QWindowsStyle's arrow: rows 7, 5, 3 and 1px wide (or the reverse), 3px from the
+            // left and 5px from the top of the button's padding box. A disabled scroll bar
+            // (every option visible) draws it in Qt's disabled-text grey over a white copy
+            // 1px down and right.
             let ink = if enabled { "black" } else { "#a0a0a4" };
-            let arrow = if down {
-                format!("border-top:4px solid {ink}")
-            } else {
-                format!("border-bottom:4px solid {ink}")
-            };
-            let a = el(
-                m,
-                format!(
-                    "position:absolute;left:3px;top:{}px;width:1px;height:0;border-left:3px solid transparent;border-right:3px solid transparent;{arrow};",
-                    if down { 7 } else { 5 }
-                ),
-                &[],
-            );
-            let inner = el(m, format!("position:absolute;left:0;top:0;right:0;bottom:0;{RAISED_IN}"), &[]);
-            el(m, format!("position:absolute;{pos}width:14px;{RAISED}"), &[inner, a])
+            let mut children =
+                vec![el(m, format!("position:absolute;left:0;top:0;right:0;bottom:0;{RAISED_IN}"), &[])];
+            let layers: &[(&str, i32)] = if enabled { &[(ink, 0)] } else { &[("white", 1), (ink, 0)] };
+            for &(color, shift) in layers {
+                for row in 0..4 {
+                    let inset = if down { row } else { 3 - row };
+                    children.push(el(
+                        m,
+                        format!(
+                            "position:absolute;left:{}px;top:{}px;width:{}px;height:1px;background-color:{color};",
+                            3 + inset + shift,
+                            5 + row + shift,
+                            7 - 2 * inset
+                        ),
+                        &[],
+                    ));
+                }
+            }
+            el(m, format!("position:absolute;{pos}width:14px;{RAISED}"), &children)
         };
         for s in found {
             let mut outer_style = format!(
