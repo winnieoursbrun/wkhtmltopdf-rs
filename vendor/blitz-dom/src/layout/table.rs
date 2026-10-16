@@ -61,6 +61,8 @@ pub struct TableContext {
     calc_values: Vec<LengthPercentage>,
     /// wkhtmltopdf-rs: whether the fixed table layout algorithm applies
     pub is_fixed: bool,
+    /// wkhtmltopdf-rs: the specified column widths of the fixed table layout
+    pub fixed_widths: Vec<Option<CellWidth>>,
     /// wkhtmltopdf-rs: the table's caption (WebKit 534 lays out and paints only
     /// the first one) and whether it sits below the table (`caption-side: bottom`)
     pub caption: Option<(NodeId, bool)>,
@@ -68,6 +70,14 @@ pub struct TableContext {
     /// included (0 without a caption). The table's own box (background and
     /// borders) is the border box less this extent, at its top or bottom.
     pub caption_extent: AtomicRefCell<f32>,
+}
+
+impl TableContext {
+    /// wkhtmltopdf-rs: the grid item style of the cell at `index` (its row
+    /// placement aside).
+    pub(crate) fn cell_style(&self, index: usize) -> &taffy::Style<Atom> {
+        &self.cell_styles[self.cells[index].style as usize]
+    }
 }
 
 // #[derive(Debug, Clone, Eq, PartialEq)]
@@ -342,7 +352,9 @@ impl ColumnCursor {
             self.rowspans.resize(end as usize, 0);
         }
         for remaining in &mut self.rowspans[self.col as usize..end as usize] {
-            *remaining = rowspan - 1;
+            // wkhtmltopdf-rs: `start_row` decrements before the next row is read, so a
+            // cell spanning `rowspan` rows occupies the column for `rowspan - 1` more rows.
+            *remaining = rowspan;
         }
         self.col = end;
         self.num_columns = self.num_columns.max(end);
@@ -495,6 +507,17 @@ pub(crate) fn build_table_context(
     for child_id in children.iter().copied() {
         collect_columns(doc, child_id, wm, &mut columns, &mut column_sizes);
     }
+    // wkhtmltopdf-rs: the column widths of WebKit's fixed table layout
+    // (`FixedTableLayout::calcWidthArray`), and the `<col>` widths of the
+    // automatic one (`AutoTableLayout::fullRecalc`): `<col>` widths, as specified.
+    let mut fixed_widths: Vec<Option<CellWidth>> = column_sizes
+        .iter()
+        .map(|c| match c.max.into_raw().tag() {
+            taffy::CompactLength::LENGTH_TAG => Some(CellWidth::Fixed(c.max.into_raw().value())),
+            taffy::CompactLength::PERCENT_TAG => Some(CellWidth::Percent(c.max.into_raw().value())),
+            _ => None,
+        })
+        .collect();
     // Percentage column widths only take effect in the fixed table layout algorithm
     if !is_fixed {
         for column in column_sizes.iter_mut() {
@@ -503,6 +526,7 @@ pub(crate) fn build_table_context(
             }
         }
     }
+    let mut first_row_widths: Vec<(u16, u16, CellWidth)> = Vec::new();
     let mut first_cell_border: Option<ServoArc<Border>> = None;
     // Percentage widths set on first-row cells: (column index, percentage, padding + border)
     let mut percent_columns: Vec<(u16, f32, f32)> = Vec::new();
@@ -538,6 +562,7 @@ pub(crate) fn build_table_context(
                 &mut first_cell_border,
                 &mut percent_columns,
                 &mut cell_styles,
+                &mut first_row_widths,
             );
         }
     }
@@ -595,6 +620,20 @@ pub(crate) fn build_table_context(
         }
     }
 
+    // The first row's cells give the columns no `<col>` sized their specified
+    // width (not their border box: WebKit 534 adds no padding or border),
+    // shared between the columns they span.
+    fixed_widths.resize(num_columns as usize, None);
+    for (col, span, width) in first_row_widths.into_iter().filter(|_| is_fixed) {
+        for c in col as usize..(col as usize + span as usize).min(fixed_widths.len()) {
+            if fixed_widths[c].is_none() {
+                fixed_widths[c] = Some(match width {
+                    CellWidth::Fixed(v) => CellWidth::Fixed(v / span as f32),
+                    CellWidth::Percent(p) => CellWidth::Percent(p / span as f32),
+                });
+            }
+        }
+    }
     style.grid_template_columns = column_sizes.into_iter().map(|dim| dim.into()).collect();
     // A row's `height` is a minimum: the row grows to fit the content of its cells.
     // Excess table height is distributed to unconstrained rows (via the stretching of
@@ -675,6 +714,7 @@ pub(crate) fn build_table_context(
             border_style: first_cell_border,
             calc_values,
             is_fixed,
+            fixed_widths,
             caption,
             caption_extent: AtomicRefCell::new(0.0),
         },
@@ -823,6 +863,11 @@ fn collapse_borders(
     for (cell, (sides, halves)) in cells.iter_mut().zip(results) {
         cell.collapsed = Some(sides);
         let mut style = old_styles[cell.style as usize].clone();
+        // A content-box fixed width adds the cell's border halves
+        // (`computeBorderBoxLogicalWidth` with the collapsed borders).
+        if let (Some(CellWidth::Fixed(v)), taffy::BoxSizing::ContentBox) = (cell.spec_width, style.box_sizing) {
+            cell.spec_width = Some(CellWidth::Fixed(v + halves[1] + halves[3]));
+        }
         style.border = taffy::Rect {
             top: style_helpers::length(halves[0]),
             right: style_helpers::length(halves[1]),
@@ -927,6 +972,7 @@ fn collect_table_cells(
     first_cell_border: &mut Option<ServoArc<Border>>,
     percent_columns: &mut Vec<(u16, f32, f32)>,
     cell_styles: &mut CellStyleInterner,
+    first_row_widths: &mut Vec<(u16, u16, CellWidth)>,
 ) {
     let node = &mut doc.nodes[node_id];
 
@@ -978,6 +1024,7 @@ fn collect_table_cells(
                     first_cell_border,
                     percent_columns,
                     cell_styles,
+                    first_row_widths,
                 );
             }
             doc.nodes[node_id].children = children;
@@ -1020,6 +1067,7 @@ fn collect_table_cells(
                     first_cell_border,
                     percent_columns,
                     cell_styles,
+                    first_row_widths,
                 );
             }
             doc.nodes[node_id].children = children;
@@ -1058,6 +1106,18 @@ fn collect_table_cells(
                 style.min_size.width = style_helpers::length(0.0);
             }
 
+            if *row == 1 && is_fixed {
+                let width = style.size.width;
+                match width.tag() {
+                    taffy::CompactLength::LENGTH_TAG if width.value() > 0.0 => {
+                        first_row_widths.push((col, colspan.max(1), CellWidth::Fixed(width.value())));
+                    }
+                    taffy::CompactLength::PERCENT_TAG if width.value() > 0.0 => {
+                        first_row_widths.push((col, colspan.max(1), CellWidth::Percent(width.value())));
+                    }
+                    _ => {}
+                }
+            }
             // Column widths from `<col>` elements take precedence over cell widths
             let col_needs_width =
                 (col as usize) >= columns.len() || columns[col as usize].max.is_auto();
