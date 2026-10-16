@@ -18,7 +18,7 @@ a          *  0.97
 fonts      *  0.81  # QtWebKit picks web fonts by their internal family name (BrandMono -> DejaVu Sans Mono regular)
 invoice    *  0.92
 large      *  0.95
-layout     *  0.84  # list markers, rowspan/colspan table, badge padding
+layout     *  0.88  # list markers, badge padding
 medium     1  0.92
 medium     2  0.94
 medium     3  0.90
