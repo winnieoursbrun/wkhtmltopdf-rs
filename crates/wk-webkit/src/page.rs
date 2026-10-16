@@ -631,6 +631,7 @@ impl WebPage {
         self.undo_viewport_shifts();
         self.qt_selects();
         self.qt_widgets();
+        self.inline_edges();
         let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
         crate::timing("viewport set");
@@ -1109,6 +1110,118 @@ impl WebPage {
             let outer = m.create_element(span.clone(), kept);
             m.append_children(outer, &children);
             m.replace_node_with(id, &[outer]);
+        }
+    }
+
+    /// Horizontal margins, borders and padding of inline elements, which QtWebKit lays out
+    /// at the start of the element's first line fragment and the end of its last one;
+    /// parley has no inline edges. Each one becomes an inline-block of that width and no
+    /// height (`<wkedge data-edge="start|end">`) as the element's first (last) child: it
+    /// takes the room in the line, and blitz-paint finds where the element's border box
+    /// starts and ends from it (`draw_inline_backgrounds`).
+    fn inline_edges(&mut self) {
+        use style::values::computed::LengthPercentage;
+        use style::values::computed::length_percentage::Unpacked;
+        use style::values::generics::length::GenericMargin;
+        use style::values::specified::box_::{DisplayInside, DisplayOutside};
+        const EDGE: &str = "wkedge";
+        // Lengths in whole pixels (WebKit's `roundForImpreciseConversion`); percentages of
+        // the containing block are left out.
+        let px = |v: &LengthPercentage| match v.unpack() {
+            Unpacked::Length(l) => {
+                let x = l.px();
+                if (x.ceil() - x) <= 0.01 { x.ceil() } else { x.trunc() }
+            }
+            _ => 0.0,
+        };
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            let name = tag(n);
+            if name.is_empty()
+                || matches!(
+                    name,
+                    EDGE | "br"
+                        | "img"
+                        | "input"
+                        | "select"
+                        | "textarea"
+                        | "button"
+                        | "svg"
+                        | "canvas"
+                        | "iframe"
+                        | "object"
+                        | "embed"
+                        | "video"
+                        | "audio"
+                        | "math"
+                        | "html"
+                        | "body"
+                )
+            {
+                continue;
+            }
+            let Some(s) = n.primary_styles() else { continue };
+            let display = s.get_box().display;
+            if display.outside() != DisplayOutside::Inline || display.inside() != DisplayInside::Flow {
+                continue;
+            }
+            let margin = |m: &GenericMargin<LengthPercentage>| match m {
+                GenericMargin::LengthPercentage(lp) => px(lp),
+                _ => 0.0,
+            };
+            let b = s.get_border();
+            let border = |w: &style::values::computed::BorderSideWidth,
+                          st: style::values::specified::border::BorderStyle| {
+                if st.none_or_hidden() { 0.0 } else { w.0.to_f32_px() }
+            };
+            let (m, p) = (s.get_margin(), s.get_padding());
+            let start = margin(&m.margin_left)
+                + border(&b.border_left_width, b.border_left_style)
+                + px(&p.padding_left.0);
+            let end = margin(&m.margin_right)
+                + border(&b.border_right_width, b.border_right_style)
+                + px(&p.padding_right.0);
+            if start == 0.0 && end == 0.0 {
+                continue;
+            }
+            let has_edges = n.children.iter().filter_map(|&c| self.doc.get_node(c)).any(|c| tag(c) == EDGE);
+            if !has_edges {
+                found.push((id, start, end));
+            }
+        }
+        if found.is_empty() {
+            return;
+        }
+        let edge_name =
+            blitz_dom::QualName::new(None, blitz_dom::ns!(html), blitz_dom::LocalName::from(EDGE));
+        let attr = |name: &str, value: String| blitz_dom::Attribute {
+            name: blitz_dom::QualName::new(None, blitz_dom::ns!(), blitz_dom::LocalName::from(name)),
+            value,
+        };
+        let mut m = self.doc.mutate();
+        for (id, start, end) in found {
+            for (side, width) in [("start", start), ("end", end)] {
+                if width == 0.0 {
+                    continue;
+                }
+                let style = format!(
+                    "display:inline-block !important;width:{width}px !important;height:0 !important;\
+                     margin:0 !important;padding:0 !important;border:0 !important;\
+                     vertical-align:baseline !important;float:none !important;position:static !important;"
+                );
+                let e = m.create_element(
+                    edge_name.clone(),
+                    vec![attr("data-edge", side.to_string()), attr("style", style)],
+                );
+                if side == "start" {
+                    m.prepend_nodes(id, &[e]);
+                } else {
+                    m.append_children(id, &[e]);
+                }
+            }
         }
     }
 

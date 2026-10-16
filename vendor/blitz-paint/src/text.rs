@@ -13,15 +13,6 @@ use style::values::generics::text::{GenericTextDecorationInset, GenericTextDecor
 use crate::color::{Color, ToColorColor as _};
 use crate::{FONT_EMBOLDEN_ENABLED, SELECTION_COLOR};
 
-/// Draw the backgrounds of inline elements (e.g. `<span style="background: ...">`).
-///
-/// Each glyph run carries the node id of the innermost inline element it belongs to
-/// (via its brush). We look up that node's `background-color` and, if non-transparent,
-/// fill a rectangle covering the run's advance and its font's ascent/descent so that the
-/// background sits behind the text.
-///
-/// The inline root's own background is painted separately (as a normal block box), so
-/// runs belonging to the root are skipped to avoid drawing it twice.
 /// wkhtmltopdf-rs: the `position: relative` offset (`top`/`left`, else `-bottom`/`-right`) of
 /// the inline elements between a text run's node and its inline root, in scaled px. QtWebKit 2.2
 /// moves a relatively positioned inline box with its background and text.
@@ -50,6 +41,35 @@ pub(crate) fn relative_inline_offset(doc: &BaseDocument, node_id: NodeId, inline
     offset * scale
 }
 
+/// The edge boxes wk-webkit inserts as the first and last children of an inline element
+/// with horizontal margins, borders or padding (`<wkedge data-edge="start|end">`, an
+/// inline-block as wide as the edge, holding its place in the line).
+const EDGE_TAG: &str = "wkedge";
+
+/// One line's fragment of an inline element.
+struct Fragment {
+    id: NodeId,
+    depth: usize,
+    x0: f64,
+    x1: f64,
+    /// The border box starts (ends) on this line: its left (right) edge is drawn.
+    starts: bool,
+    ends: bool,
+    /// The element's own text: baseline, ascent and descent (rounded up, like QtWebKit's
+    /// FreeType metrics), else a descendant's.
+    metrics: Option<(f64, f64, f64)>,
+    own_metrics: bool,
+}
+
+/// Draw the backgrounds and borders of inline elements (e.g. `<span style="background:
+/// ...; border: ...">`), line by line, behind the text, as QtWebKit's InlineFlowBox does:
+/// a fragment covers the element's text and inline boxes on the line (its descendants'
+/// too) from the font's ascent to its descent, extended by the vertical padding and borders,
+/// and by the horizontal ones where the element starts and ends (the edge boxes of
+/// [`EDGE_TAG`]).
+///
+/// The inline root's own background is painted separately (as a normal block box), so
+/// the root is skipped.
 pub(crate) fn draw_inline_backgrounds<'a>(
     scene: &mut impl PaintScene,
     lines: impl Iterator<Item = Line<'a, TextBrush>>,
@@ -58,44 +78,206 @@ pub(crate) fn draw_inline_backgrounds<'a>(
     inline_root_id: NodeId,
     scale: f64,
 ) {
+    let mut fragments: Vec<Fragment> = Vec::new();
     for line in lines {
-        for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-                continue;
-            };
-
-            let node_id = glyph_run.style().brush.id;
-            if node_id == inline_root_id {
-                continue;
+        fragments.clear();
+        // Every element from `id` up to the root (exclusive), innermost first.
+        let extend = |fragments: &mut Vec<Fragment>,
+                          id: NodeId,
+                          x0: f64,
+                          x1: f64,
+                          metrics: Option<(f64, f64, f64)>| {
+            let mut chain = Vec::new();
+            let mut cur = Some(id);
+            while let Some(c) = cur {
+                if c == inline_root_id {
+                    break;
+                }
+                let Some(node) = doc.get_node(c) else { break };
+                if node.is_element() {
+                    chain.push(c);
+                }
+                cur = node.parent;
             }
-
-            let Some(styles) = doc.get_node(node_id).and_then(|node| node.primary_styles()) else {
-                continue;
-            };
-
+            if cur != Some(inline_root_id) {
+                return;
+            }
+            let depth = chain.len();
+            for (k, &c) in chain.iter().enumerate() {
+                let own = k == 0 && c == id;
+                match fragments.iter_mut().find(|f| f.id == c) {
+                    Some(f) => {
+                        f.x0 = f.x0.min(x0);
+                        f.x1 = f.x1.max(x1);
+                        if metrics.is_some() && (f.metrics.is_none() || (own && !f.own_metrics)) {
+                            f.metrics = metrics;
+                            f.own_metrics = own;
+                        }
+                    }
+                    None => fragments.push(Fragment {
+                        id: c,
+                        depth: depth - k,
+                        x0,
+                        x1,
+                        starts: false,
+                        ends: false,
+                        metrics,
+                        own_metrics: own && metrics.is_some(),
+                    }),
+                }
+            }
+        };
+        for item in line.items() {
+            match item {
+                PositionedLayoutItem::GlyphRun(glyph_run) => {
+                    let node_id = glyph_run.style().brush.id;
+                    if node_id == inline_root_id {
+                        continue;
+                    }
+                    let metrics = glyph_run.run().font_metrics();
+                    let x = glyph_run.offset() as f64;
+                    let m = (
+                        glyph_run.baseline() as f64,
+                        (metrics.ascent as f64).ceil(),
+                        (metrics.descent as f64).ceil(),
+                    );
+                    extend(&mut fragments, node_id, x, x + glyph_run.advance() as f64, Some(m));
+                }
+                PositionedLayoutItem::InlineBox(ibox) => {
+                    let id = NodeId::from_u64(ibox.id);
+                    let Some(node) = doc.get_node(id) else { continue };
+                    let Some(parent) = node.parent else { continue };
+                    let (x0, x1) = (ibox.x as f64, (ibox.x + ibox.width) as f64);
+                    if node.element_data().is_some_and(|e| &*e.name.local == EDGE_TAG) {
+                        let start = node.element_data().and_then(|e| e.attrs.iter().find(|a| &*a.name.local == "data-edge")).map(|a| a.value.as_str()) != Some("end");
+                        // The edge box spans the margin, border and padding: the border box
+                        // starts after the margin (ends before it).
+                        let margin = doc
+                            .get_node(parent)
+                            .and_then(|p| p.primary_styles())
+                            .map(|s| {
+                                let m = s.get_margin();
+                                let side = if start { &m.margin_left } else { &m.margin_right };
+                                match side {
+                                    style::values::generics::length::GenericMargin::LengthPercentage(lp) => {
+                                        lp.to_length().map_or(0.0, |l| l.px() as f64)
+                                    }
+                                    _ => 0.0,
+                                }
+                            })
+                            .unwrap_or(0.0);
+                        let (b0, b1) = if start { (x0 + margin, x1) } else { (x0, x1 - margin) };
+                        extend(&mut fragments, parent, b0, b1, None);
+                        if let Some(f) = fragments.iter_mut().find(|f| f.id == parent) {
+                            if start {
+                                f.starts = true;
+                                f.x0 = b0;
+                            } else {
+                                f.ends = true;
+                                f.x1 = b1;
+                            }
+                        }
+                    } else if ibox.kind == parley::InlineBoxKind::InFlow {
+                        extend(&mut fragments, parent, x0, x1, None);
+                    }
+                }
+            }
+        }
+        if fragments.is_empty() {
+            continue;
+        }
+        let line_baseline = line.metrics().baseline as f64;
+        // Outer elements first.
+        fragments.sort_by_key(|f| f.depth);
+        for f in &fragments {
+            let Some(node) = doc.get_node(f.id) else { continue };
+            let Some(styles) = node.primary_styles() else { continue };
             let current_color = styles.clone_color();
             let bg_color = styles
                 .get_background()
                 .background_color
                 .resolve_to_absolute(&current_color)
                 .as_srgb_color();
-            if bg_color == Color::TRANSPARENT {
+            let border = styles.get_border();
+            let side = |w: &style::values::computed::BorderSideWidth,
+                        st: style::values::specified::border::BorderStyle| {
+                if st.none_or_hidden() { 0.0 } else { w.0.to_f64_px() }
+            };
+            let (bt, bb) = (
+                side(&border.border_top_width, border.border_top_style),
+                side(&border.border_bottom_width, border.border_bottom_style),
+            );
+            let bl = if f.starts { side(&border.border_left_width, border.border_left_style) } else { 0.0 };
+            let br = if f.ends { side(&border.border_right_width, border.border_right_style) } else { 0.0 };
+            let has_border = bt > 0.0 || bb > 0.0 || bl > 0.0 || br > 0.0;
+            if bg_color == Color::TRANSPARENT && !has_border {
                 continue;
             }
-
-            let metrics = glyph_run.run().font_metrics();
-            let x = glyph_run.offset() as f64;
-            let w = glyph_run.advance() as f64;
-            let baseline = glyph_run.baseline() as f64;
-            // wkhtmltopdf-rs: QtWebKit's inline box is the font's ascent and
-            // descent each rounded up (FreeType metrics), like its line boxes.
-            let y0 = baseline - (metrics.ascent as f64).ceil();
-            let y1 = baseline + (metrics.descent as f64).ceil();
-            let rect = Rect::new(x, y0, x + w, y1);
-            let transform = transform.pre_translate(relative_inline_offset(doc, node_id, inline_root_id, scale));
-
-            scene.fill(Fill::NonZero, transform, bg_color, None, &rect);
+            // Vertical padding does not move the line; it widens the fragment.
+            let pad = styles.get_padding();
+            let len = |v: &style::values::computed::LengthPercentage| v.to_length().map_or(0.0, |l| l.px() as f64);
+            let (pt, pb) = (len(&pad.padding_top.0), len(&pad.padding_bottom.0));
+            let (baseline, ascent, descent) = f.metrics.unwrap_or((line_baseline, 0.0, 0.0));
+            let rect = Rect::new(f.x0, baseline - ascent - pt - bt, f.x1, baseline + descent + pb + bb);
+            if rect.width() <= 0.0 {
+                continue;
+            }
+            // A relatively positioned inline box moves with its background and border.
+            let transform = transform.pre_translate(relative_inline_offset(doc, f.id, inline_root_id, scale));
+            if bg_color != Color::TRANSPARENT {
+                scene.fill(Fill::NonZero, transform, bg_color, None, &rect);
+            }
+            if !has_border {
+                continue;
+            }
+            let color = |c: &style::values::computed::Color| c.resolve_to_absolute(&current_color).as_srgb_color();
+            let edges = [
+                (Rect::new(rect.x0, rect.y0, rect.x1, rect.y0 + bt), color(&border.border_top_color), border.border_top_style, bt, true),
+                (Rect::new(rect.x0, rect.y1 - bb, rect.x1, rect.y1), color(&border.border_bottom_color), border.border_bottom_style, bb, true),
+                (Rect::new(rect.x0, rect.y0, rect.x0 + bl, rect.y1), color(&border.border_left_color), border.border_left_style, bl, false),
+                (Rect::new(rect.x1 - br, rect.y0, rect.x1, rect.y1), color(&border.border_right_color), border.border_right_style, br, false),
+            ];
+            for (r, c, st, w, horizontal) in edges {
+                if w <= 0.0 {
+                    continue;
+                }
+                fill_border_side(scene, transform, r, c, st, w, horizontal);
+            }
         }
+    }
+}
+
+/// One side of an inline fragment's border: solid, or dashes (3 widths long) and dots
+/// (squares) with equal gaps, as QtWebKit strokes them; other styles are drawn solid.
+fn fill_border_side(
+    scene: &mut impl PaintScene,
+    transform: Affine,
+    r: Rect,
+    color: Color,
+    style: style::values::specified::border::BorderStyle,
+    width: f64,
+    horizontal: bool,
+) {
+    use style::values::specified::border::BorderStyle;
+    let dash = match style {
+        BorderStyle::Dashed => 3.0 * width,
+        BorderStyle::Dotted => width,
+        _ => {
+            scene.fill(Fill::NonZero, transform, color, None, &r);
+            return;
+        }
+    };
+    let len = if horizontal { r.width() } else { r.height() };
+    let mut t = 0.0;
+    while t < len {
+        let e = (t + dash).min(len);
+        let seg = if horizontal {
+            Rect::new(r.x0 + t, r.y0, r.x0 + e, r.y1)
+        } else {
+            Rect::new(r.x0, r.y0 + t, r.x1, r.y0 + e)
+        };
+        scene.fill(Fill::NonZero, transform, color, None, &seg);
+        t += 2.0 * dash;
     }
 }
 
