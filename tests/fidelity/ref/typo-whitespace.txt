@@ -1,0 +1,29 @@
+normal: several spaces and a newline and a tab.
+nowrap: The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to
+pre: several     spaces
+  indented line
+ tab-indented line
+pre-wrap: keeps spaces and wraps The quick brown
+fox jumps over the lazy dog while the committee
+reviews the quarterly figures. Several invoices remain
+unpaid, and the accounting team has asked every
+department to
+pre-line: collapses spaces
+but keeps
+newlines
+
+<pre> element
+  def f(x):
+    return x * 2 # comment
+
+Long word:
+Supercalifragilisticexpialidocious_and_some_more_characters_without_any_break_at_all_xxxxxxxxxxxxxxxx
+break-word:
+Supercalifragilisticexpialidocious_and_some_more_cha
+racters_without_any_break_at_all_xxxxxxxxxxxxxxxx
+Line
+breaks
+
+double break, then three nbsp, soft​hyphen​ated word​‐
+inside
+

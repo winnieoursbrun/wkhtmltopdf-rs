@@ -1,0 +1,18 @@
+Text Hello                     Size 5 12345678
+
+Password ••••••                    Email a@b.example
+
+Number 42                         Search query
+
+Placeholder placeholder text         Disabled disabled
+
+
+Readonly read only                 Styled     styled
+
+Hidden [] File Choose File No file selected
+
+Textarea
+Line one                           Styled textarea
+Line two of the textarea
+Line three
+

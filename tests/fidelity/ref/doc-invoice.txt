@@ -1,0 +1,70 @@
+                                                                                                             ACME Industries SAS
+                                                                                                                12 rue de l'Exemple
+                                                                                                                 75011 Paris, France
+                                                                                                           SIRET 123 456 789 00012
+                                                                                                               TVA FR12 123456789
+
+
+
+
+INVOICE               #INV-2026-0417
+
+Bill to                                        Ship to                                                                   2026-10-
+                                                                                            Invoice date
+Globex Corporation                             Globex Warehouse 3                                                              01
+Attn: Accounts Payable                         18 Dock Road                                                              2026-10-
+                                                                                            Due date
+4 Industrial Way                               Springfield, IL 62702                                                            31
+
+
+                                                                                                             P A ID
+Springfield, IL 62701, USA                                                                  PO number                   PO-88412
+                                                                                            Terms                           Net 30
+
+
+SKU            Description                                                                   Qty       Unit price     Amount
+
+SKU-1000       Industrial widget, galvanised                                                       1        20.00 €       20.00 €
+
+SKU-1037       Mounting bracket kit (pack of 12)                                                   2        33.07 €       66.03 €
+
+SKU-1074       Service hours — on-site installation and calibration of the main line               3        46.14 €      138.06 €
+
+SKU-1111       Replacement filter cartridge                                                        4        59.21 €      236.09 €
+
+SKU-1148       Shipping and handling                                                               1        72.28 €       72.12 €
+
+SKU-1185       Industrial widget, galvanised                                                       2        85.35 €      170.15 €
+
+SKU-1222       Mounting bracket kit (pack of 12)                                                   3        98.42 €      294.18 €
+
+SKU-1259       Service hours — on-site installation and calibration of the main line               4       111.49 €      444.21 €
+
+SKU-1296       Replacement filter cartridge                                                        1       124.56 €      124.24 €
+
+SKU-1333       Shipping and handling                                                               2       137.63 €      274.27 €
+
+SKU-1370       Industrial widget, galvanised                                                       3       150.70 €      450.30 €
+
+SKU-1407       Mounting bracket kit (pack of 12)                                                   4       163.77 €      652.33 €
+
+SKU-1444                                                                                           1       176.84 €      176.36 €
+               Service hours — on-site installation and calibration of the main line
+
+SKU-1481       Replacement filter cartridge                                                        2       189.91 €      378.39 €
+
+
+                                                                                               Subtotal               12 847.50 €
+                                                                                               Discount (5%)           −642.38 €
+                                                                                               VAT 20%                 2 441.02 €
+
+                                                                                                                    14 646.14
+                                                                                               Total due
+                                                                                                                            €
+
+
+  Payment
+
+  Bank transfer to IBAN FR76 3000 6000 0112 3456 7890 189, BIC AGRIFRPP. Please quote the invoice number. Late payments bear
+  interest at three times the legal rate plus a fixed recovery fee of 40 €.
+

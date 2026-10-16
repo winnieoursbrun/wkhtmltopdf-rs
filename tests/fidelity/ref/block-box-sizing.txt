@@ -1,0 +1,44 @@
+width 300px
+
+
+     width 300 + padding 30 + border 5 (content-
+     box)
+
+
+
+     same, box-sizing border-box
+
+
+
+     same, -webkit-box-sizing
+
+
+width 50%
+
+width 80%, max-width 400px
+
+width 100, min-width 250
+
+height 60px
+
+
+
+
+height 30, min-height 50
+
+
+
+
+  padding 5% 2% (of containing width)
+
+
+
+
+fixed height with long content
+that overflows the box
+because it does not fit within
+forty pixels
+
+
+after overflow
+

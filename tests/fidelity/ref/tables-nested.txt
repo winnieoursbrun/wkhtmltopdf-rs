@@ -1,0 +1,14 @@
+ outer a              outer b
+
+  inner 1   inner 2    100%
+  inner span
+
+
+The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures.       table in a right float
+Several invoices remain unpaid, and the accounting team has asked every department to confirm
+                                                                                                     row 2
+its open purchase orders before the end of the month. Meanwhile the warehouse reports that
+shipments to the northern region were delayed by roughly two days.
+
+ CSS table cell 30%                     CSS table cell auto, vertical-align middle by default? no: baseline
+

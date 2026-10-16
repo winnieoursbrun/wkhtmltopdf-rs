@@ -1,0 +1,48 @@
+line-height normal The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+line-height 1 The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+line-height 1.2 The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+line-height 1.5 The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+
+line-height 2 The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+
+orders before the end of the mont
+
+line-height 14px The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+line-height 22px The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+
+line-height 150% The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+line-height 1.3em The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+line-height 0.8 The quick brown fox jumps over the lazy dog while the
+committee reviews the quarterly figures. Several invoices remain unpaid, and
+the accounting team has asked every department to confirm its open purchase
+orders before the end of the mont
+
+Mixed BIG and small inline sizes on one line, then
+wrapping onto a second line to show the line box.
+

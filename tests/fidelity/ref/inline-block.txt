@@ -1,0 +1,19 @@
+                                      auto with text   top
+                                      wrapping
+40                70                  inside                         middle            text baseline
+
+
+                                                                              bottom
+
+
+whitespace            between          boxes            none           here
+
+font-size 0       parent
+
+30%                                              30%                             30%
+
+                                                               overflow
+ button   input                              padded            hidden ib
+                                                               baseline
+Badges: new       3     ok   inline with text.
+

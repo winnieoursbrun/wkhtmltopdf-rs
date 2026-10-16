@@ -1,0 +1,57 @@
+Order summary                              #58213
+
+
+                                                                                   Paid   Pending shipment
+    Heads up! Delivery is scheduled for next Tuesday between 9:00 and
+    12:00.
+
+
+
+    Customer                                               Shipping address
+
+    Jane Doe                                               4 Industrial Way
+    jane@example.com                                       Springfield, IL 62701
+    +1 555 0100                                            United States
+
+
+
+#            Product                                           Qty                                           Price
+
+1            Product A                                           1                                       $37.00
+
+2            Product B                                           2                                       $74.00
+
+3            Product C                                           3                                     $111.00
+
+4            Product D                                           4                                     $148.00
+
+5            Product E                                           5                                     $185.00
+
+6            Product F                                           6                                     $222.00
+
+7            Product G                                           7                                     $259.00
+
+8            Product H                                           8                                     $296.00
+
+                                                             Total                                  $1,284.00
+
+
+                                                         Thank you for your order.
+
+                                                         Sphinx of black quartz, judge my vow. Pack my box
+                                                         with five dozen liquor jugs.
+
+                                                           Track order    Contact us      Cancel
+Photo                             Render
+
+
+
+
+    Free returns within 30 days                                                                          new
+
+
+    Two-year warranty
+
+
+                                  60%
+

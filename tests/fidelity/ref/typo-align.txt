@@ -1,0 +1,56 @@
+text-align: left
+
+The quick brown fox jumps over the lazy dog while the committee reviews the
+quarterly figures. Several invoices remain unpaid, and the accounting team has
+asked every department to confirm its open purchase orders before the end of the
+month. Meanwhile the warehouse reports that shipments to the northern region were
+delayed by roughly two days.
+
+text-align: right
+
+      The quick brown fox jumps over the lazy dog while the committee reviews the
+     quarterly figures. Several invoices remain unpaid, and the accounting team has
+  asked every department to confirm its open purchase orders before the end of the
+month. Meanwhile the warehouse reports that shipments to the northern region were
+                                                        delayed by roughly two days.
+
+text-align: center
+
+   The quick brown fox jumps over the lazy dog while the committee reviews the
+  quarterly figures. Several invoices remain unpaid, and the accounting team has
+ asked every department to confirm its open purchase orders before the end of the
+month. Meanwhile the warehouse reports that shipments to the northern region were
+                            delayed by roughly two days.
+
+text-align: justify
+
+The quick brown fox jumps over the lazy dog while the committee reviews the
+quarterly ﬁgures. Several invoices remain unpaid, and the accounting team has
+asked every department to conﬁrm its open purchase orders before the end of the
+month. Meanwhile the warehouse reports that shipments to the northern region were
+delayed by roughly two days.
+
+text-indent 40px, justify
+
+       The quick brown fox jumps over the lazy dog while the committee reviews the
+quarterly ﬁgures. Several invoices remain unpaid, and the accounting team has
+asked every department to conﬁrm its open purchase orders before the end of the
+month. Meanwhile the warehouse reports that shipments to the northern region were
+delayed by roughly two days. Sphinx of black quartz, judge my vow. Pack my box
+with five dozen liquor jugs.
+
+text-indent -20px (hanging), padding-left 20px
+
+The quick brown fox jumps over the lazy dog while the committee reviews the
+  quarterly figures. Several invoices remain unpaid, and the accounting team has
+  asked every department to confirm its open purchase orders before the end of the
+  month. Meanwhile the warehouse reports that shipments to the northern region
+  were delayed by roughly two days.
+
+align attribute
+
+                                                           Right via the align attribute.
+
+                            Centred via the align attribute.
+                                   center element
+

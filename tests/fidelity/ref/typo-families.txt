@@ -1,0 +1,20 @@
+serif: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+sans-serif: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+monospace: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+cursive: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+fantasy: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Arial: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Helvetica: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Times New Roman: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Times: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Courier New: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Courier: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Georgia: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+Verdana: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+DejaVu Sans: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+DejaVu Serif: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+DejaVu Sans Mono: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+NoSuchFont: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+NoSuchFont, serif: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+No family set (UA default): Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+

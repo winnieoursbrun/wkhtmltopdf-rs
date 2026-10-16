@@ -1,0 +1,20 @@
+repeat                    repeat-x                 repeat-y            no-repeat center   no-repeat right bottom
+
+
+
+
+position 20px 10px        position 75% 25%         size 40px 20px      size cover         size contain
+
+
+
+
+-webkit-background-size   jpg                      gif                 svg                alpha png on red
+50%
+
+
+
+
+                                                          rgba color
+                                clip padding-box
+  origin content-box
+

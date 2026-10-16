@@ -1,0 +1,48 @@
+solid 1px                solid 3px                solid 6px                                   dashed 1px
+                                                                       solid 10px
+
+
+
+
+ dashed 3px               dashed 6px                                     dotted 1px           dotted 3px
+                                                     dashed 10px
+
+
+
+
+ dotted 6px                                           double 1px        double 3px             double 6px
+                            dotted 10px
+
+
+
+                            groove 1px              groove 3px          groove 6px
+  double 10px                                                                                  groove 10px
+
+
+
+ridge 1px                ridge 3px                ridge 6px                                   inset 1px
+                                                                       ridge 10px
+
+
+
+
+ inset 3px                inset 6px                                      outset 1px           outset 3px
+                                                     inset 10px
+
+
+
+                                                     none 1px           none 3px            none 6px               none 10px
+ outset 6px                 outset 10px
+
+
+
+hidden 1px              hidden 3px              hidden 6px         hidden 10px           mixed sides
+
+
+
+                                                                                             inline span with border wrapping across lines?
+ transparent sides        rgba border              groove light         top+left mitre
+
+
+inline boxes keep their borders on each fragment of the line
+

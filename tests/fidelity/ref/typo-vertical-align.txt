@@ -1,0 +1,14 @@
+xbaseline xsub xsuper xtop xtext-top xmiddle xbottom xtext-bottom x4px x-4px x50%
+
+  baseline     sub      super    top    text-top    middle      bottom      text-bottom
+
+H2O, E = mc2, xin, 1st, small big, footnote[1]
+
+With line-height 1.5: a 2 + b2 = c2, log10 .
+
+
+Big
+       top
+
+         bottommiddle
+

@@ -1,0 +1,140 @@
+                                                                                                                   Account statement
+                                                                                                                     Period 1 July — 30 September 2026
+Bank of Example                                                                                            Account FR76 3000 6000 0112 3456 7890 189
+Branch 0042 — Paris Bastille
+
+
+
+                                                                                       Mr John Smith
+                                                                                       8 avenue du Test
+                                                                                       75012 Paris
+
+
+
+
+              Opening balance                         Total debits                Total credits                             Closing balance
+               15 234.18 €                            8 412.55 €                  9 101.20 €                                 15 922.83 €
+
+
+
+Date                      Label                                                                   Debit            Credit            Balance
+
+2026-07-01                CARD PAYMENT SUPERMARKET 0423                                                   200.00                               15034.18
+
+2026-07-02                SEPA TRANSFER SALARY ACME                                                                          74.14             15108.32
+2026-07-03                DIRECT DEBIT ELECTRICITY                                                         80.29                               15028.04
+
+2026-07-04                ATM WITHDRAWAL PARIS 11                                                                           193.86             15221.89
+2026-07-05                CHEQUE 0001234                                                                                     39.43             15261.32
+
+2026-07-06                TRANSFER TO SAVINGS ACCOUNT 778                                                 115.00                               15146.32
+
+2026-07-07                CARD PAYMENT SUPERMARKET 0423                                                                     159.14             15305.47
+2026-07-08                SEPA TRANSFER SALARY ACME                                                                           4.71             15310.18
+
+2026-07-09                DIRECT DEBIT ELECTRICITY                                                        149.71                               15160.47
+2026-07-10                ATM WITHDRAWAL PARIS 11                                                                           124.43             15284.89
+
+2026-07-11                CHEQUE 0001234                                                                   30.00                               15254.89
+
+2026-07-12                TRANSFER TO SAVINGS ACCOUNT 778                                                 184.43                               15070.47
+2026-07-13                CARD PAYMENT SUPERMARKET 0423                                                                      89.71             15160.18
+
+2026-07-14                SEPA TRANSFER SALARY ACME                                                        64.71                               15095.47
+
+2026-07-15                DIRECT DEBIT ELECTRICITY                                                                          209.43             15304.89
+
+2026-07-16                ATM WITHDRAWAL PARIS 11                                                                            55.00             15359.89
+2026-07-17                CHEQUE 0001234                                                                   99.43                               15260.47
+
+2026-07-18                TRANSFER TO SAVINGS ACCOUNT 778                                                                   174.71             15435.18
+
+2026-07-19                CARD PAYMENT SUPERMARKET 0423                                                                      20.29             15455.47
+
+2026-07-20                SEPA TRANSFER SALARY ACME                                                       134.14                               15321.32
+2026-07-21                DIRECT DEBIT ELECTRICITY                                                                          140.00             15461.32
+
+2026-07-22                ATM WITHDRAWAL PARIS 11                                                          14.43                               15446.89
+
+2026-07-23                CHEQUE 0001234                                                                  168.86                               15278.04
+2026-07-24                TRANSFER TO SAVINGS ACCOUNT 778                                                                   105.29             15383.32
+
+2026-07-25                CARD PAYMENT SUPERMARKET 0423                                                    49.14                               15334.18
+
+2026-08-01                SEPA TRANSFER SALARY ACME                                                                         225.00             15559.18
+
+2026-08-02                DIRECT DEBIT ELECTRICITY                                                                           70.57             15629.75
+2026-08-03                ATM WITHDRAWAL PARIS 11                                                          83.86                               15545.89
+
+2026-08-04                CHEQUE 0001234                                                                                    190.29             15736.18
+
+2026-08-05                TRANSFER TO SAVINGS ACCOUNT 778                                                                    35.86             15772.04
+2026-08-06                CARD PAYMENT SUPERMARKET 0423                                                   118.57                               15653.47
+2026-08-07                SEPA TRANSFER SALARY ACME                                                                         155.57             15809.04
+
+2026-08-08                DIRECT DEBIT ELECTRICITY                                                                            1.14             15810.18
+2026-08-09                ATM WITHDRAWAL PARIS 11                                                         153.29                               15656.89
+2026-08-10                CHEQUE 0001234                                                                                    120.86             15777.75
+
+2026-08-11                TRANSFER TO SAVINGS ACCOUNT 778                                                  33.57                               15744.18
+2026-08-12                CARD PAYMENT SUPERMARKET 0423                                                   188.00                               15556.18
+2026-08-13                SEPA TRANSFER SALARY ACME                                                                          86.14             15642.32
+
+2026-08-14                DIRECT DEBIT ELECTRICITY                                                         68.29                               15574.04
+2026-08-15                ATM WITHDRAWAL PARIS 11                                                                           205.86             15779.89
+2026-08-16                CHEQUE 0001234                                                                                     51.43             15831.32
+
+2026-08-17                TRANSFER TO SAVINGS ACCOUNT 778                                                 103.00                               15728.32
+2026-08-18                CARD PAYMENT SUPERMARKET 0423                                                                     171.14             15899.47
+
+2026-08-19                SEPA TRANSFER SALARY ACME                                                                          16.71             15916.18
+
+
+                                                                     Page 1 / 2
+Date                             Label                                                                                              Debit                Credit              Balance
+
+2026-08-20                       DIRECT DEBIT ELECTRICITY                                                                                      137.71                                  15778.47
+
+2026-08-21                       ATM WITHDRAWAL PARIS 11                                                                                                            136.43             15914.89
+2026-08-22                       CHEQUE 0001234                                                                                                 18.00                                  15896.89
+2026-08-23                       TRANSFER TO SAVINGS ACCOUNT 778                                                                               172.43                                  15724.47
+
+2026-08-24                       CARD PAYMENT SUPERMARKET 0423                                                                                                      101.71             15826.18
+2026-08-25                       SEPA TRANSFER SALARY ACME                                                                                      52.71                                  15773.47
+
+2026-09-01                       DIRECT DEBIT ELECTRICITY                                                                                                           221.43             15994.89
+2026-09-02                       ATM WITHDRAWAL PARIS 11                                                                                                             67.00             16061.89
+2026-09-03                       CHEQUE 0001234                                                                                                 87.43                                  15974.47
+
+2026-09-04                       TRANSFER TO SAVINGS ACCOUNT 778                                                                                                    186.71             16161.18
+2026-09-05                       CARD PAYMENT SUPERMARKET 0423                                                                                                       32.29             16193.47
+2026-09-06                       SEPA TRANSFER SALARY ACME                                                                                     122.14                                  16071.32
+
+2026-09-07                       DIRECT DEBIT ELECTRICITY                                                                                                           152.00             16223.32
+2026-09-08                       ATM WITHDRAWAL PARIS 11                                                                                          2.43                                 16220.89
+
+2026-09-09                       CHEQUE 0001234                                                                                                156.86                                  16064.04
+2026-09-10                       TRANSFER TO SAVINGS ACCOUNT 778                                                                                                    117.29             16181.32
+2026-09-11                       CARD PAYMENT SUPERMARKET 0423                                                                                  37.14                                  16144.18
+
+2026-09-12                       SEPA TRANSFER SALARY ACME                                                                                     191.57                                  15952.61
+2026-09-13                       DIRECT DEBIT ELECTRICITY                                                                                                            82.57             16035.18
+2026-09-14                       ATM WITHDRAWAL PARIS 11                                                                                        71.86                                  15963.32
+
+2026-09-15                       CHEQUE 0001234                                                                                                                     202.29             16165.61
+2026-09-16                       TRANSFER TO SAVINGS ACCOUNT 778                                                                                                     47.86             16213.47
+2026-09-17                       CARD PAYMENT SUPERMARKET 0423                                                                                 106.57                                  16106.89
+
+2026-09-18                       SEPA TRANSFER SALARY ACME                                                                                                          167.57             16274.47
+2026-09-19                       DIRECT DEBIT ELECTRICITY                                                                                                            13.14             16287.61
+
+2026-09-20                       ATM WITHDRAWAL PARIS 11                                                                                       141.29                                  16146.32
+
+
+This statement is provided for information. Any discrepancy must be reported within 30 days. Bank of Example, SA with a capital of 1 000 000 €, RCS Paris 000 000 000.
+
+
+
+
+                                                                                            Page 2 / 2
+

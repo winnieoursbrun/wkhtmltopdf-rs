@@ -1,0 +1,19 @@
+   unchecked        checked     disabled     checked disabled
+
+   radio    radio checked     disabled
+
+                                             One                  A
+                                             Two                  B
+                                             Three
+Select Second option selected       Multiple Four       Size 4
+
+
+ Button element      Submit   Reset      Input button    Styled       Disabled
+
+  Fieldset legend
+     Remember me
+ Name Ada
+
+
+                      range, #ff0000                    color,                   progress,
+

@@ -1,0 +1,37 @@
+                                                 PA C K I N G S L I P
+                                                        Order 58213 · 2026-10-01
+
+FROM                     TO
+ACME Fulfilment          Jane Doe
+Zone Industrielle Nord   4 Industrial Way
+69000 Lyon               Springfield, IL 62701         1Z 999 AA1 01 2345 6784
+
+
+
+✓   Item                         SKU               Ordered         Shipped
+
+    Industrial widget            SKU-1000          1               1
+
+    Bracket kit                  SKU-1037          2               2
+
+    Filter cartridge             SKU-1074          3               3
+
+    Manual (printed)             SKU-1111          4               4
+
+    Spare screws                 SKU-1148          5               5
+
+
+ Gift message: Happy birthday! Enjoy the new widgets.
+
+
+
+✂----------------------------------------------
+
+Returns form
+
+Reason
+
+Item(s)
+
+Signature
+

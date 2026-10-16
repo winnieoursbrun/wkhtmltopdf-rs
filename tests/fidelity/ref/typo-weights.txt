@@ -1,0 +1,33 @@
+sans-serif 100: Hamburgefonstiv 0123
+sans-serif 300: Hamburgefonstiv 0123
+sans-serif normal: Hamburgefonstiv 0123
+sans-serif 500: Hamburgefonstiv 0123
+sans-serif 600: Hamburgefonstiv 0123
+sans-serif bold: Hamburgefonstiv 0123
+sans-serif 800: Hamburgefonstiv 0123
+sans-serif 900: Hamburgefonstiv 0123
+sans-serif italic: Hamburgefonstiv 0123
+sans-serif bold oblique: Hamburgefonstiv
+serif 100: Hamburgefonstiv 0123
+serif 300: Hamburgefonstiv 0123
+serif normal: Hamburgefonstiv 0123
+serif 500: Hamburgefonstiv 0123
+serif 600: Hamburgefonstiv 0123
+serif bold: Hamburgefonstiv 0123
+serif 800: Hamburgefonstiv 0123
+serif 900: Hamburgefonstiv 0123
+serif italic: Hamburgefonstiv 0123
+serif bold oblique: Hamburgefonstiv
+monospace 100: Hamburgefonstiv 0123
+monospace 300: Hamburgefonstiv 0123
+monospace normal: Hamburgefonstiv 0123
+monospace 500: Hamburgefonstiv 0123
+monospace 600: Hamburgefonstiv 0123
+monospace bold: Hamburgefonstiv 0123
+monospace 800: Hamburgefonstiv 0123
+monospace 900: Hamburgefonstiv 0123
+monospace italic: Hamburgefonstiv 0123
+monospace bold oblique: Hamburgefonstiv
+
+Nested: normal bold bold italic lighter strong em bolder
+

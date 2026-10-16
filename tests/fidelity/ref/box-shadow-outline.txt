@@ -1,0 +1,12 @@
+  hard 4px                     blur 8                blur+spread       inset              two spreads
+
+
+
+
+  -webkit- radius              outline solid         dashed offset 4   dotted offset -8   double + radius
+
+
+
+
+Inline outline: a link with an outline that spans.
+

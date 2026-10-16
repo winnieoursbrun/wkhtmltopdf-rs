@@ -1,0 +1,39 @@
+visible: The quick brown fox jumps    hidden: The quick brown fox jumps    scroll: The quick brown fox
+over the lazy dog while the           over the lazy dog while the          jumps over the lazy dog while
+committee reviews the quarterly       committee reviews the quarterly      the committee reviews the
+figures. Several invoices remain      figures. Several invoices remain     quarterly figures. Several
+unpaid, and the accounting team       unpaid, and the accounting team      invoices remain unpaid, and the
+has asked every department to         has asked every department to        accounting team has asked
+confirm its open purchase orders      confirm its open purchase orders     every department to confirm its
+before the end of the month.          before the end of the month.         open purchase orders before the
+Meanwhile the warehouse reports       Meanwhile the warehouse reports      end of the month. Meanwhile the
+that shipments to the northern        that shipments to the northern       warehouse reports that
+auto: The quick brown fox jumps       x hidden                             ellipsis: The quick brown fox jumps…
+region were delayed by roughly two    region were delayed by roughly two   shipments to the northern region
+over the lazy dog while the
+days.                                 days.                                were delayed by roughly two
+committee reviews the quarterly
+                                                                           days.
+figures. Several invoices remain
+unpaid, and the accounting team
+has asked every department to
+confirm its open purchase orders
+before the end of the month.
+Meanwhile the warehouse
+reports that shipments to the
+northern region were delayed by
+roughly two days.
+
+hidden with radius: The quick
+brown fox jumps over the lazy dog
+while the committee reviews the
+quarterly figures. Several invoices
+remain unpaid, and the accounting
+team has asked every department
+to confirm its open purchase orders
+before the end of the month.
+Meanwhile the warehouse reports
+that shipments to the northern
+region were delayed by roughly two
+days.
+

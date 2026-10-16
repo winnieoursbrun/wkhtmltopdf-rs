@@ -1,0 +1,34 @@
+natural                      width=80           height=40
+
+
+
+
+both 200x50 (distorted)                         css 60px
+
+width 100% of 300px
+
+
+
+
+max-width
+100%
+
+
+
+
+Inline baseline gap:         display:block:
+
+
+
+
+Border + padding:
+
+                                          alt
+
+Broken:                   sized broken:            no alt:
+
+
+
+
+Scaled up SVG                                         GIF x2
+

@@ -1,0 +1,42 @@
+        Level 1 disc
+              Level 2 circle
+                    Level 3 square
+                          Level 4
+              Level 2 again
+        The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several
+        invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase
+        orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region
+        were delayed by roughly two days.
+
+     1. First
+           1. Nested 1.1
+           2. Nested 1.2
+                a. alpha
+     2. Second
+
+          inside marker The quick brown fox jumps over the lazy dog while the committee reviews the quarterly
+        figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its
+        open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the
+        northern region were delayed by roughly two days.
+          inside short
+
+        list-style-image
+        second image bullet
+
+
+   1. Big marker
+1. padding-left 0 (marker in margin)
+
+   no style
+   no style
+
+                                                                                                        rtl list .1
+                                                                                                       second .2
+
+        Paragraph inside li
+
+        floated li
+
+      I. per-item type
+     2. red item (red marker)
+

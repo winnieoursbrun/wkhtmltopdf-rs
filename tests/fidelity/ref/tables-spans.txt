@@ -1,0 +1,23 @@
+                                 2025                               2026
+Region
+            Q1              Q2                 Q3              Q1             Q2
+
+           12        14                                   18            21
+                                        tall
+North      merged two                                     19            22
+
+           13        four columns merged with a longer text that wraps inside the cell
+
+South                                          all five
+full width footer row
+
+
+rowspan 4        a
+with a lot of
+text that is     b
+taller than      c
+the rows it
+spans so
+                 d
+rows grow
+

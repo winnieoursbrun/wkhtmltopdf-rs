@@ -1,0 +1,18 @@
+underline overline line-through all three u element s element strike del ins
+
+Red underlined blue inside keeps red line done.
+
+
+Large underline gjpqy
+A default link, no underline, green link.
+
+UPPERCASE: THE QUICK BROWN FOX STRASSE
+
+lowercase: the quick brown fox
+
+Capitalize: The Quick Brown Fox O'neil E-Mail
+
+SMALL CAPS: THE QUICK BROWN FOX 2026
+
+Spaced underline
+

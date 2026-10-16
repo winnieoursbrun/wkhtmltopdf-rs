@@ -1,0 +1,11 @@
+Page geometry
+The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the
+accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse
+reports that shipments to the northern region were delayed by roughly two days.
+
+
+
+                                                                                             right-aligned text touches the right margin
+
+a 100% wide block with a border
+

@@ -1,0 +1,24 @@
+                                Caption on top
+      top          middle            bottom        baseline             tall
+top
+                                                  Baseline
+                middle                                             80px tall
+
+                                  bottom
+valign=top
+                valign=middle                     default          40
+                                  valign=bottom
+
+                 th default
+th left                              th right
+                 (centred)
+a           b                        c
+            Caption at the bottom
+
+thead       x
+tbody 1     1
+tbody 2     2
+tfoot       y
+
+                                                            image in narrow cell:
+

@@ -1,0 +1,18 @@
+@font-face "BrandSerif" (DejaVuSerif.ttf): Sphinx of black quartz, judge my vow. Pack my box with
+five dozen liquor jugs.
+
+@font-face "BrandSerif" bold (DejaVuSerif-Bold.ttf): Sphinx of black quartz, judge my vow.
+Pack my box with five dozen liquor jugs.
+
+@font-face "CodeFace" (DejaVuSansMono.ttf): Sphinx of black quartz, judge my vow.
+Pack my box with five dozen liquor jugs.
+
+
+
+
+@font-face family "DejaVu Sans" overridden by DejaVuSerif.ttf: Sphinx of black quartz, judge my
+vow. Pack my box with five dozen liquor jugs.
+
+BrandSerif italic (synthesised): Sphinx of black quartz, judge my vow. Pack my box with five dozen
+liquor jugs.
+

@@ -1,0 +1,24 @@
+Latin-1: àâäéèêëîïôöùûüÿç ÀÉÎÕÜ ñÑ ß æœ ÆŒ ø Å ¿¡ «» ‹› „“ ” ‘’ — – … € £ ¥ © ® ™ § ¶ ° ± × ÷ ½ ¼ ¾
+
+Latin Extended: ąćęłńóśźż ĄĆĘŁŃÓŚŹŻ čďěňřšťůž ğışİŞ ŐőŰű ḍṛṣṭ
+
+Greek: Αα Ββ Γγ Δδ Εε Ζζ Ηη Θθ — Καλημέρα κόσμε
+
+Cyrillic: Съешь же ещё этих мягких французских булок, да выпей чаю
+
+Armenian: Բարեւ աշխարհ; Georgian: გამარჯობა მსოფლიო
+
+Arrows and maths: ← ↑ → ↓ ↔ ⇒ ⇔ ∀ ∃ ∅ ∈ ∉ ∑ ∏ √ ∞ ≈ ≠ ≤ ≥ ∫ ∂ ∇
+
+Box drawing: ┌─┬─┐ │ ├─┼─┤ └─┴─┘ ░▒▓█ ■□▪▫ ●○◆◇ ★☆ ✓✔✗✘ ☐☑☒
+
+Ligature candidates: ffi ffl fi fl Th st office affluent
+
+Combining marks: é ä ñ ô — precomposed é ä ñ ô
+
+Not in DejaVu (CJK, emoji):
+
+Mono: àéîõü Ωπ Жж ← → ✓ ┼
+
+Serif: àéîõü Ωπ Жж ← → ✓
+

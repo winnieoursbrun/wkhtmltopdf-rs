@@ -1,0 +1,22 @@
+PNG                           JPEG
+
+
+
+
+GIF                     SVG
+
+
+
+
+Alpha PNG on colours:
+
+
+
+
+data: URI PNG
+
+
+
+                   SVG
+Inline SVG:
+

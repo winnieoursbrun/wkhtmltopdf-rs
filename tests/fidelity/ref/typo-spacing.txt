@@ -1,0 +1,25 @@
+letter-spacing -1px: Sphinx of black quartz, judge my vow. Pack my box with ﬁve dozen liquor jugs.
+letter-spacing -0.5px: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+letter-spacing 0: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+letter-spacing 0.5px: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+letter-spacing 1px: Sphinx of black quartz, judge my vow. Pack my box with ﬁve dozen liquor jugs.
+l e t t e r- s p a c i n g 2 p x : S p h i n x o f b l a c k q u a r t z , j u d g e m y v o w. Pa c k m y b o x w i t h ﬁ v e d o z e n l i q u o r
+jugs.
+l e t t e r- s p a c i n g 0 . 2 e m : S p h i n x o f b l a c k q u a r t z , j u d g e m y v o w. Pa c k m y b o x w i t h ﬁ v e d o z e n l i q u o r
+jugs.
+letter-spacing 5px: Sphinx of                                   black        quartz,          judge        my       vow.      Pack       my      box
+with ﬁve dozen liquor jugs.
+word-spacing -2px: Sphinx of black quartz, judge my vow. Pack my box with ﬁve dozen liquor jugs.
+word-spacing 0: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+word-spacing 4px: Sphinx of black quartz, judge my vow. Pack my box with ﬁve dozen liquor jugs.
+word-spacing       10px:    Sphinx     of    black    quartz,     judge   my     vow.    Pack    my     box    with    ﬁve    dozen     liquor    jugs.
+word-spacing       1em:      Sphinx     of    black     quartz,     judge     my     vow.    Pack     my      box     with    ﬁve    dozen       liquor
+jugs.
+Both   spacings,    justiﬁed:    The    quick
+brown   fox   jumps   over   the   lazy   dog
+while    the    committee     reviews     the
+quarterly    ﬁgures.    Several      invoices
+remain    unpaid,   and    the    accounting
+team   has   asked   every   department    to
+conﬁrm its open pu
+

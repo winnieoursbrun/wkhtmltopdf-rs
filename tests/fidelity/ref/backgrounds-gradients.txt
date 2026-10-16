@@ -1,0 +1,23 @@
+-webkit-linear-gradient(top, #fff, #36c)   -webkit-linear-gradient(left, #c33,       -webkit-linear-gradient(45deg, #036,
+                                           #fc3)                                     #6cf)
+
+
+
+
+-webkit-linear-gradient(top, #fff 0%,      -webkit-linear-gradient(left,             -webkit-gradient(linear, left top, left
+#ddd 50%, #999 51%, #555 100%)             rgba(255,0,0,0), rgba(255,0,0,1))         bottom, from(#8c8), to(#262))
+
+
+
+
+-webkit-gradient(linear, 0 0, 100% 0,      -webkit-gradient(radial, 50% 50%, 0,      -webkit-radial-gradient(center, circle,
+from(#fff), color-stop(0.5, #f80),         50% 50%, 60, from(#ff0), to(#c00))        #fff, #36c)
+to(#fff))
+
+
+
+
+-webkit-radial-gradient(30% 30%,           -webkit-repeating-linear-gradient(left,   linear-gradient(to right, #c33, #33c) /*   Gradient
+ellipse cover, #fff, #090)                 #eee, #eee 10px, #ccc 10px, #ccc          unprefixed: ignored by 2012 WebKit */
+                                           20px)                                                                                button
+

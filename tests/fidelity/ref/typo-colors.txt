@@ -1,0 +1,14 @@
+named red
+hex #0a0
+hex8 (ignored in 2012?)
+rgb()
+rgba 0.5
+hsl()
+hsla 0.6
+text-shadow
+text-shadow hard
+            hard
+text-shadow blurred
+white on dark
+transparent text
+

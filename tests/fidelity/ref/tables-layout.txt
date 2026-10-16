@@ -1,0 +1,42 @@
+auto layout, width 100%
+        The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices    nowrap-ish
+short
+        remain unpaid, and the accounting team                                                                             label
+
+auto layout, no width
+        The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid,
+short
+        and the accounting team
+
+fixed layout, width 500px, first col 100px
+The quick
+brown fox
+jumps over the
+lazy dog while
+the committee
+reviews the
+                 b                                 c
+quarterly
+figures. Several
+invoices remain
+unpaid, and the
+accounting
+team
+
+col widths 20% / 30% / auto
+20%                           30%                                    auto
+
+white-space: nowrap cell and a very long word
+no wrap here at all please Pneumonoultramicroscopicsilicovolcanoconiosis_and_more_text
+
+percent and pixel mix, width attributes
+50         40%                                         rest
+
+text-align and cell padding
+
+                      right              center               left
+
+table centred with margin auto
+                                                              centred table
+                                                              align=center
+

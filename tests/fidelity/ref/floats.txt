@@ -1,0 +1,37 @@
+float left 120x80 The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several
+                  invoices remain unpaid, and the accounting team has asked every department to confirm its open
+                  purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the
+                  northern region were delayed by roughly two days. The quick brown fox jumps over the lazy dog while the
+                  committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has
+                  asked every department to confirm its open purchase orders before the end of the month. Meanwhile the
+warehouse reports that shipments to the northern region were delayed by roughly two days.
+
+The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures.    float right, auto
+Several invoices remain unpaid, and the accounting team has asked every department to confirm its height, some text
+open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments inside it
+to the northern region were delayed by roughly two days.
+
+clear both
+
+L1              L2              Text between three floats. Sphinx of black quartz, judge my vow. Pack my   R1
+                                box with five dozen liquor jugs.
+
+ BFC         overflow hidden contains the float and does not wrap around it beyond its border.
+
+
+
+
+no BFC       Parent does not contain the float.
+
+             Image floats: The quick brown fox jumps over the lazy dog while the committee
+             reviews the quarterly figures. Several invoices remain unpaid, and the accounting
+             team has asked every department to confirm its open purchase orders before the end
+of the month. Meanwhile the warehouse reports that shipments to the northern region were
+delayed by roughly two days.
+
+
+Two columns: left 45%. Sphinx of black quartz, judge my            right 45%. Sphinx of black quartz, judge my vow. Pack
+vow. Pack my box with five dozen liquor jugs.                      my box with five dozen liquor jugs. Sphinx of black
+                                                                   quartz, judge my vow. Pack my box with five dozen
+                                                                   liquor jugs.
+

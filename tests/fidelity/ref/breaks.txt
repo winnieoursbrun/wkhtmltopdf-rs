@@ -1,0 +1,24 @@
+Page 1
+Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+
+page-break-after: always
+Page 2
+Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+page-break-before: always (page 3)
+Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+
+break-before: page (CSS3 name: ignored in 2012?)
+
+The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices
+remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the
+end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly
+two days.
+
+ row 1
+ row with page-break-before (ignored on rows?)
+inline span with a break (ignored)
+page-break-before: left
+Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+page-break-before: right
+Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+

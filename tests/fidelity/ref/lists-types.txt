@@ -1,0 +1,21 @@
+    disc                  circle                     square
+    second                second                     second
+    third                 third                      third
+ 8. decimal           01. decimal-leading-zero   viii. lower-roman
+ 9. second            02. second                  ix. second
+10. third             03. third                    x. third
+VIII. upper-roman      α. lower-greek             a. lower-alpha
+ IX. second            β. second                  b. second
+  X. third             γ. third                   c. third
+ A. upper-alpha        a. lower-latin             A. upper-latin
+ B. second             b. second                  B. second
+ C. third              c. third                   C. third
+ Ա. armenian           ა. georgian                ‫א‬. hebrew
+ Բ. second             ბ. second                  ‫ב‬. second
+ Գ. third              გ. third                   ‫ג‬. third
+  . cjk-ideographic       none                    5. start=5
+  . second                second                 20. value=20
+  . third                 third                  21. next
+ A. type=A             i. type=i                     type=square
+ B. B                 ii. ii
+

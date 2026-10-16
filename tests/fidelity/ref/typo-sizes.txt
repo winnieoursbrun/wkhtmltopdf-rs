@@ -1,0 +1,22 @@
+xx-small: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+x-small: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+small: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+medium: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+large: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+x-large: Sphinx of black quartz, judge my vow. Pack my box with five dozen l
+xx-large: Sphinx of black quartz, judge my vow. Pack my b
+9px: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+11px: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+13px: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+15px: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+8pt: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+10pt: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+11pt: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+12pt: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+14pt: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+0.8em: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+1.3em: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.
+150%: Sphinx of black quartz, judge my vow. Pack my box with five dozen liq
+1.5rem: Sphinx of black quartz, judge my vow. Pack my box with five dozen l
+Parent 12px smaller smaller larger        larger
+

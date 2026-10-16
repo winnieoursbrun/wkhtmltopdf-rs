@@ -1,0 +1,29 @@
+relative container                                                                                                 abs to the page
+                                                                                                                   (topabs  top/right
+                                                                                                                        right)
+
+                       z-index 2
+                                     z-index 1
+
+
+      abs bottom/left
+
+
+Relative offsets:
+                     top 6 left 10then text continues.
+       relative block left 40px
+
+
+                                                          centred
+
+
+
+
+ caption over
+ image
+
+
+The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the
+accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the
+warehouse reports that shipments to the northern region were delayed by roughly two days.
+

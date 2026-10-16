@@ -1,0 +1,13 @@
+radius 10        radius 30         50%                 20px/10px     per corner
+
+
+
+
+-webkit-         -webkit- corner   dashed r15           dotted r15     double r15
+
+
+
+
+                  no border                                               inline pill
+ uneven widths                      bg image clipped
+
