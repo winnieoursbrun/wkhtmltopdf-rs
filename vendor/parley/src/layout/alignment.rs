@@ -76,38 +76,13 @@ pub(crate) fn align<B: Brush>(
     let is_rtl = layout.base_level.is_rtl();
 
     // wkhtmltopdf-rs: QtWebKit 2.2 aligns and justifies a line with the widths of its text
-    // boxes, each the rounded sum of its glyphs' unrounded advances (`QFontMetrics::width` of
-    // the box's text), not with the sum of the rounded word segments the line breaker measured
-    // (see `ShapedCluster::paint_delta`). The difference per line, laid-out minus box widths:
-    let box_corrections: alloc::vec::Vec<f32> = layout
-        .lines
-        .iter()
-        .map(|line| {
-            let clusters = layout.shaped_text.shaped_clusters();
-            let mut correction = 0.0;
-            for item in &layout.line_items[line.item_range.clone()] {
-                if item.kind != super::data::LayoutItemKind::TextRun {
-                    continue;
-                }
-                let range = item.shaped_cluster_range.start as usize..item.shaped_cluster_range.end as usize;
-                let Some(item_clusters) = clusters.get(range) else { continue };
-                // Trailing whitespace hangs: it is not part of the aligned width.
-                let end = item_clusters
-                    .iter()
-                    .rposition(|c| c.whitespace() == parley_engine::shape::Whitespace::None)
-                    .map_or(0, |i| i + 1);
-                let (mut laid_out, mut delta) = (0.0f32, 0.0f32);
-                for c in &item_clusters[..end] {
-                    laid_out += c.advance;
-                    delta += c.paint_delta;
-                }
-                if delta != 0.0 {
-                    correction += laid_out - (laid_out - delta).round();
-                }
-            }
-            correction
-        })
-        .collect();
+    // boxes, not with the rounded word segments its line breaker measured (see
+    // `ShapedCluster::paint_delta`). A box holding a whole text node is as wide as the node's
+    // preferred width (`RenderText::width` returns `maxLogicalWidth()`: each word and each space
+    // rounded on its own); a box holding part of one is the rounded sum of its unrounded
+    // advances (`QFontMetrics::width`). The difference per line, laid-out minus box widths:
+    let box_corrections: alloc::vec::Vec<f32> =
+        layout.lines.iter().map(|line| box_correction(layout, line)).collect();
 
     // Apply alignment to line items
     for (line, box_correction) in layout.lines.iter_mut().zip(box_corrections) {
@@ -179,4 +154,60 @@ pub(crate) fn align<B: Brush>(
             }
         }
     }
+}
+
+/// wkhtmltopdf-rs: the laid-out width of `line`'s text minus the width QtWebKit 2.2 gives its
+/// text boxes (see `align`). A text box is approximated by a run of clusters of one style.
+fn box_correction<B: Brush>(layout: &LayoutData<B>, line: &super::data::LineData) -> f32 {
+    use parley_engine::shape::{ShapedCluster, Whitespace};
+    let clusters = layout.shaped_text.shaped_clusters();
+    let items = &layout.line_items[line.item_range.clone()];
+    let last_text = items.iter().rposition(|i| i.kind == super::data::LayoutItemKind::TextRun);
+    let mut correction = 0.0;
+    for (n, item) in items.iter().enumerate() {
+        if item.kind != super::data::LayoutItemKind::TextRun {
+            continue;
+        }
+        let (start, mut end) =
+            (item.shaped_cluster_range.start as usize, item.shaped_cluster_range.end as usize);
+        let Some(item_clusters) = clusters.get(start..end) else { continue };
+        let mut cut_at_end = false;
+        if Some(n) == last_text {
+            // Trailing whitespace hangs: it is not part of the aligned width.
+            let kept = item_clusters
+                .iter()
+                .rposition(|c| c.whitespace() == Whitespace::None)
+                .map_or(0, |i| i + 1);
+            cut_at_end = kept < item_clusters.len();
+            end = start + kept;
+        }
+        let mut group = start;
+        while group < end {
+            let style = clusters[group].style_index;
+            let group_end = (group..end).find(|&i| clusters[i].style_index != style).unwrap_or(end);
+            let g: &[ShapedCluster] = &clusters[group..group_end];
+            let whole = (group == 0 || clusters[group - 1].style_index != style)
+                && !(group_end == end && cut_at_end)
+                && clusters.get(group_end).is_none_or(|c| c.style_index != style);
+            let laid_out: f32 = g.iter().map(|c| c.advance).sum();
+            let target = if whole {
+                let (mut width, mut word) = (0.0f32, 0.0f32);
+                for c in g {
+                    let unrounded = c.advance - c.paint_delta;
+                    if c.whitespace() == Whitespace::None {
+                        word += unrounded;
+                    } else {
+                        width += word.round() + unrounded.round();
+                        word = 0.0;
+                    }
+                }
+                width + word.round()
+            } else {
+                g.iter().map(|c| c.advance - c.paint_delta).sum::<f32>().round()
+            };
+            correction += laid_out - target;
+            group = group_end;
+        }
+    }
+    correction
 }

@@ -102,8 +102,9 @@ fn node_list_item_child(
             };
 
             let mut layout = builder.build().0;
-            let width = layout.calculate_content_widths().max;
-            layout.break_all_lines(Some(width));
+            // wkhtmltopdf-rs: unbounded, a marker is one line (its max-content width rounds
+            // words and spaces on their own, which can be narrower than the laid-out text).
+            layout.break_all_lines(None);
 
             ListItemLayoutPosition::Outside(Box::new(layout))
         }

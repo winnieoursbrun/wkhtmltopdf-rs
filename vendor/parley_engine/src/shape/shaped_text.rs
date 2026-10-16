@@ -577,31 +577,64 @@ fn process_shaped_clusters<'a>(
 /// before a word plus the word (`textWidth(t, lastSpace, pos - lastSpace)`), and Qt returns
 /// each segment's width as an integer (`QFontMetrics::width`, the rounded sum of the linear
 /// advances). So in DejaVu Sans 12px, `a a a` (16 `a`, 15 spaces) is 7 + 15 × round(3.81 +
-/// 7.35) = 172px, while 20 `a` in one word are 147px. Make every such segment of the run a
-/// whole number of pixels by adjusting the advance of its last cluster. The glyphs keep their
-/// advances (the adjustment is recorded in [`ShapedCluster::paint_delta`]): Qt paints a text
-/// box from its laid-out position with the unrounded advances.
+/// 7.35) = 172px, while 20 `a` in one word are 147px. A word starting a line is measured
+/// without the spaces before it (they stay at the end of the previous line): round(word).
+///
+/// So every word is made a whole number of pixels on its own (adjusting its last cluster), and
+/// the spaces before it take the rest of the segment's rounding (adjusting the last space):
+/// mid-line, spaces + word is round(spaces + word); at the start of a line, the word alone is
+/// round(word). The glyphs keep their advances (the adjustments are recorded in
+/// [`ShapedCluster::paint_delta`]): Qt paints a text box from its laid-out position with the
+/// unrounded advances.
 fn round_words_like_qtwebkit(clusters: &mut [ShapedCluster], characters: &[Character]) {
     fn adjust(cluster: &mut ShapedCluster, delta: f32) {
         cluster.advance += delta;
         cluster.paint_delta += delta;
     }
-    let mut width = 0.0f32;
-    let mut prev_was_word = false;
+    /// Round the segment of `spaces` (ending at cluster `last_space`) then `word` (ending at
+    /// cluster `last_word`).
+    fn close(
+        clusters: &mut [ShapedCluster],
+        spaces: f32,
+        last_space: Option<usize>,
+        word: f32,
+        last_word: Option<usize>,
+    ) {
+        match (last_space, last_word) {
+            (Some(s), Some(w)) => {
+                let word_px = word.round();
+                adjust(&mut clusters[w], word_px - word);
+                adjust(&mut clusters[s], (spaces + word).round() - word_px - spaces);
+            }
+            (None, Some(w)) => adjust(&mut clusters[w], word.round() - word),
+            (Some(s), None) => adjust(&mut clusters[s], spaces.round() - spaces),
+            (None, None) => {}
+        }
+    }
+    let (mut spaces, mut word) = (0.0f32, 0.0f32);
+    let (mut last_space, mut last_word) = (None, None);
     for i in 0..clusters.len() {
         let first = clusters[i].chars_range.0 as usize;
         let is_space = characters.get(first).is_some_and(|c| c.whitespace == Whitespace::Space);
-        if is_space && prev_was_word {
-            // A space after a word starts the next segment: close the current one.
-            adjust(&mut clusters[i - 1], width.round() - width);
-            width = 0.0;
+        // WebKit measures within one text node (`RenderText`): a segment ends with its style.
+        if i > 0 && clusters[i].style_index != clusters[i - 1].style_index {
+            close(clusters, spaces, last_space, word, last_word);
+            (spaces, word, last_space, last_word) = (0.0, 0.0, None, None);
         }
-        width += clusters[i].advance;
-        prev_was_word = !is_space;
+        if is_space {
+            if last_word.is_some() {
+                // A space after a word starts the next segment: close the current one.
+                close(clusters, spaces, last_space, word, last_word);
+                (spaces, word, last_word) = (0.0, 0.0, None);
+            }
+            spaces += clusters[i].advance;
+            last_space = Some(i);
+        } else {
+            word += clusters[i].advance;
+            last_word = Some(i);
+        }
     }
-    if let Some(last) = clusters.len().checked_sub(1) {
-        adjust(&mut clusters[last], width.round() - width);
-    }
+    close(clusters, spaces, last_space, word, last_word);
 }
 
 

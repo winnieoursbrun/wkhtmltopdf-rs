@@ -442,9 +442,25 @@ struct ContentWidthsMeasurer {
     /// Indents for lines following a soft/hard wrap.
     soft_indent: f32,
     hard_indent: f32,
+
+    /// wkhtmltopdf-rs: the unrounded advance of the word being measured for the max-content
+    /// width. QtWebKit 2.2 (`RenderText::computePreferredLogicalWidths`) adds up each word's width
+    /// and each space's width as whole pixels (`QFontMetrics::width`), which can be less than the
+    /// line breaker's rounded "spaces + word" segments: a shrink-to-fit box then wraps its own
+    /// widest line (a right-floated address block breaking before its last word).
+    word_advance: f32,
 }
 
 impl ContentWidthsMeasurer {
+    /// wkhtmltopdf-rs: add the pending word to the max-content width, as whole pixels.
+    #[inline(always)]
+    fn end_word(&mut self) {
+        if self.word_advance != 0.0 {
+            self.running_max_width += self.word_advance.round();
+            self.word_advance = 0.0;
+        }
+    }
+
     #[inline(always)]
     fn new(indent_amount: f32, indent_options: IndentOptions) -> Self {
         let first_line_indent = indent_options.indent_for_first_line(indent_amount);
@@ -459,6 +475,7 @@ impl ContentWidthsMeasurer {
             soft_indent: indent_options.indent_following_soft_wrap_break(indent_amount),
             hard_indent: indent_options.indent_following_forced_line_break(indent_amount),
             line_has_content: false,
+            word_advance: 0.,
         }
     }
 
@@ -487,6 +504,7 @@ impl ContentWidthsMeasurer {
     /// [css-inline-formatting]: https://www.w3.org/TR/CSS22/visuren.html#inline-formatting
     #[inline(always)]
     fn hard_break(&mut self) {
+        self.end_word();
         self.min_width = self
             .min_width
             .max(self.running_min_width - self.running_hanging_whitespace);
@@ -613,6 +631,7 @@ impl ContentWidthsMeasurer {
                     && (cluster.is_soft_wrap_opportunity_before()
                         || style.overflow_wrap == OverflowWrap::Anywhere)
                 {
+                    self.end_word();
                     self.soft_break(i != empty_at);
                 }
                 // `Whitespace::Newline` are forced breaks. Note newlines have no advance.
@@ -646,7 +665,14 @@ impl ContentWidthsMeasurer {
                 }
             }
             self.running_min_width += advance;
-            self.running_max_width += advance;
+            // wkhtmltopdf-rs: whole-pixel words and spaces (see `word_advance`).
+            let unrounded = advance - cluster.paint_delta;
+            if whitespace == Whitespace::None {
+                self.word_advance += unrounded;
+            } else {
+                self.end_word();
+                self.running_max_width += unrounded.round();
+            }
 
             // A cluster hangs if all of its characters hang. Its first character is checked via the
             // cached flags so the common case never touches `characters`.
@@ -670,6 +696,7 @@ impl ContentWidthsMeasurer {
                 self.running_hanging_whitespace = 0.0;
             }
         }
+        self.end_word();
         self.line_has_content = empty_at != clusters.len();
     }
 
@@ -679,6 +706,7 @@ impl ContentWidthsMeasurer {
         if wraps {
             self.soft_break(self.line_has_content);
         }
+        self.end_word();
         // Inline boxes don't hang.
         self.running_hanging_whitespace = 0.0;
         self.running_min_width += inline_box.width;

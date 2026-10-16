@@ -1051,7 +1051,11 @@ impl<'a, B: Brush> BreakLines<'a, B> {
 
         let line_indent = self.resolve_indent();
 
-        let max_advance = max_advance - line_indent;
+        // wkhtmltopdf-rs: QtWebKit 2.2 compares whole-pixel widths; ours are sums of f32
+        // advances made whole by `round_words_like_qtwebkit`, which can exceed an exactly
+        // fitting width by a rounding error (824.00006 > 824 moved the last word of a justified
+        // line to the next one). Allow that error.
+        let max_advance = max_advance - line_indent + 1.0 / 128.0;
 
         // Iterate over remaining runs in the Layout
         let item_count = self.layout.data.items.len();
