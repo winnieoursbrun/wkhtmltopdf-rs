@@ -14,30 +14,30 @@
 # fractional advances while our layout snaps each "space + word" segment to whole
 # pixels, so text shifts by up to half a pixel per word; antialiasing differs.
 
-a          *  0.97
-fonts      *  0.81  # QtWebKit picks web fonts by their internal family name (BrandMono -> DejaVu Sans Mono regular)
-invoice    *  0.92
-large      *  0.95
+a          *  0.98
+fonts      *  0.98  # QtWebKit picks web fonts by their internal family name (BrandMono -> DejaVu Sans Mono regular)
+invoice    *  0.97
+large      *  0.98
 layout     *  0.88  # list markers, badge padding
-medium     1  0.92
-medium     2  0.94
-medium     3  0.90
-medium     4  0.90
-report     1  0.72  # cover: centred heading glyph positions
-report     2  0.90
-report     3  0.88  # two lines only: glyph positions dominate
-report     4  0.90
-report     5  0.92
-report     6  0.92
-report     7  0.98
+medium     1  0.99
+medium     2  0.99
+medium     3  0.99
+medium     4  0.99
+report     1  0.75  # cover: centred heading glyph positions
+report     2  0.96
+report     3  0.99  # two lines only: glyph positions dominate
+report     4  0.95
+report     5  0.98
+report     6  0.97
+report     7  0.99
 statement  1  0.98
 statement  2  0.17  # QtWebKit pushes a row across a page boundary with a strut (tall row); not reproduced
 statement  3  0.52  # follows page 2
-statement  4  0.88  # follows page 2
+statement  4  0.99  # follows page 2
 webkit2012  *  0.95
 webkit2012b *  0.90
 imagedpi   *  0.91  # --image-dpi 100
 media      *  0.98  # media queries see a 0x0 viewport
 media-viewport * 0.98  # --viewport-size 900x700
-minfont    *  0.97  # --minimum-font-size 12
+minfont    *  0.99  # --minimum-font-size 12
 tables     *  0.95

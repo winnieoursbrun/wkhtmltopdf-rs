@@ -28,7 +28,8 @@ struct Run {
 }
 
 fn runs(html: &str) -> Vec<Run> {
-    let fonts = wk_fonts::font_context(&wk_fonts::FontOptions { system_fonts: false, extra_dirs: Vec::new() });
+    let fonts =
+        wk_fonts::font_context(&wk_fonts::FontOptions { system_fonts: false, extra_dirs: Vec::new() });
     let url = Url::parse("file:///tmp/page.html").unwrap();
     let mut page = WebPage::load(html, url, WebSettings::default(), Some(fonts), &mut NoNet);
     let rendered = page.render(612.0 - 108.0, 792.0 - 108.0);
@@ -85,7 +86,9 @@ fn glyphs_are_painted_at_unrounded_advances() {
 /// block it starts at 149px (reference: doc-letter; glyph x are relative to the block).
 #[test]
 fn right_aligned_text_uses_the_preferred_width() {
-    let r = runs(r#"<p style="font: 14px sans-serif; text-align: right; width: 300px">Paris, 1 October 2026</p>"#);
+    let r = runs(
+        r#"<p style="font: 14px sans-serif; text-align: right; width: 300px">Paris, 1 October 2026</p>"#,
+    );
     let run = r.iter().find(|r| r.text.starts_with("Paris")).expect("run");
     assert!((run.xs[0] - 149.0).abs() < 0.01, "{:?}", run.xs);
 }

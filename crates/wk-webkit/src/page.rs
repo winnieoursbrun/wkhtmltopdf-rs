@@ -1130,9 +1130,9 @@ impl WebPage {
                 // Text overflowing its box (`white-space: nowrap`, a long word) widens the
                 // document too, unless the box clips it: QtWebKit shrinks to the document's
                 // overflow width.
-                let clips = n.primary_styles().is_some_and(|s| {
-                    s.clone_overflow_x() != style::values::computed::Overflow::Visible
-                });
+                let clips = n
+                    .primary_styles()
+                    .is_some_and(|s| s.clone_overflow_x() != style::values::computed::Overflow::Visible);
                 if let Some(text) = n.element_data().and_then(|e| e.inline_layout_data.as_ref())
                     && !clips
                 {
