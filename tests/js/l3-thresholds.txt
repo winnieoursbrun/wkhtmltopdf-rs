@@ -10,8 +10,8 @@ chart2         *  0.88  # canvas painted as vector (the reference rasterises it)
 debugjs        *  0.99
 docwrite       *  0.98
 footer-subst   *  0.89  # short page: glyph positions
-jquery1        *  0.94
-jquery3        *  0.94
+jquery1        *  0.96
+jquery3        *  0.96
 nojs           *  0.99
 print          *  0.99
 runscript      *  0.99

@@ -16,9 +16,9 @@
 
 a          *  0.98
 fonts      *  0.98  # QtWebKit picks web fonts by their internal family name (BrandMono -> DejaVu Sans Mono regular)
-invoice    *  0.97
+invoice    *  0.98
 large      *  0.98
-layout     *  0.94  # list markers
+layout     *  0.97
 medium     1  0.99
 medium     2  0.99
 medium     3  0.99
