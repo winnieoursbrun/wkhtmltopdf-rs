@@ -597,6 +597,20 @@ impl ImageHandler {
             Err(e) => e.to_string(),
         };
 
+        // wkhtmltopdf-rs: an image whose header gives its size but whose pixel data fails to
+        // decode is not broken in QtWebKit 2.2 (ImageDecoderQt has the size, only the frame
+        // is missing): it takes its size and paints nothing.
+        if let Ok((width, height)) = image::ImageReader::new(Cursor::new(&bytes))
+            .with_guessed_format()
+            .expect("IO errors impossible with Cursor")
+            .into_dimensions()
+        {
+            if width > 0 && height > 0 && u64::from(width) * u64::from(height) <= 1 << 26 {
+                let blank = vec![0u8; width as usize * height as usize * 4];
+                return Ok(Resource::Image(self.kind, width, height, Arc::new(blank)));
+            }
+        }
+
         #[cfg(feature = "svg")]
         let svg_err = {
             use crate::util::parse_svg_image;
