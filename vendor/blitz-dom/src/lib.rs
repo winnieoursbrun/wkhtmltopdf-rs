@@ -62,6 +62,7 @@ mod scrolling;
 mod selection;
 /// Implementations that interact with servo's style engine
 mod stylo;
+mod table_hints;
 mod stylo_device;
 mod stylo_to_cursor_icon;
 mod stylo_to_kurbo;

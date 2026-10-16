@@ -1012,12 +1012,18 @@ impl<'a> TElement for BlitzNode<'a> {
                 }
             }
 
-            if *name == local_name!("align") {
+            // wkhtmltopdf-rs: `align` on a table or caption is mapped by
+            // `table_hints`; on the other table parts `middle` centres too.
+            let table_part = crate::table_hints::handles_align(tag);
+            if *name == local_name!("align") && !matches!(&**tag, "table" | "caption") {
                 use style::values::specified::TextAlign;
-                let keyword = match value {
+                let keyword = match value.to_ascii_lowercase().as_str() {
                     "left" => Some(StyloTextAlign::MozLeft),
                     "right" => Some(StyloTextAlign::MozRight),
                     "center" => Some(StyloTextAlign::MozCenter),
+                    "middle" if table_part => Some(StyloTextAlign::MozCenter),
+                    "absmiddle" if table_part => Some(StyloTextAlign::Center),
+                    "justify" if table_part => Some(StyloTextAlign::Justify),
                     _ => None,
                 };
 
@@ -1206,6 +1212,16 @@ impl<'a> TElement for BlitzNode<'a> {
 
         if let Some(lang) = lang {
             push_style(PropertyDeclaration::XLang(XLang(Atom::from(lang))));
+        }
+
+        // wkhtmltopdf-rs: WebKit's table attribute mapping (border, frame,
+        // rules, cellpadding, cellspacing, valign…), after the other hints.
+        if let Some(block) = crate::table_hints::table_hints(self) {
+            hints.push(ApplicableDeclarationBlock::from_declarations(
+                Arc::new(self.guard().wrap(block)),
+                CascadeLevel::new(CascadeOrigin::PresHints),
+                LayerOrder::root(),
+            ));
         }
     }
 
