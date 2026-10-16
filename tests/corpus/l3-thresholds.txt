@@ -23,7 +23,7 @@ medium     1  0.99
 medium     2  0.99
 medium     3  0.99
 medium     4  0.99
-report     1  0.75  # cover: centred heading glyph positions
+report     1  0.81  # cover: centred heading glyph positions
 report     2  0.96
 report     3  0.99  # two lines only: glyph positions dominate
 report     4  0.95

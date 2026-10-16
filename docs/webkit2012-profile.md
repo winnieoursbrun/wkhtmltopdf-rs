@@ -95,7 +95,17 @@ Implementation:
 
 | Behaviour | QtWebKit 2.2 | Ours |
 |---|---|---|
-| Blurred box shadows | blurred | approximated by nested rings with a linear alpha ramp (a PDF has no blur) |
+| Blurred box shadows | blurred (an image whose mask is about a Gaussian of σ = 0.4 × blur across the edge) | approximated by nested rings taking that Gaussian's coverage (a PDF has no blur) |
+| Dashed and dotted borders (square corners) | a `w`×`w` square at each end of a side, then Qt dashes from the line start: `3w` on, `3w` off (dotted `w`, `w`), flat ends | same, the dashes filled as rectangles |
+| Inset, outset, groove, ridge | one side darkened with `Color::dark` (black → #545454), the other unchanged; groove/ridge split at `(a + b + 1) / 2` px | same |
+| Double borders | lines of `(width + 1) / 3` px | same |
+| Repeated backgrounds (images, gradients) | a Qt pattern brush whose tiles start at the first page's top left corner (Qt's PDF engine drops the brush origin), unless one tile covers the area | PDF tiling pattern, tiles anchored the same way (later pages are not distinguished) |
+| Inline boxes | horizontal margin/border/padding at the first and last fragment; background and border per line fragment, font ascent to descent plus vertical padding/border; outline per fragment | `<wkedge>` inline-blocks hold the horizontal edges; fragments painted by blitz-paint |
+| `unicode-bidi` on inline elements | embeddings and overrides (2011 WebKit: no isolation) | LRE/RLE/LRO/RLO … PDF characters in the paragraph text, not drawn |
+| List bullets | disc, circle and square drawn as shapes `(ascent·2/3 + 1)/2` px; right of the content in a right-to-left item, string markers written suffix first (` .1`) | same |
+| Form controls | Qt Windows style: sunken checkbox and radio indicators, 2px raised push buttons, 0.7px field frames, list boxes with greyed scroll bars, slider, progress chunks, meter gradient, file button; color/date inputs are text fields | drawn in blitz-paint / rebuilt as spans in wk-webkit (`page.rs`) |
+| `--zoom`, `--dpi` | frame zoom `zoom × dpi / 96`: lengths, font sizes and borders rounded in device pixels, a border at least 1 device px | same rounding (stylo_taffy `device_zoom`); glyph advances are not rounded at that scale |
+| `--no-images` | an unsized image is an empty replaced box that keeps its line | 1px minimum height |
 | Inset box shadows | painted inside the padding box | padding box minus the offset hole, no compositing |
 | Dotted border with `border-radius` | drawn solid | drawn solid (dashed stays dashed) |
 | Outlines | rectangles (no radius), `outline-offset` away from the border box | same |
