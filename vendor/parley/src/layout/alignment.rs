@@ -87,6 +87,7 @@ pub(crate) fn align<B: Brush>(
     // Apply alignment to line items
     for (line, box_correction) in layout.lines.iter_mut().zip(box_corrections) {
         line.justification.amount_per_opportunity = 0.;
+        line.box_correction = box_correction;
 
         let indent = line.metrics.indent;
 

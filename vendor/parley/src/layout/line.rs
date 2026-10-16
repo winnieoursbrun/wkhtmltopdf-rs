@@ -27,6 +27,12 @@ impl<'a, B: Brush> Line<'a, B> {
         &self.data.metrics
     }
 
+    /// wkhtmltopdf-rs: the laid-out width of the line's text minus the width QtWebKit 2.2 gives
+    /// its text boxes (whole text nodes at their preferred width), once the layout is aligned.
+    pub fn box_correction(&self) -> f32 {
+        self.data.box_correction
+    }
+
     pub fn break_reason(&self) -> BreakReason {
         self.data.break_reason
     }

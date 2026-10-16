@@ -1825,6 +1825,7 @@ fn commit_line<B: Brush>(
             ..Default::default()
         },
         aligned_subtree_offsets: 0..0,
+        box_correction: 0.,
     });
 
     // Reset state for the new line

@@ -99,6 +99,9 @@ pub(crate) struct LineData {
     /// Empty for lines with only baseline-relative content because the root aligned subtree
     /// for each line trivially has an offset of 0
     pub(crate) aligned_subtree_offsets: Range<u32>,
+    /// wkhtmltopdf-rs: the laid-out width of the line's text minus the width QtWebKit 2.2 gives
+    /// its text boxes (set by `align`).
+    pub(crate) box_correction: f32,
 }
 
 /// Position of an [independent aligned subtree] rooted at a span with

@@ -80,7 +80,7 @@ Implementation:
 | Box positions on a line | after each text box's width (whole node: preferred width; part of one: rounded unrounded advances), not after the line breaker's segments | parley `line.rs`, `alignment.rs` |
 | Kerning, ligatures with `letter-spacing`/`word-spacing` | Qt's complex path: kerning (rounded to whole pixels) and `fi` ligatures | blitz-dom `stylo_to_parley.rs`, parley_engine `shaped_text.rs` |
 | Tab character | drawn as a space, also in `pre` | blitz-dom `layout/construct.rs` |
-| Smart shrinking width | includes text overflowing its box (`nowrap`), unless the box clips | wk-webkit `page.rs` |
+| Smart shrinking width | includes text overflowing its box (`nowrap`), at its text boxes' widths (a whole text node is its preferred width), unless the box clips | wk-webkit `page.rs` |
 | Counters and quotes in `content` | resolved in document order; default quotes `"` then `'` | blitz-dom `generated_content.rs` |
 | `attr()` | only in `content` (the attribute's value, empty if missing); a declaration using it elsewhere is dropped | stylo `specified/counters.rs`, blitz-dom `generated_content.rs`, wk-webkit `profile.rs` |
 | List markers | WebKit 2012 numbering systems; outside disc/circle/square painted as shapes (`(a*2/3+1)/2` px, `a*2/3+7` px before the content); text markers end `a*2/3/2` px before it | blitz-dom `layout/list.rs`, blitz-paint `render.rs` |

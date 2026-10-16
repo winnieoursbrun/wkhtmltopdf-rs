@@ -1568,9 +1568,11 @@ impl WebPage {
                 if let Some(text) = n.element_data().and_then(|e| e.inline_layout_data.as_ref())
                     && !clips
                 {
+                    // The text boxes' widths, as QtWebKit's overflow (a whole text node is
+                    // its preferred width: each word and each space rounded on its own).
                     let lines = text.layout.lines().map(|line| {
                         let m = line.metrics();
-                        m.offset + m.advance - m.hanging_advance
+                        m.offset + m.advance - m.hanging_advance - line.box_correction()
                     });
                     let text_w = lines.fold(0.0f32, f32::max) / text.layout.scale();
                     w = w.max(p.x + l.border.left + l.padding.left + text_w);
