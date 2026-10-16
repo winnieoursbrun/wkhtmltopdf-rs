@@ -755,18 +755,24 @@ pub(crate) fn is_hidden_empty_cell(dom: &BaseDocument, node: &Node) -> bool {
     })
 }
 
-/// wkhtmltopdf-rs: the whole-pixel advance of a space in the marker's font.
-fn marker_space_width(layout: &parley::Layout<blitz_dom::node::TextBrush>) -> f32 {
+/// wkhtmltopdf-rs: the width of `text` in the marker's font as QtWebKit measures it: the
+/// glyphs' advances (26.6, truncated) added up and rounded to whole pixels.
+fn marker_text_width(layout: &parley::Layout<blitz_dom::node::TextBrush>, text: &str) -> f32 {
     use skrifa::MetadataProvider;
     let Some(run) = layout.lines().next().and_then(|l| l.runs().next()) else { return 0.0 };
     let font = run.font();
     let Ok(f) = skrifa::FontRef::from_index(font.data.as_ref(), font.index) else { return 0.0 };
-    let Some(gid) = f.charmap().map(' ') else { return 0.0 };
-    let adv = f
-        .glyph_metrics(skrifa::instance::Size::new(run.font_size()), skrifa::instance::LocationRef::default())
-        .advance_width(gid)
-        .unwrap_or(0.0);
-    adv.round()
+    let charmap = f.charmap();
+    let metrics =
+        f.glyph_metrics(skrifa::instance::Size::new(run.font_size() / layout.scale()), skrifa::instance::LocationRef::default());
+    let width: f32 = text
+        .chars()
+        .map(|c| {
+            let adv = charmap.map(c).and_then(|g| metrics.advance_width(g)).unwrap_or(0.0);
+            (adv * 64.0).floor() / 64.0
+        })
+        .sum();
+    width.round()
 }
 
 /// Converts parley BoundingBox into peniko Rect
@@ -1043,26 +1049,22 @@ impl ElementCx<'_, '_> {
             position: ListItemLayoutPosition::Outside(layout),
         }) = self.list_item
         {
-            // Right align and pad the bullet when rendering outside
-            let x_padding = match marker {
-                Marker::Char(_) => 8.0,
-                Marker::String(_) => 0.0,
-            };
-            // Outside markers are placed outside the list item's border box
-            // (`pos` is the origin of its content box)
-            let item_layout = self.node.final_layout();
-            // wkhtmltopdf-rs: WebKit draws a string marker as `1. ` and
-            // ends it one space width before the item text (verified with
-            // wkhtmltopdf 0.12.6: `1` at x=23 for text at x=48, 16px DejaVu
-            // Sans); parley's line width leaves out the trailing space.
-            let marker_width = match marker {
-                Marker::String(_) => layout.full_width() + 2.0 * marker_space_width(layout),
-                Marker::Char(_) => layout.full_width(),
-            };
-            let x_offset = -(marker_width / layout.scale()
-                + x_padding
-                + item_layout.padding.left
-                + item_layout.border.left);
+            // wkhtmltopdf-rs: QtWebKit 2.2's `RenderListMarker` geometry. With `a` the whole-pixel
+            // ascent of the item's font and `offset = a * 2 / 3`, an outside marker starts
+            // `offset / 2` px before the item's content box for text markers (`1` then `. `,
+            // each measured in whole pixels), and a bullet (disc, circle, square) is a
+            // `(offset + 1) / 2` px shape `offset + 7` px before it, `3 * (a - offset) / 2` px
+            // below the top of the marker's ascent.
+            let Some(first_marker_line) = layout.lines().next() else { return };
+            let scale = layout.scale();
+            let ascent = layout
+                .lines()
+                .next()
+                .and_then(|l| l.runs().next())
+                .map(|r| r.font_metrics().ascent / scale)
+                .unwrap_or(0.0)
+                .ceil() as i32;
+            let offset = ascent * 2 / 3;
 
             // Align the marker with the baseline of the first line of text in the list item
             // wkhtmltopdf-rs: the item's layout may have been handed over to the painter
@@ -1072,17 +1074,46 @@ impl ElementCx<'_, '_> {
                     .or(self.element.inline_layout_data.as_deref())
                     .and_then(|text_layout| Some((text_layout, text_layout.layout.lines().next()?)))
                 {
-                    (first_text_line.metrics().baseline
-                        - layout.lines().next().unwrap().metrics().baseline)
-                        / layout.scale()
+                    (first_text_line.metrics().baseline - first_marker_line.metrics().baseline)
+                        / scale
                         + text_layout.block_offset
                 } else {
                     0.0
                 }
             });
+            let baseline = pos.y + (y_offset + first_marker_line.metrics().baseline / scale) as f64;
 
+            if let Marker::Char(c @ ('•' | '◦' | '▪')) = marker {
+                let size = f64::from((offset + 1) / 2);
+                let x = pos.x - f64::from(offset + 7);
+                let y = baseline - f64::from(ascent) + f64::from(3 * (ascent - offset) / 2);
+                let color = self.style.clone_color().as_srgb_color();
+                let transform = self.transform * Affine::scale(self.scale);
+                let stroke = Stroke::new(1.0);
+                let rect = Rect::new(x, y, x + size, y + size);
+                if *c == '▪' {
+                    scene.fill(Fill::NonZero, transform, color, None, &rect);
+                    scene.stroke(&stroke, transform, color, None, &rect);
+                } else {
+                    let ellipse = kurbo::Ellipse::from_rect(rect);
+                    if *c == '•' {
+                        scene.fill(Fill::NonZero, transform, color, None, &ellipse);
+                    }
+                    scene.stroke(&stroke, transform, color, None, &ellipse);
+                }
+                return;
+            }
+
+            let marker_width = match marker {
+                Marker::String(s) => {
+                    let text = s.strip_suffix(". ").unwrap_or(s);
+                    let suffix = if text.len() < s.len() { ". " } else { "" };
+                    marker_text_width(layout, text) + marker_text_width(layout, suffix)
+                }
+                Marker::Char(_) => layout.full_width() / scale + 8.0,
+            };
             let pos = Point {
-                x: pos.x + x_offset as f64,
+                x: pos.x - f64::from(marker_width) - f64::from(offset / 2),
                 y: pos.y + y_offset as f64,
             };
 

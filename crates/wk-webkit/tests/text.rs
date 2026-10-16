@@ -90,6 +90,27 @@ fn right_aligned_text_uses_the_preferred_width() {
     assert!((run.xs[0] - 149.0).abs() < 0.01, "{:?}", run.xs);
 }
 
+/// List markers in WebKit 2012's numbering systems, `start`, `value` and `type` (reference:
+/// lists-types).
+#[test]
+fn list_marker_texts() {
+    let r = runs(
+        r#"<ol style="list-style-type: lower-roman" start="8"><li>a</li><li>b</li></ol>
+        <ol style="list-style-type: decimal-leading-zero"><li>a</li></ol>
+        <ol style="list-style-type: lower-greek"><li>a</li><li>b</li></ol>
+        <ol style="list-style-type: armenian"><li>a</li></ol>
+        <ol style="list-style-type: georgian"><li>a</li></ol>
+        <ol start="5"><li>a</li><li value="20">b</li><li>c</li></ol>
+        <ol type="A"><li>a</li><li>b</li></ol><ol type="i"><li>a</li></ol>"#,
+    );
+    let markers: Vec<&str> = r.iter().map(|r| r.text.trim_end()).filter(|t| t.ends_with('.')).collect();
+    assert_eq!(
+        markers,
+        ["viii.", "ix.", "01.", "α.", "β.", "Ա.", "ა.", "5.", "20.", "21.", "A.", "B.", "i."],
+        "{r:?}"
+    );
+}
+
 /// Text in an `@font-face` family whose font fails to load is laid out with the fallback font
 /// but not painted (reference: fonts-webfont).
 #[test]
