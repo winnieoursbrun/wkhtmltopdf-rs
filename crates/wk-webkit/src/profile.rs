@@ -628,7 +628,7 @@ fn contains_function(lower: &str, f: &str) -> bool {
     false
 }
 
-/// Viewport and `ch`/`vmin`… units, which WebKit 534 did not parse.
+/// Viewport and `ch`/`vmin`… units and hex colours with alpha, which WebKit 534 did not parse.
 fn has_unsupported_unit(lower: &str) -> bool {
     let s = lower.as_bytes();
     let mut i = 0;
@@ -680,10 +680,15 @@ fn has_unsupported_unit(lower: &str) -> bool {
                 continue;
             }
             b'#' => {
-                // Skip hex colours whole.
+                // Skip hex colours whole. The 4- and 8-digit forms (with alpha) did not
+                // exist: QtWebKit 2.2 drops the declaration.
                 let mut j = i + 1;
                 while j < s.len() && s[j].is_ascii_alphanumeric() {
                     j += 1;
+                }
+                let digits = &s[i + 1..j];
+                if matches!(digits.len(), 4 | 8) && digits.iter().all(u8::is_ascii_hexdigit) {
+                    return true;
                 }
                 i = j;
                 continue;
@@ -918,6 +923,13 @@ mod tests {
     fn unprefixed_transform_is_dropped_and_prefixed_applies() {
         assert_eq!(sheet(".a{transform:rotate(3deg);color:red}"), ".a{color:red}");
         assert_eq!(sheet(".a{-webkit-transform:rotate(3deg)}"), ".a{transform:rotate(3deg)}");
+    }
+
+    #[test]
+    fn hex_colours_with_alpha_are_dropped() {
+        assert_eq!(sheet(".a{color:#1e3c8cff;background:#abc}"), ".a{background:#abc}");
+        assert_eq!(sheet(".a{color:#1e3c;border-color:#a0a0a0}"), ".a{border-color:#a0a0a0}");
+        assert_eq!(sheet(".a{background:url(x.png#abcd)}"), ".a{background:url(x.png#abcd)}");
     }
 
     #[test]

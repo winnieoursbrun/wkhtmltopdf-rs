@@ -54,6 +54,7 @@ Implementation:
 | `font-variant: small-caps` | applied | kept; lowercase letters uppercased at 0.7 of the font size, rounded to whole pixels, like WebKit's smallCapsFontData (blitz-dom inline construction) | probe |
 | `-webkit-text-stroke` | applied | dropped (unsupported by stylo) | probe |
 | `border-image` with a gradient | ignored | kept (also ignored by us) | probe |
+| Hex colours with alpha (`#rgba`, `#rrggbbaa`) | invalid (the declaration is dropped) | dropped | `tests/fidelity/cases/typo-colors.html` |
 | other `-webkit-*`, `-moz-*`, `-ms-*` | — | dropped | |
 | `position: sticky`, `object-fit`, `aspect-ratio`, logical properties, `inset`, … | did not exist | dropped | WebKit 534 sources |
 
