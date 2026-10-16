@@ -244,7 +244,31 @@ pub(crate) fn draw_inline_backgrounds<'a>(
             // A relatively positioned inline box moves with its background and border.
             let transform = transform.pre_translate(relative_inline_offset(doc, f.id, inline_root_id, scale));
             if bg_color != Color::TRANSPARENT {
-                scene.fill(Fill::NonZero, transform, bg_color, None, &rect);
+                // `border-radius` rounds the corners of the first fragment's start side and
+                // the last fragment's end side.
+                let (w, h) = (
+                    style::values::computed::CSSPixelLength::new(rect.width() as f32),
+                    style::values::computed::CSSPixelLength::new(rect.height() as f32),
+                );
+                let radius = |c: &style::values::computed::BorderCornerRadius, on: bool| {
+                    if !on {
+                        return 0.0;
+                    }
+                    let (x, y) = (c.0.width.0.resolve(w).px() as f64, c.0.height.0.resolve(h).px() as f64);
+                    x.min(y).max(0.0)
+                };
+                let radii = kurbo::RoundedRectRadii::new(
+                    radius(&border.border_top_left_radius, f.starts),
+                    radius(&border.border_top_right_radius, f.ends),
+                    radius(&border.border_bottom_right_radius, f.ends),
+                    radius(&border.border_bottom_left_radius, f.starts),
+                );
+                if radii.as_single_radius() == Some(0.0) {
+                    scene.fill(Fill::NonZero, transform, bg_color, None, &rect);
+                } else {
+                    let shape = kurbo::RoundedRect::from_rect(rect, radii);
+                    scene.fill(Fill::NonZero, transform, bg_color, None, &shape);
+                }
             }
             if outline_width > 0.0 {
                 let offset = f64::from(outline.outline_offset.to_f32_px());
