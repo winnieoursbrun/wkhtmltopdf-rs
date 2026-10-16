@@ -440,7 +440,10 @@ impl LayoutPassState<'_> {
                     .flags
                     .intersects(StyleFlags::IS_BUTTON | StyleFlags::IS_BUTTON_INPUT);
             let contain_layout = box_style.clone_contain().contains(Contain::LAYOUT);
-            let exports_baseline = !is_block_axis_scroll_container && !contain_layout;
+            // wkhtmltopdf-rs: WebKit 534 sits an inline table on its bottom margin edge (no
+            // `RenderTable` baseline for the line), not on its first row's text.
+            let is_table = matches!(style.effective_display().inside(), DisplayInside::Table);
+            let exports_baseline = !is_block_axis_scroll_container && !contain_layout && !is_table;
             let box_inputs = inline_box_inputs(style.size().width, margin, child_inputs);
             drop(style);
 
