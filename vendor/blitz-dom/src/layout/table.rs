@@ -785,10 +785,12 @@ fn collapse_borders(
         if r1 >= nr {
             outer[2] = outer[2].max((b / 2.0).ceil());
         }
-        if c0 == 0 {
+        // The start and end borders of the table come from the first row only
+        // (`RenderTable::calcBorderStart/End`); later rows' wider borders overflow.
+        if c0 == 0 && r0 == 0 {
             outer[3] = outer[3].max((l / 2.0).floor());
         }
-        if c1 >= nc {
+        if c1 >= nc && r0 == 0 {
             outer[1] = outer[1].max((r / 2.0).ceil());
         }
         results.push((sides, halves));
