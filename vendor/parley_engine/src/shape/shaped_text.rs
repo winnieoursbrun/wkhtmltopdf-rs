@@ -358,12 +358,24 @@ impl ShapedText {
         // itemization, at which case this will always be true.
         self.characters[characters_start].grapheme_start = true;
 
+        // wkhtmltopdf-rs: the fonts' own advances, to tell kerning apart (see
+        // `process_shaped_clusters`).
+        let font_ref = {
+            let font = &self.fonts[font_index];
+            skrifa::FontRef::from_index(font.font.data.as_ref(), font.font.index).unwrap()
+        };
+        let glyph_metrics = {
+            use skrifa::MetadataProvider;
+            font_ref.glyph_metrics(skrifa::prelude::Size::unscaled(), normalized_coords)
+        };
+        let nominal = |gid: u32| glyph_metrics.advance_width(skrifa::GlyphId::new(gid));
         let glyphs_start = self.glyphs.len();
         if segment.bidi_level.is_ltr() {
             process_shaped_clusters(
                 &mut self.shaped_clusters,
                 &mut self.glyphs,
                 scale_factor,
+                &nominal,
                 glyph_infos.iter(),
                 glyph_positions.iter(),
                 &self.characters,
@@ -374,6 +386,7 @@ impl ShapedText {
                 &mut self.shaped_clusters,
                 &mut self.glyphs,
                 scale_factor,
+                &nominal,
                 glyph_infos.iter().rev(),
                 glyph_positions.iter().rev(),
                 &self.characters,
@@ -460,6 +473,7 @@ fn process_shaped_clusters<'a>(
     shaped_clusters: &mut Vec<ShapedCluster>,
     glyphs: &mut Vec<Glyph>,
     scale_factor: f32,
+    nominal: &dyn Fn(u32) -> Option<f32>,
     glyph_infos: impl Iterator<Item = &'a harfrust::GlyphInfo>,
     glyph_positions: impl Iterator<Item = &'a harfrust::GlyphPosition>,
     characters: &[Character],
@@ -552,7 +566,16 @@ fn process_shaped_clusters<'a>(
             // wide in the 0.12.6 binary, as 20 × 569/2048 × 10.
             // Qt keeps advances in 26.6 fixed point, truncated (FreeType's linear advance
             // shifted down): 20 `i` of DejaVu Sans at 10px are 20 × 177/64 = 55.3 → 55px.
-            advance: ((glyph_pos.x_advance as f32) * scale_factor * 64.).floor() / 64.,
+            // Kerning (the shaped advance minus the font's) is rounded to whole pixels, as Qt's
+            // FreeType engine does with hinting: `P` then `a` in DejaVu Sans 13px is
+            // 7.828 - 1px, not 7.828 - 0.578px.
+            advance: match nominal(glyph_info.glyph_id) {
+                Some(n) => {
+                    let kern = (glyph_pos.x_advance as f32 - n) * scale_factor;
+                    (n * scale_factor * 64.).floor() / 64. + (kern + 0.5).floor()
+                }
+                None => ((glyph_pos.x_advance as f32) * scale_factor * 64.).floor() / 64.,
+            },
         };
         if cluster.glyphs == 0 && glyph.x == 0. && glyph.y == 0. {
             // Defer this potential zero-offset, single glyph cluster

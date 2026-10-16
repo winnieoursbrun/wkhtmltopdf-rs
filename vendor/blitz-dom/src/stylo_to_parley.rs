@@ -271,7 +271,7 @@ pub(crate) fn font_variant_east_asian(
 /// Parley stably sorts the feature list by tag and HarfBuzz applies the last of any
 /// duplicate tags, so appending `font-feature-settings` after the `font-variant-*`
 /// features gives it the higher precedence required by the spec.
-pub(crate) fn font_features(font_styles: &stylo::Font) -> Vec<parley::FontFeature> {
+pub(crate) fn font_features(font_styles: &stylo::Font, complex: bool) -> Vec<parley::FontFeature> {
     let mut features = Vec::new();
 
     self::font_variant_ligatures(font_styles.font_variant_ligatures, &mut features);
@@ -286,9 +286,14 @@ pub(crate) fn font_features(font_styles: &stylo::Font) -> Vec<parley::FontFeatur
     // `V` plus `a`) and no ligatures (DejaVu Serif "ff" is 2 × 758 units, not
     // the 1455 of its ligature). Appended last so an explicit
     // `font-variant-ligatures`/`font-feature-settings` (kept by the dedup) wins.
-    features.push(feature(b"kern", 0));
-    features.push(feature(b"liga", 0));
-    features.push(feature(b"clig", 0));
+    // Text with letter or word spacing goes through Qt's complex path instead
+    // (HarfBuzz: kerning and `fi` ligatures), as the reference PDFs show
+    // (typo-spacing).
+    if !complex {
+        features.push(feature(b"kern", 0));
+        features.push(feature(b"liga", 0));
+        features.push(feature(b"clig", 0));
+    }
 
     features.sort_by_key(|feature| feature.tag);
     features.dedup_by_key(|feature| feature.tag);
@@ -451,7 +456,10 @@ pub(crate) fn style(
     let font_style = self::font_style(font_styles.font_style);
     let font_width = self::font_width(font_styles.font_width);
     let font_variations = self::font_variations(&font_styles.font_variation_settings);
-    let font_features = self::font_features(font_styles);
+    // Justified lines are drawn with ligatures too, but their last line is not: the
+    // simple path is kept for them (per-line shaping is out of reach here).
+    let complex = letter_spacing != 0.0 || word_spacing != 0.0;
+    let font_features = self::font_features(font_styles, complex);
 
     // Convert font family
     let mut families: Vec<parley::FontFamilyName<'static>> = Vec::new();

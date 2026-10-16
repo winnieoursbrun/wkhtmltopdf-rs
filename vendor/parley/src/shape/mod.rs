@@ -36,6 +36,9 @@ use parlance::{BidiLevel, GenericFamily, Tag};
 ///
 /// [css-letter-spacing]: https://www.w3.org/TR/css-text-3/#letter-spacing-property
 /// [css-fonts-ligatures]: https://www.w3.org/TR/css-fonts-4/#font-variant-ligatures-prop
+/// wkhtmltopdf-rs: see `shape_text`.
+const WEBKIT_LIGATURES_OFF_WHEN_SPACED: bool = false;
+
 const OPTIONAL_LIGATURES_OFF: [FontFeature; 4] = [
     FontFeature::new(Tag::new(b"liga"), 0),
     FontFeature::new(Tag::new(b"clig"), 0),
@@ -86,7 +89,9 @@ pub(crate) fn shape_text<'a, B: Brush>(
         .iter()
         .map(|style| {
             let style_features = rcx.features(style.font_features).unwrap_or(&[]);
-            if !nearly_zero(style.letter_spacing) {
+            // wkhtmltopdf-rs: QtWebKit 2.2 keeps ligatures in letter-spaced text (`fi` in
+            // DejaVu Sans with `letter-spacing: 1px`); blitz-dom decides the features.
+            if WEBKIT_LIGATURES_OFF_WHEN_SPACED && !nearly_zero(style.letter_spacing) {
                 // Later values override earlier values.
                 OPTIONAL_LIGATURES_OFF
                     .into_iter()

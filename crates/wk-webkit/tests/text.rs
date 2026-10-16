@@ -111,6 +111,16 @@ fn list_marker_texts() {
     );
 }
 
+/// Letter-spaced text goes through Qt's complex path, which kerns: in DejaVu Sans 13px with
+/// `letter-spacing: 1px`, `P` is followed by `a` 7.828px later (8.828px unkerned), as in the
+/// reference typo-spacing.
+#[test]
+fn letter_spaced_text_is_kerned() {
+    let r = runs(r#"<p style="font: 13px sans-serif; letter-spacing: 1px">Pa</p>"#);
+    let run = r.iter().find(|r| r.text.starts_with("Pa")).expect("run");
+    assert!((run.xs[1] - run.xs[0] - 7.828).abs() < 0.01, "{r:?}");
+}
+
 /// A tab is drawn as a space, also in preformatted text (reference: typo-whitespace).
 #[test]
 fn tab_is_a_space() {
