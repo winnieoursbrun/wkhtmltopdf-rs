@@ -482,7 +482,10 @@ impl ElementCx<'_, '_> {
     ) -> Option<Point> {
         use style::values::specified::background::BackgroundRepeatKeyword::{NoRepeat, Space};
         let BackgroundRepeat(rx, ry) = layer.repeat;
-        if matches!(rx, NoRepeat | Space) || matches!(ry, NoRepeat | Space) || self.layer_is_fixed(layer) {
+        // A background repeated in one axis only (`repeat-x`, `repeat-y`) is a pattern too:
+        // its band (one tile across) shows the pattern at the page's phase in both axes.
+        if matches!(rx, Space) || matches!(ry, Space) || (*rx == NoRepeat && *ry == NoRepeat) || self.layer_is_fixed(layer)
+        {
             return None;
         }
         if bg_size.width <= 0.0 || bg_size.height <= 0.0 {
@@ -543,6 +546,26 @@ impl ElementCx<'_, '_> {
         let BackgroundRepeat(repeat_x, repeat_y) = layer.repeat;
 
         let anchor = self.qt_pattern_anchor(layer, base_transform, origin_rect, bg_pos, bg_size);
+        // wkhtmltopdf-rs: with a Qt pattern, an axis that does not repeat is a band one tile
+        // across, filled with the pattern at the page's phase.
+        use style::values::specified::background::BackgroundRepeatKeyword::{NoRepeat, Repeat};
+        let band = anchor.filter(|_| *repeat_x == NoRepeat || *repeat_y == NoRepeat).map(|_| {
+            let clip = self.box_rect(layer.clip);
+            let (mut x0, mut x1, mut y0, mut y1) = (clip.x0, clip.x1, clip.y0, clip.y1);
+            if *repeat_x == NoRepeat {
+                x0 = origin_rect.x0 + bg_pos.x;
+                x1 = x0 + bg_size.width;
+            }
+            if *repeat_y == NoRepeat {
+                y0 = origin_rect.y0 + bg_pos.y;
+                y1 = y0 + bg_size.height;
+            }
+            Rect::new(x0, y0, x1, y1)
+        });
+        let (repeat_x, repeat_y) = if band.is_some() { (&Repeat, &Repeat) } else { (repeat_x, repeat_y) };
+        if let Some(band) = band {
+            scene.push_clip_layer(peniko::Fill::NonZero, base_transform, &band);
+        }
         let x = raster_axis_tiling(
             *repeat_x,
             origin_rect.x0,
@@ -585,6 +608,9 @@ impl ElementCx<'_, '_> {
                     &tile_rect,
                 );
             }
+        }
+        if band.is_some() {
+            scene.pop_layer();
         }
     }
 
