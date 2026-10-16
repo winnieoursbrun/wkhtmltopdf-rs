@@ -298,6 +298,12 @@ pub(crate) fn ua_css(settings: &WebSettings) -> String {
     if !settings.background {
         css.push_str("* { background-color: transparent !important; background-image: none !important; }\n");
     }
+    if !settings.load_images {
+        // `--no-images`: an image without a size is an empty replaced box, but still content
+        // that gives its line the strut's height, which parley gives only to a line with
+        // a box of some height (an inline-block holding only such an image is a line tall).
+        css.push_str("img { min-height: 1px; }\n");
+    }
     if settings.produce_forms {
         // `elm.setStyleProperty("color", "white")` on every input and
         // textarea: text fields keep the inner-text colour computed at
