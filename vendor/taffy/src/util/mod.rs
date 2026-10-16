@@ -4,7 +4,7 @@ mod resolve;
 pub(crate) mod sys;
 
 pub use math::MaybeMath;
-pub use resolve::{MaybeResolve, ResolveOrZero};
+pub use resolve::{set_device_zoom, webkit_percent, MaybeResolve, ResolveOrZero};
 
 #[cfg(feature = "grid")]
 mod front_back_vec_builder;

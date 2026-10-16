@@ -5,6 +5,26 @@ use crate::style::{Dimension, LengthPercentage, LengthPercentageAuto};
 use crate::style_helpers::TaffyZero;
 use crate::CompactLength;
 
+/// wkhtmltopdf-rs: device pixels per CSS px (`--zoom` × `--dpi` / 96), set by the embedder.
+static DEVICE_ZOOM: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// wkhtmltopdf-rs: set the device zoom used by [`webkit_percent`].
+pub fn set_device_zoom(zoom: f32) {
+    let zoom = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
+    DEVICE_ZOOM.store(zoom.to_bits(), core::sync::atomic::Ordering::Relaxed);
+}
+
+/// wkhtmltopdf-rs: a percentage width or height as QtWebKit 2.2 resolves it, truncated to
+/// whole device pixels (`Length::calcValue` returns an `int`): 45% of 540px is 243px.
+#[inline]
+pub fn webkit_percent(value: f32) -> f32 {
+    if !value.is_finite() || value < 0.0 {
+        return value;
+    }
+    let z = f32::from_bits(DEVICE_ZOOM.load(core::sync::atomic::Ordering::Relaxed));
+    crate::util::sys::floor(value * z + 1e-3) / z
+}
+
 /// Trait to encapsulate behaviour where we need to resolve from a
 /// potentially context-dependent size or dimension into
 /// a context-independent size or dimension.
@@ -64,7 +84,7 @@ impl MaybeResolve<Option<f32>, Option<f32>> for Dimension {
             // The content keyword is only valid for flex-basis. In any other context it behaves as auto.
             CompactLength::CONTENT_TAG => None,
             CompactLength::LENGTH_TAG => Some(self.0.value()),
-            CompactLength::PERCENT_TAG => context.map(|dim| dim * self.0.value()),
+            CompactLength::PERCENT_TAG => context.map(|dim| webkit_percent(dim * self.0.value())),
             #[cfg(feature = "calc")]
             _ if self.0.is_plain_calc() => context.map(|dim| calc(self.0.calc_value(), dim)),
             // Intrinsic sizing keywords cannot be resolved to a definite size out of context.

@@ -106,6 +106,7 @@ pub fn set_device_zoom(zoom: f32) {
     DEVICE_ZOOM.store(zoom.to_bits(), std::sync::atomic::Ordering::Relaxed);
     // Boxes are placed in whole device pixels too.
     taffy::compute::set_rounding_scale(zoom);
+    taffy::util::set_device_zoom(zoom);
 }
 
 /// Device pixels per CSS px: `--zoom` × `--dpi` / 96 ([`set_device_zoom`]).
