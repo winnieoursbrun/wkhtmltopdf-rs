@@ -1083,6 +1083,13 @@ impl ElementCx<'_, '_> {
                 .unwrap_or(0.0)
                 .ceil() as i32;
             let offset = ascent * 2 / 3;
+            // wkhtmltopdf-rs: a right-to-left item has its marker on the right of its content box
+            // (measured on the 0.12.6 binary, tests/fidelity/rtl-bidi).
+            let rtl = self.style.clone_direction() == style::computed_values::direction::T::Rtl;
+            let item_layout = self.node.final_layout();
+            let content_right = f64::from(
+                item_layout.content_box_width() + item_layout.padding.right + item_layout.border.right,
+            );
 
             // Align the marker with the baseline of the first line of text in the list item
             // wkhtmltopdf-rs: the item's layout may have been handed over to the painter
@@ -1103,7 +1110,8 @@ impl ElementCx<'_, '_> {
 
             if let Marker::Char(c @ ('•' | '◦' | '▪')) = marker {
                 let size = f64::from((offset + 1) / 2);
-                let x = pos.x - f64::from(offset + 7);
+                // Right to left: the bullet starts `size + 6` px after the content box.
+                let x = if rtl { pos.x + content_right + size + 6.0 } else { pos.x - f64::from(offset + 7) };
                 let y = baseline - f64::from(ascent) + f64::from(3 * (ascent - offset) / 2);
                 let color = self.style.clone_color().as_srgb_color();
                 let transform = self.transform * Affine::scale(self.scale);
@@ -1130,10 +1138,14 @@ impl ElementCx<'_, '_> {
                 }
                 Marker::Char(_) => layout.full_width() / scale + 8.0,
             };
-            let pos = Point {
-                x: pos.x - f64::from(marker_width) - f64::from(offset / 2),
-                y: pos.y + y_offset as f64,
+            // Right to left: the marker (" .1") starts 4px after the content box; its leading
+            // space is collapsed by the layout, so its width is added.
+            let x = if rtl {
+                pos.x + content_right + 4.0 + f64::from(marker_text_width(layout, " "))
+            } else {
+                pos.x - f64::from(marker_width) - f64::from(offset / 2)
             };
+            let pos = Point { x, y: pos.y + y_offset as f64 };
 
             let transform =
                 self.transform * Affine::translate((pos.x * self.scale, pos.y * self.scale));

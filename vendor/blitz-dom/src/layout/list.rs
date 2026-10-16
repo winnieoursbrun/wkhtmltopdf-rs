@@ -82,7 +82,19 @@ fn node_list_item_child(
     let styles = node.primary_styles().unwrap();
     let list_style_type = styles.clone_list_style_type();
     let list_style_position = styles.clone_list_style_position();
-    let marker = marker_for_style(list_style_type.clone(), index)?;
+    let mut marker = marker_for_style(list_style_type.clone(), index)?;
+    // wkhtmltopdf-rs: in a right-to-left item, QtWebKit's RenderListMarker draws the suffix
+    // before the number (" .1" for "1. "), right of the item.
+    let rtl = styles.clone_direction() == style::computed_values::direction::T::Rtl;
+    if rtl
+        && list_style_position == ListStylePosition::Outside
+        && let Marker::String(s) = &marker
+    {
+        let body = s.trim_end_matches(' ');
+        if let Some(suffix) = body.chars().last().filter(|c| matches!(c, '.' | ')' | ':')) {
+            marker = Marker::String(format!(" {suffix}{}", &body[..body.len() - suffix.len_utf8()]));
+        }
+    }
 
     let position = match list_style_position {
         ListStylePosition::Inside => ListItemLayoutPosition::Inside,
