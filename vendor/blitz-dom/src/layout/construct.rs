@@ -686,8 +686,76 @@ fn pe_content_text(
     }
 }
 
+/// wkhtmltopdf-rs: the local name of the box of a `::first-letter` (see `first_letter`).
+pub(crate) const FIRST_LETTER_NAME: &str = "wk-first-letter";
+
+/// wkhtmltopdf-rs: whether `node` is the box of a `::first-letter`.
+pub(crate) fn is_first_letter_box(node: &Node) -> bool {
+    matches!(&node.data, NodeData::AnonymousBlock(e) if *e.name.local == *FIRST_LETTER_NAME)
+}
+
+/// wkhtmltopdf-rs: the byte length of the first letter of `text` (leading white space, then
+/// punctuation, then one letter, as WebKit 534's `RenderBlock::updateFirstLetter`), and the
+/// letter itself (without the white space). `None` if the text is only white space and
+/// punctuation.
+pub(crate) fn first_letter_split(text: &str) -> Option<(usize, &str)> {
+    let start = text.len() - text.trim_start_matches(char::is_whitespace).len();
+    let rest = &text[start..];
+    let is_punct = |c: char| {
+        c.is_ascii_punctuation()
+            || matches!(c, '\u{a1}' | '\u{ab}' | '\u{bb}' | '\u{bf}' | '\u{2018}'..='\u{201f}')
+    };
+    let (i, c) = rest.char_indices().find(|&(_, c)| !is_punct(c))?;
+    if c.is_whitespace() {
+        return None;
+    }
+    let end = i + c.len_utf8();
+    Some((start + end, &rest[..end]))
+}
+
+/// wkhtmltopdf-rs: the text of the first letter of block `node_id`'s inline content: the first
+/// text that is not white space, before any element that is not an inline (WebKit 534 does
+/// not look into nested blocks or inline blocks).
+fn first_letter_text(doc: &BaseDocument, node_id: NodeId) -> Option<String> {
+    fn find(doc: &BaseDocument, node_id: NodeId) -> Result<Option<String>, ()> {
+        for &child in doc.nodes[node_id].children.iter() {
+            let node = &doc.nodes[child];
+            match &node.data {
+                NodeData::Text(t) => {
+                    if let Some((_, letter)) = first_letter_split(&t.content) {
+                        return Ok(Some(letter.to_string()));
+                    }
+                    if !t.content.trim().is_empty() {
+                        return Err(());
+                    }
+                }
+                NodeData::Element(_) => {
+                    let display = node.display_style().unwrap_or(Display::inline());
+                    match (display.outside(), display.inside()) {
+                        (DisplayOutside::None, DisplayInside::None) => {}
+                        (DisplayOutside::Inline, DisplayInside::Flow)
+                            if node.element_data().is_some_and(|e| {
+                                !is_inline_box_element(&e.name.local)
+                                    && e.name.local != local_name!("br")
+                            }) =>
+                        {
+                            if let Some(found) = find(doc, child)? {
+                                return Ok(Some(found));
+                            }
+                        }
+                        _ => return Err(()),
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(None)
+    }
+    find(doc, node_id).ok().flatten()
+}
+
 fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
-    let (before_style, after_style, before_node_id, after_node_id) = {
+    let (before_style, after_style, before_node_id, after_node_id, first_letter) = {
         let node = &doc.nodes[node_id];
 
         let before_node_id = node.before();
@@ -695,14 +763,56 @@ fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
 
         // Note: yes these are kinda backwards
         let style_data = node.try_stylo_element_data().and_then(|s| s.get());
-        let before_style = style_data
+        let mut before_style = style_data
             .as_ref()
             .and_then(|d| d.styles.pseudos.as_array()[1].clone());
         let after_style = style_data
             .as_ref()
             .and_then(|d| d.styles.pseudos.as_array()[0].clone());
 
-        (before_style, after_style, before_node_id, after_node_id)
+        // wkhtmltopdf-rs: `::first-letter` of a block without `::before`, built as its
+        // `::before` box holding the letter (the letter is then left out of the text, see
+        // `build_inline_layout_into`).
+        let mut first_letter = None;
+        let first_letter_style = style_data
+            .as_ref()
+            .and_then(|d| d.styles.pseudos.as_array()[3].clone());
+        if before_style.is_none() {
+            if let Some(style) = first_letter_style {
+                let block = node.primary_styles().is_some_and(|s| {
+                    let display = s.clone_display();
+                    display.outside() == DisplayOutside::Block
+                        || display.inside() == DisplayInside::FlowRoot
+                        || display.inside() == DisplayInside::TableCell
+                });
+                if block {
+                    if let Some(letter) = first_letter_text(doc, node_id) {
+                        before_style = Some(style);
+                        first_letter = Some(letter);
+                    }
+                }
+            }
+        }
+        (before_style, after_style, before_node_id, after_node_id, first_letter)
+    };
+    // A first-letter box made earlier is replaced if the element now has a `::before`, and
+    // the other way round.
+    let before_node_id = match before_node_id {
+        Some(id) if is_first_letter_box(&doc.nodes[id]) != first_letter.is_some() => {
+            doc.remove_and_drop_pe(id);
+            let node = &mut doc.nodes[node_id];
+            node.set_pe_by_index(1, None);
+            node.insert_damage(ALL_DAMAGE);
+            None
+        }
+        other => other,
+    };
+    let pe_text = |doc: &BaseDocument, idx: usize, style: &style::properties::ComputedValues| {
+        if idx == 1 && first_letter.is_some() {
+            first_letter.clone()
+        } else {
+            pe_content_text(doc, node_id, idx, style)
+        }
     };
 
     // Sync pseudo element
@@ -721,8 +831,13 @@ fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
 
         // Create pseudo element if it should exist but doesn't
         if let (None, Some(pe_style)) = (pe_node_id, &pe_style) {
+            let name = if idx == 1 && first_letter.is_some() {
+                QualName::new(None, ns!(html), FIRST_LETTER_NAME.into())
+            } else {
+                DUMMY_NAME
+            };
             let new_node_id = doc.create_node(NodeData::AnonymousBlock(Box::new(
-                ElementData::new(DUMMY_NAME, Vec::new()),
+                ElementData::new(name, Vec::new()),
             )));
             doc.nodes[new_node_id].parent = Some(node_id);
             doc.nodes[new_node_id].layout_parent.set(Some(node_id));
@@ -732,7 +847,7 @@ fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
                     .insert(NodeFlags::IS_IN_DOCUMENT);
             }
 
-            if let Some(text) = pe_content_text(doc, node_id, idx, pe_style) {
+            if let Some(text) = pe_text(doc, idx, pe_style) {
                 let text_node_id = doc.create_text_node(&text);
                 doc.nodes[text_node_id].parent = Some(new_node_id);
                 doc.nodes[new_node_id].children.push(text_node_id);
@@ -762,7 +877,7 @@ fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
             // the style-pointer comparison below, as the pseudo-element's style may
             // already have been updated by `sync_pseudo_element_styles` during the
             // style traversal without the text having been updated.
-            let new_text = pe_content_text(doc, node_id, idx, &pe_style);
+            let new_text = pe_text(doc, idx, &pe_style);
             let existing_text_node_id = doc.nodes[pe_node_id]
                 .children
                 .first()
@@ -1136,6 +1251,8 @@ pub(crate) fn build_inline_layout_into(
     let mut text_transformer = TextTransformer::default();
     text_transformer.word_break(&builder);
 
+    // wkhtmltopdf-rs: the first letter is in the `::first-letter` box, not in the text.
+    let mut first_letter = false;
     if let Some(before_id) = root_node.before() {
         build_inline_layout_recursive(
             &mut builder,
@@ -1143,7 +1260,9 @@ pub(crate) fn build_inline_layout_into(
             nodes,
             before_id,
             &text_transform,
+            &mut first_letter,
         );
+        first_letter = is_first_letter_box(&nodes[before_id]);
     }
     for child_id in root_node.children.iter().copied() {
         build_inline_layout_recursive(
@@ -1152,6 +1271,7 @@ pub(crate) fn build_inline_layout_into(
             nodes,
             child_id,
             &text_transform,
+            &mut first_letter,
         );
     }
     if let Some(after_id) = root_node.after() {
@@ -1161,6 +1281,7 @@ pub(crate) fn build_inline_layout_into(
             nodes,
             after_id,
             &text_transform,
+            &mut first_letter,
         );
     }
 
@@ -1177,6 +1298,7 @@ pub(crate) fn build_inline_layout_into(
         nodes: &crate::NodeTree,
         node_id: NodeId,
         parent_text_transform: &CaseTransform,
+        first_letter: &mut bool,
     ) {
         let node = &nodes[node_id];
 
@@ -1239,6 +1361,7 @@ pub(crate) fn build_inline_layout_into(
                                 nodes,
                                 child_id,
                                 &text_transform,
+                                first_letter,
                             );
                         }
                         builder.pop_style_span();
@@ -1301,6 +1424,7 @@ pub(crate) fn build_inline_layout_into(
                                     nodes,
                                     before_id,
                                     &text_transform,
+                                    first_letter,
                                 );
                             }
 
@@ -1311,6 +1435,7 @@ pub(crate) fn build_inline_layout_into(
                                     nodes,
                                     child_id,
                                     &text_transform,
+                                    first_letter,
                                 );
                             }
                             if let Some(after_id) = node.after() {
@@ -1320,6 +1445,7 @@ pub(crate) fn build_inline_layout_into(
                                     nodes,
                                     after_id,
                                     &text_transform,
+                                    first_letter,
                                 );
                             }
                             if let Some((_, close)) = bidi {
@@ -1355,8 +1481,14 @@ pub(crate) fn build_inline_layout_into(
                 // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
                 // dbg!(&data.content);
 
-                let text =
-                    text_transformer.transform(&data.content, parent_text_transform, builder);
+                let mut content = data.content.as_str();
+                if *first_letter {
+                    if let Some((len, _)) = first_letter_split(content) {
+                        content = &content[len..];
+                        *first_letter = false;
+                    }
+                }
+                let text = text_transformer.transform(content, parent_text_transform, builder);
                 // wkhtmltopdf-rs: QtWebKit 2.2 draws a tab as a space (`normalizeSpaces`), even
                 // where white space is preserved: no tab stops, no missing-glyph box.
                 let detabbed;

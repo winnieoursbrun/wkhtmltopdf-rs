@@ -151,6 +151,19 @@ fn attr_in_generated_content() {
     assert!(text.contains("|link (http://example.com/)"), "{text:?}");
 }
 
+/// `::first-letter` styles the first letter (after leading punctuation) in its own box, here a
+/// float the first lines wrap around (reference: css-generated).
+#[test]
+fn first_letter_box() {
+    let r = runs(
+        r#"<style>p:first-letter { font-size: 32px; float: left; margin-right: 3px }
+        p { font: 13px sans-serif }</style><p> "Quoted first letter</p>"#,
+    );
+    let letter = r.iter().find(|r| r.text == "\"Q").expect("letter run");
+    let rest = r.iter().find(|r| r.text.starts_with("uoted")).expect("text run");
+    assert!(rest.xs[0] > letter.xs[1] + 20.0, "{r:?}");
+}
+
 /// A tab is drawn as a space, also in preformatted text (reference: typo-whitespace).
 #[test]
 fn tab_is_a_space() {
