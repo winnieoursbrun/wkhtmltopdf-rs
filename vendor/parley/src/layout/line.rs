@@ -505,7 +505,28 @@ impl<'a, B: Brush> Iterator for GlyphRunIter<'a, B> {
                             "The calculated shaped cluster range of this glyph run must hold exactly the number of glyphs we counted above."
                         );
                         let offset = self.offset;
-                        self.offset += advance;
+                        // wkhtmltopdf-rs: the next box starts after this text box's width in
+                        // QtWebKit, not after the rounded word segments the line breaker
+                        // measured (see `alignment::text_box_correction`).
+                        let clusters = self.line.layout.data.shaped_text.shaped_clusters();
+                        let item_range = self.line.layout.data.line_items
+                            [self.line.data.item_range.start + self.item_index]
+                            .shaped_cluster_range
+                            .clone();
+                        let is_box = |i: Option<usize>| {
+                            i.and_then(|i| self.line.item(i))
+                                .is_some_and(|i| matches!(i, LineItem::InlineBox(_)))
+                        };
+                        let correction = super::alignment::text_box_correction(
+                            clusters,
+                            shaped_clusters.start as usize..shaped_clusters.end as usize,
+                            false,
+                            shaped_clusters.start == item_range.start
+                                && is_box(self.item_index.checked_sub(1)),
+                            shaped_clusters.end == item_range.end
+                                && is_box(Some(self.item_index + 1)),
+                        );
+                        self.offset += advance - correction;
                         return Some(PositionedLayoutItem::GlyphRun(GlyphRun {
                             run,
                             style_index,

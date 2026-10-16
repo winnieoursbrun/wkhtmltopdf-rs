@@ -653,6 +653,11 @@ fn round_words_like_qtwebkit(clusters: &mut [ShapedCluster], characters: &[Chara
             spaces += clusters[i].advance;
             last_space = Some(i);
         } else {
+            // A break opportunity inside a word (after `-`) ends a segment too.
+            if last_word.is_some() && clusters[i].is_soft_wrap_opportunity_before() {
+                close(clusters, spaces, last_space, word, last_word);
+                (spaces, word, last_space, last_word) = (0.0, 0.0, None, None);
+            }
             word += clusters[i].advance;
             last_word = Some(i);
         }
