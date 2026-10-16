@@ -469,6 +469,11 @@ pub(crate) fn build_table_context(
 
     let mut style = table_taffy_style(&stylo_styles, wm);
     style.item_is_table = true;
+    // wkhtmltopdf-rs: QtWebKit 2.2 ignores min-/max-width and min-/max-height on tables
+    // (verified on the 0.12.6 binary: `min-width` neither widens a table nor `min-height`
+    // heightens it).
+    style.min_size = taffy::Size::auto();
+    style.max_size = taffy::Size::auto();
     // Use `dense` row-flow so that each cell scans the row from its
     // leftmost column for the first free track. Without `dense`,
     // `place_definite_secondary_axis_item` keeps a per-item secondary
