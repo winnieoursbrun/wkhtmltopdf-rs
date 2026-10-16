@@ -941,7 +941,8 @@ impl WebPage {
                 let down = button(&mut m, "bottom:0;right:0;height:14px;", true, enabled);
                 let track = el(
                     &mut m,
-                    "position:absolute;top:0;bottom:0;right:0;width:16px;background-color:#eae8e4;".into(),
+                    "position:absolute;top:0;bottom:0;right:0;width:16px;background-color:rgba(1, 2, 5, 0);"
+                        .into(),
                     &[up, down],
                 );
                 let style =

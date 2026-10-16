@@ -31,7 +31,44 @@ fn is_qt_frame_sentinel(c: Color) -> bool {
     (c.r, c.g, c.b, c.a) == (1, 2, 4, 0)
 }
 
+/// The background colour wk-webkit gives the track of a list box's scroll bar
+/// (`rgba(1, 2, 5, 0)`): drawn as Qt's dithered groove ([`ElementCx::draw_qt_scroll_track`]).
+fn is_qt_track_sentinel(c: Color) -> bool {
+    let c = c.to_rgba8();
+    (c.r, c.g, c.b, c.a) == (1, 2, 5, 0)
+}
+
 impl ElementCx<'_, '_> {
+    /// The groove of a Qt scroll bar as QWindowsStyle prints it: black under a white
+    /// `Qt::Dense4Pattern`, a checkerboard of 2px squares (the 0.12.6 binary writes it as an
+    /// 8x8 tiling pattern of dashed lines over a black fill). The squares start 1px off the
+    /// box's corner, the first white one in the second column: the phase that best matches
+    /// the reference once rasterised.
+    pub(super) fn draw_qt_scroll_track(&self, scene: &mut impl PaintScene) {
+        let bg = self.style.get_background().background_color.resolve_to_absolute(&self.style.clone_color());
+        if !is_qt_track_sentinel(bg.as_srgb_color()) {
+            return;
+        }
+        let r = self.frame.border_box;
+        scene.fill(Fill::NonZero, self.transform, QT_BLACK, None, &r);
+        let mut squares = BezPath::new();
+        let (w, h) = (r.width(), r.height());
+        let mut j: u32 = 0;
+        while f64::from(2 * j) - 1.0 < h {
+            let mut i = (j + 1) % 2;
+            while f64::from(2 * i) - 1.0 < w {
+                let x0 = (f64::from(2 * i) - 1.0).max(0.0);
+                let y0 = (f64::from(2 * j) - 1.0).max(0.0);
+                let x1 = (f64::from(2 * i) + 1.0).min(w);
+                let y1 = (f64::from(2 * j) + 1.0).min(h);
+                squares.extend(Rect::new(r.x0 + x0, r.y0 + y0, r.x0 + x1, r.y0 + y1).path_elements(0.1));
+                i += 2;
+            }
+            j += 1;
+        }
+        scene.fill(Fill::NonZero, self.transform, Color::WHITE, None, &squares);
+    }
+
     /// Fill `rect` given in units of `unit` css px from `origin`.
     fn fill_units(&self, scene: &mut impl PaintScene, origin: Point, unit: f64, color: Color, r: Rect) {
         let t = self.transform * Affine::translate(origin.to_vec2()) * Affine::scale(unit);
