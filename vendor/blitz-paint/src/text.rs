@@ -890,6 +890,18 @@ pub(crate) fn stroke_text<'a>(
                 if !doc.failed_font_families.is_empty() && in_failed_font(doc, glyph_run.style().brush.id) {
                     continue;
                 }
+                // wkhtmltopdf-rs: text of a `visibility: hidden` inline element keeps its place
+                // but is not painted.
+                if doc
+                    .get_node(glyph_run.style().brush.id)
+                    .and_then(|n| n.primary_styles())
+                    .is_some_and(|s| {
+                        s.get_inherited_box().visibility
+                            != style::computed_values::visibility::T::Visible
+                    })
+                {
+                    continue;
+                }
                 let run = glyph_run.run();
                 // wkhtmltopdf-rs: the run's source text, per glyph; the glyphs of the bidi
                 // formatting characters of inline embeddings and overrides (blitz-dom
