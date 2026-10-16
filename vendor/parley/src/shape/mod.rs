@@ -352,6 +352,10 @@ impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
                 self.query.set_attributes(attrs);
                 self.attrs = attrs;
                 self.query_yields_font = None;
+                // wkhtmltopdf-rs: the last-resort font was matched with the previous
+                // attributes; after a `<b>` run in an unknown family (`Arial` without a
+                // generic fallback), keeping it made the rest of the paragraph bold.
+                self.last_resort_font = LastResortFont::Unresolved;
             }
         }
 
