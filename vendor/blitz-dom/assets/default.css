@@ -639,6 +639,9 @@ hr {
     color: gray;
     border-width: 1px;
     border-style: inset;
+    /* wkhtmltopdf-rs: QtWebKit 2.2 draws the default rule #9a9a9a over #eee, whatever the
+       element's color (the presentational attributes are in table_hints.rs) */
+    border-color: #eee;
     margin-block-start: 0.5em;
     margin-block-end: 0.5em;
     margin-inline-start: auto;
@@ -647,10 +650,6 @@ hr {
 
     /* FIXME: This is not really per spec */
     display: block;
-}
-
-hr[size="1"] {
-    border-style: solid none none none;
 }
 
 /* Note that we only intend for the alt content to show up if the image is

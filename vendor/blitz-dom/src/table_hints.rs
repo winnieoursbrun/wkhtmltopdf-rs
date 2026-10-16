@@ -249,6 +249,35 @@ fn hints_css(node: &Node, tag: &str) -> String {
                 }
             }
         }
+        // wkhtmltopdf-rs: `HTMLHRElement`'s attribute mapping (WebKit 534).
+        "hr" => {
+            if let Some(v) = attr(node, "align") {
+                if v.eq_ignore_ascii_case("left") {
+                    css.push_str("margin-left:0;margin-right:auto;");
+                } else if v.eq_ignore_ascii_case("right") {
+                    css.push_str("margin-left:auto;margin-right:0;");
+                } else {
+                    css.push_str("margin-left:auto;margin-right:auto;");
+                }
+            }
+            let color = attr(node, "color").and_then(css_color);
+            if let Some(c) = &color {
+                let _ = write!(css, "border-style:solid;border-color:{c};background-color:{c};");
+            }
+            if attr(node, "noshade").is_some() {
+                css.push_str("border-style:solid;");
+                if color.is_none() {
+                    css.push_str("border-color:#808080;background-color:#808080;");
+                }
+            }
+            if let Some(size) = attr(node, "size").and_then(leading_int) {
+                if size <= 1 {
+                    css.push_str("border-bottom-width:0;");
+                } else {
+                    let _ = write!(css, "height:{}px;", size - 2);
+                }
+            }
+        }
         "caption" => {
             if let Some(v) = attr(node, "align") {
                 if v.eq_ignore_ascii_case("top") || v.eq_ignore_ascii_case("bottom") {
@@ -296,7 +325,7 @@ pub(crate) fn table_hints(
     lock: &SharedRwLock,
 ) -> Option<ServoArc<Locked<PropertyDeclarationBlock>>> {
     let tag = element_tag(node)?;
-    if !handles_align(tag) {
+    if !handles_align(tag) && tag != "hr" {
         return None;
     }
     let css = hints_css(node, tag);

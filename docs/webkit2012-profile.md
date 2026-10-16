@@ -111,6 +111,7 @@ Implementation:
 | `--zoom`, `--dpi` | frame zoom `zoom × dpi / 96`: lengths, font sizes and borders rounded in device pixels, a border at least 1 device px | same rounding (stylo_taffy `device_zoom`); glyph advances are not rounded at that scale |
 | `--no-images` | an unsized image is an empty replaced box that keeps its line | 1px minimum height |
 | Inset box shadows | painted inside the padding box | padding box minus the offset hole, no compositing |
+| `<hr>` | inset 1px rule in #9a9a9a over #eee whatever its `color`; `noshade` solid #808080 (border and background), `color` solid in that color, `size` n > 1 a height of n − 2 px, `size=1` no bottom border, `align` the side margins | `default.css`, blitz-dom `table_hints.rs` |
 | Dotted border with `border-radius` | drawn solid | drawn solid (dashed stays dashed) |
 | Outlines | rectangles (no radius), `outline-offset` away from the border box | same |
 | Collapsed table borders | painted after the cell backgrounds | same |
