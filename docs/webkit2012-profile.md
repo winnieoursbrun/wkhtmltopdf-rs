@@ -80,6 +80,7 @@ Implementation:
 | `vertical-align: sub \| super` | `fontSize / 5 + 1` down, `fontSize / 3 + 1` up (parent's whole-pixel size) | parley `style_metrics.rs` |
 | Box positions on a line | after each text box's width (whole node: preferred width; part of one: rounded unrounded advances), not after the line breaker's segments | parley `line.rs`, `alignment.rs` |
 | Kerning, ligatures with `letter-spacing`/`word-spacing` | Qt's complex path: kerning (rounded to whole pixels) and `fi` ligatures | blitz-dom `stylo_to_parley.rs`, parley_engine `shaped_text.rs` |
+| Soft hyphen (`&shy;`) | a break opportunity; a line broken there ends with a hyphen (U+2010) | blitz-paint `text.rs` (drawn after the line's last run; the line breaker does not count its width) |
 | Tab character | drawn as a space, also in `pre` | blitz-dom `layout/construct.rs` |
 | `display: inline-table` on a line | sits on its bottom margin edge (no table baseline), the line's text on that edge | blitz-dom `layout/inline.rs` |
 | Smart shrinking width | includes text overflowing its box (`nowrap`), at its text boxes' widths (a whole text node is its preferred width), unless the box clips | wk-webkit `page.rs` |

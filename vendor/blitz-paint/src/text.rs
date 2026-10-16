@@ -501,9 +501,14 @@ pub(crate) struct DrawTextContext {
 
 /// wkhtmltopdf-rs: the glyph id and advance of `…` in `font` at `size`.
 fn ellipsis_glyph(font: &peniko::FontData, size: f32) -> Option<(u32, f64)> {
+    char_glyph(font, size, '\u{2026}')
+}
+
+/// wkhtmltopdf-rs: the glyph id and advance of `c` in `font` at `size`.
+fn char_glyph(font: &peniko::FontData, size: f32, c: char) -> Option<(u32, f64)> {
     use skrifa::MetadataProvider;
     let f = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
-    let gid = f.charmap().map('\u{2026}')?;
+    let gid = f.charmap().map(c)?;
     let adv = f
         .glyph_metrics(skrifa::instance::Size::new(size), skrifa::instance::LocationRef::default())
         .advance_width(gid)?;
@@ -882,6 +887,9 @@ pub(crate) fn stroke_text<'a>(
             }
         }
         let keep = |x: f32, advance: f32| cut.is_none_or(|c| (x + advance) as f64 <= c + 0.01);
+        // wkhtmltopdf-rs: the last painted run of the line (font, size, color, node, baseline,
+        // end x), where the hyphen of a soft hyphen the line breaks at is drawn.
+        let mut last_run: Option<(peniko::FontData, f32, Color, NodeId, f32, f32)> = None;
 
         for item in line.items() {
             if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
@@ -1024,6 +1032,14 @@ pub(crate) fn stroke_text<'a>(
                         crate::run_text::set(rt);
                     }
                 }
+                last_run = Some((
+                    font.clone(),
+                    font_size,
+                    text_color,
+                    style.brush.id,
+                    glyph_run.baseline(),
+                    glyph_run.offset() + glyph_run.advance(),
+                ));
                 scene.draw_glyphs(
                     font,
                     font_size,
@@ -1091,6 +1107,38 @@ pub(crate) fn stroke_text<'a>(
                         acc.own = Some(geometry.clone());
                     }
                 }
+            }
+        }
+
+        // wkhtmltopdf-rs: a line broken at a soft hyphen ends with a hyphen (QtWebKit 2.2
+        // draws U+2010 after the text).
+        let soft_hyphen_break = line.break_reason() == parley::BreakReason::Regular
+            && source_text
+                .and_then(|t| t.get(line.text_range()))
+                .is_some_and(|t| t.trim_end_matches([' ', '\n']).ends_with('\u{ad}'));
+        if let (true, Some((font, size, color, node_id, baseline, end_x))) =
+            (soft_hyphen_break && cut.is_none(), last_run.take())
+        {
+            let glyph = char_glyph(&font, size, '\u{2010}').or_else(|| char_glyph(&font, size, '-'));
+            if let Some((gid, _)) = glyph {
+                crate::run_text::set(crate::run_text::RunText {
+                    text: "\u{2010}".to_string(),
+                    glyph_ranges: vec![0..3],
+                    node_id,
+                });
+                scene.draw_glyphs(
+                    &font,
+                    size,
+                    !FONT_EMBOLDEN_ENABLED,
+                    &[],
+                    kurbo::Vec2::default(),
+                    Fill::NonZero,
+                    &anyrender::Paint::from(color),
+                    1.0,
+                    transform,
+                    None,
+                    std::iter::once(anyrender::Glyph { id: gid as _, x: end_x, y: baseline }),
+                );
             }
         }
 

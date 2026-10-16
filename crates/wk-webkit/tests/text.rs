@@ -164,6 +164,15 @@ fn first_letter_box() {
     assert!(rest.xs[0] > letter.xs[1] + 20.0, "{r:?}");
 }
 
+/// A line broken at a soft hyphen ends with a hyphen; an unbroken soft hyphen draws nothing
+/// (reference: typo-whitespace).
+#[test]
+fn soft_hyphen_break_draws_a_hyphen() {
+    let r = runs("<p style=\"width: 60px; font: 13px sans-serif\">ab&shy;cd super&shy;califragilistic</p>");
+    let hyphens: Vec<_> = r.iter().filter(|r| r.text == "\u{2010}").collect();
+    assert_eq!(hyphens.len(), 1, "{r:?}");
+}
+
 /// A tab is drawn as a space, also in preformatted text (reference: typo-whitespace).
 #[test]
 fn tab_is_a_space() {
