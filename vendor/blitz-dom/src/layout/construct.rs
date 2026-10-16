@@ -1282,13 +1282,18 @@ pub(crate) fn build_inline_layout_into(
             .and_then(|parent_id| nodes[parent_id].primary_styles())
     });
 
-    let parley_style = root_node_style
+    let mut parley_style = root_node_style
         .as_ref()
         .map(|s| stylo_to_parley::style(inline_context_root_node_id, s))
         .unwrap_or_else(|| parley::TextStyle {
             white_space_collapse: WhiteSpaceCollapse::Collapse,
             ..Default::default()
         });
+    // wkhtmltopdf-rs: the block container's own `vertical-align` (a table cell's `middle`)
+    // places the box, not its line content: the root inline box sits on the baseline. A
+    // `middle` root shifted the runs of a `<br>` (another font) off the text's, one pixel
+    // taller per line.
+    parley_style.vertical_align = Default::default();
 
     // Create a parley tree builder
     let mut builder = layout_ctx.tree_builder(font_ctx, scale, true, &parley_style);
