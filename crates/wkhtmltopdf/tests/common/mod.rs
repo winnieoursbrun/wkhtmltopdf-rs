@@ -494,6 +494,15 @@ pub fn diff_ratio(a: &Gray, b: &Gray) -> f64 {
 
 /// Write `ref | ours | diff` side by side as a binary PPM.
 pub fn dump_side_by_side(path: &Path, a: Option<&Gray>, b: Option<&Gray>) {
+    let (tw, h, rgb) = side_by_side(a, b);
+    let mut f = std::fs::File::create(path).unwrap();
+    write!(f, "P6\n{tw} {h}\n255\n").unwrap();
+    f.write_all(&rgb).unwrap();
+}
+
+/// `ref | ours | diff` side by side, as `(width, height, RGB bytes)`: in the
+/// diff, ink of the reference only is red, ours only is blue, both is black.
+pub fn side_by_side(a: Option<&Gray>, b: Option<&Gray>) -> (usize, usize, Vec<u8>) {
     let w = a.map_or(0, |g| g.w).max(b.map_or(0, |g| g.w));
     let h = a.map_or(0, |g| g.h).max(b.map_or(0, |g| g.h));
     let gap = 4;
@@ -519,8 +528,5 @@ pub fn dump_side_by_side(path: &Path, a: Option<&Gray>, b: Option<&Gray>) {
             out[y * tw + 2 * (w + gap) + x] = c;
         }
     }
-    let mut f = std::fs::File::create(path).unwrap();
-    write!(f, "P6\n{tw} {h}\n255\n").unwrap();
-    let bytes: Vec<u8> = out.into_iter().flatten().collect();
-    f.write_all(&bytes).unwrap();
+    (tw, h, out.into_iter().flatten().collect())
 }
