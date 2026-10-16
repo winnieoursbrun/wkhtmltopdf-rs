@@ -61,6 +61,13 @@ pub struct TableContext {
     calc_values: Vec<LengthPercentage>,
     /// wkhtmltopdf-rs: whether the fixed table layout algorithm applies
     pub is_fixed: bool,
+    /// wkhtmltopdf-rs: the table's caption (WebKit 534 lays out and paints only
+    /// the first one) and whether it sits below the table (`caption-side: bottom`)
+    pub caption: Option<(NodeId, bool)>,
+    /// wkhtmltopdf-rs: the vertical extent of the laid-out caption, margins
+    /// included (0 without a caption). The table's own box (background and
+    /// borders) is the border box less this extent, at its top or bottom.
+    pub caption_extent: AtomicRefCell<f32>,
 }
 
 // #[derive(Debug, Clone, Eq, PartialEq)]
@@ -470,6 +477,19 @@ pub(crate) fn build_table_context(
 
     drop(stylo_styles);
 
+    // wkhtmltopdf-rs: the first caption child is laid out above or below the
+    // table (`RenderTable::m_caption`).
+    let caption = children.iter().copied().find_map(|id| {
+        let node = &doc.nodes[id];
+        let style = node.primary_styles()?;
+        let display = style.clone_display();
+        (display.outside() == DisplayOutside::TableCaption && !style.clone_position().is_absolutely_positioned())
+            .then(|| {
+                use style::values::computed::table::CaptionSide;
+                (id, style.clone_caption_side() == CaptionSide::Bottom)
+            })
+    });
+
     let mut columns: Vec<TableColumn> = Vec::new();
     let mut column_sizes: Vec<taffy::TrackSizingFunction> = Vec::new();
     for child_id in children.iter().copied() {
@@ -636,6 +656,7 @@ pub(crate) fn build_table_context(
         .iter()
         .map(|cell| cell.node_id)
         .chain(oof_children.iter().map(|(node_id, _)| *node_id))
+        .chain(caption.map(|(id, _)| id))
         .collect();
     let root_node = &mut doc.nodes[table_root_node_id];
     root_node.children = children;
@@ -654,6 +675,8 @@ pub(crate) fn build_table_context(
             border_style: first_cell_border,
             calc_values,
             is_fixed,
+            caption,
+            caption_extent: AtomicRefCell::new(0.0),
         },
         layout_children,
     )
@@ -1145,7 +1168,10 @@ fn collect_table_cells(
         | DisplayInside::FlowRoot
         | DisplayInside::Flex
         | DisplayInside::Grid => {
-            node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+            // A caption is a layout child of the table: its box is constructed.
+            if display.outside() != DisplayOutside::TableCaption {
+                node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+            }
             // Probably a table caption: ignore
             // println!(
             //     "Warning: ignoring non-table typed descendent of table ({:?})",
@@ -1259,4 +1285,104 @@ impl taffy::LayoutGridContainer for TableTreeWrapper<'_, '_> {
     ) {
         *self.ctx.computed_grid_info.borrow_mut() = Some(detailed_grid_info);
     }
+}
+
+/// wkhtmltopdf-rs: a table caption laid out at the table's width
+/// (`RenderTable::layout`): its border-box size, margins, border and padding.
+pub(crate) struct CaptionBox {
+    pub node: NodeId,
+    pub bottom: bool,
+    pub size: taffy::Size<f32>,
+    pub margin: taffy::Rect<f32>,
+    pub border: taffy::Rect<f32>,
+    pub padding: taffy::Rect<f32>,
+}
+
+impl CaptionBox {
+    /// The vertical space the caption takes, margins included.
+    pub fn extent(&self) -> f32 {
+        self.margin.top + self.size.height + self.margin.bottom
+    }
+}
+
+/// wkhtmltopdf-rs: lay the table's caption out for a table `table_w` wide. Its
+/// containing block is the table's content box (WebKit 534 places it at the
+/// table's left edge, plus its start margin).
+pub(crate) fn layout_caption(
+    tree: &mut LayoutPassState<'_>,
+    ctx: &TableContext,
+    table_id: NodeId,
+    table_w: f32,
+    run_mode: taffy::RunMode,
+) -> Option<CaptionBox> {
+    use taffy::{AvailableSpace, CoreStyle as _, LayoutInput, Line, RequestedAxis, SizingMode};
+    let (caption_id, bottom) = ctx.caption?;
+    let border = ctx.style.border.resolve_or_zero(None, resolve_calc_value);
+    let padding = match ctx.border_collapse {
+        BorderCollapse::Collapse => taffy::Rect::ZERO,
+        BorderCollapse::Separate => tree.nodes[table_id]
+            .layout_style()
+            .padding()
+            .resolve_or_zero(Some(table_w), resolve_calc_value),
+    };
+    let cb_w = (table_w - border.left - border.right - padding.left - padding.right).max(0.0);
+    let style = tree.nodes[caption_id].layout_style();
+    let margin = style.margin().map(|m| {
+        if m.is_auto() { 0.0 } else { m.resolve_or_zero(Some(cb_w), resolve_calc_value) }
+    });
+    let c_border = style.border().resolve_or_zero(Some(cb_w), resolve_calc_value);
+    let c_padding = style.padding().resolve_or_zero(Some(cb_w), resolve_calc_value);
+    let spec_w = style.size().width;
+    let width = match spec_w.tag() {
+        taffy::CompactLength::LENGTH_TAG | taffy::CompactLength::PERCENT_TAG => {
+            let w = spec_w.resolve_or_zero(Some(cb_w), resolve_calc_value);
+            if style.box_sizing() == taffy::BoxSizing::ContentBox {
+                w + c_border.left + c_border.right + c_padding.left + c_padding.right
+            } else {
+                w
+            }
+        }
+        _ => (cb_w - margin.left - margin.right).max(0.0),
+    };
+    drop(style);
+    let input = LayoutInput {
+        run_mode,
+        sizing_mode: SizingMode::InherentSize,
+        axis: RequestedAxis::Both,
+        known_dimensions: taffy::Size { width: Some(width), height: None },
+        known_dimensions_are_definite: taffy::Size { width: true, height: true },
+        parent_size: taffy::Size { width: Some(cb_w), height: None },
+        available_space: taffy::Size {
+            width: AvailableSpace::Definite(cb_w),
+            height: AvailableSpace::MaxContent,
+        },
+        vertical_margins_are_collapsible: Line::FALSE,
+    };
+    let out = taffy::LayoutPartialTree::compute_child_layout(tree, crate::taffy_node_id(caption_id), input);
+    Some(CaptionBox {
+        node: caption_id,
+        bottom,
+        size: out.size,
+        margin,
+        border: c_border,
+        padding: c_padding,
+    })
+}
+
+/// wkhtmltopdf-rs: the minimum width of the table's caption, which the table
+/// is at least as wide as (`RenderTable::computePreferredLogicalWidths`).
+pub(crate) fn caption_min_width(tree: &mut LayoutPassState<'_>, ctx: &TableContext) -> f32 {
+    use taffy::{AvailableSpace, LayoutInput, Line, RequestedAxis, SizingMode};
+    let Some((caption_id, _)) = ctx.caption else { return 0.0 };
+    let input = LayoutInput {
+        run_mode: taffy::RunMode::ComputeSize,
+        sizing_mode: SizingMode::ContentSize,
+        axis: RequestedAxis::Horizontal,
+        known_dimensions: taffy::Size::NONE,
+        known_dimensions_are_definite: taffy::Size { width: true, height: true },
+        parent_size: taffy::Size::NONE,
+        available_space: taffy::Size { width: AvailableSpace::MinContent, height: AvailableSpace::MaxContent },
+        vertical_margins_are_collapsible: Line::FALSE,
+    };
+    taffy::LayoutPartialTree::compute_child_layout(tree, crate::taffy_node_id(caption_id), input).size.width
 }

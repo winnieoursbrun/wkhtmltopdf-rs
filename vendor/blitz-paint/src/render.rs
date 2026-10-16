@@ -651,9 +651,22 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
         // todo: maybe cache this so we don't need to constantly be figuring it out
         // It is quite a bit of math to calculate during render/traverse
         // Also! we can cache the bezpaths themselves, saving us a bunch of work
-        let frame = create_css_rect(&style, &layout, scale);
-
         let element = node.element_data().unwrap();
+
+        // wkhtmltopdf-rs: a table's box (background, borders) excludes its
+        // caption, which is laid out inside the table's layout box.
+        let mut layout = layout;
+        let mut caption_offset = 0.0;
+        if let blitz_dom::node::SpecialElementData::TableRoot(table) = &element.special_data {
+            if let Some((_, bottom)) = table.caption {
+                let extent = *table.caption_extent.borrow();
+                layout.size.height = (layout.size.height - extent).max(0.0);
+                if !bottom {
+                    caption_offset = extent as f64 * scale;
+                }
+            }
+        }
+        let frame = create_css_rect(&style, &layout, scale, caption_offset);
 
         ElementCx {
             context: self,
@@ -1335,12 +1348,12 @@ fn insets_from_taffy_rect(input: taffy::Rect<f64>) -> Insets {
 }
 
 /// Convert Stylo and Taffy types into Kurbo types
-fn create_css_rect(style: &ComputedValues, layout: &Layout, scale: f64) -> CssBox {
+fn create_css_rect(style: &ComputedValues, layout: &Layout, scale: f64, y_offset: f64) -> CssBox {
     // Resolve and rescale
     // We have to scale since document pixels are not same same as rendered pixels
     let width: f64 = layout.size.width as f64;
     let height: f64 = layout.size.height as f64;
-    let border_box = Rect::new(0.0, 0.0, width * scale, height * scale);
+    let border_box = Rect::new(0.0, y_offset, width * scale, y_offset + height * scale);
     let border = insets_from_taffy_rect(layout.border.map(|p| p as f64 * scale));
     let padding = insets_from_taffy_rect(layout.padding.map(|p| p as f64 * scale));
     let outline_width = style.get_outline().outline_width.0.to_f64_px() * scale;

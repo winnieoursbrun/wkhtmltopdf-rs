@@ -573,7 +573,68 @@ impl LayoutPassState<'_> {
                         inputs.known_dimensions.width = Some(width);
                         inputs.known_dimensions_are_definite.width = true;
                     }
+                    // wkhtmltopdf-rs: the caption sits above or below the grid, outside
+                    // the table's borders (`RenderTable::layout`). Lay it out first when
+                    // the table width is known, so that a known table height is shared
+                    // between the caption and the grid.
+                    let table_dom_id = dom_node_id(node_id);
+                    let mut caption = None;
+                    if let Some(width) = inputs.known_dimensions.width {
+                        caption = table::layout_caption(
+                            table_wrapper.doc,
+                            &table_wrapper.ctx,
+                            table_dom_id,
+                            width,
+                            inputs.run_mode,
+                        );
+                        if let (Some(c), Some(h)) = (&caption, inputs.known_dimensions.height) {
+                            inputs.known_dimensions.height = Some((h - c.extent()).max(0.0));
+                        }
+                    }
                     let mut output = compute_grid_layout(&mut table_wrapper, node_id, inputs);
+                    if caption.is_none() && table_wrapper.ctx.caption.is_some() {
+                        caption = table::layout_caption(
+                            table_wrapper.doc,
+                            &table_wrapper.ctx,
+                            table_dom_id,
+                            output.size.width,
+                            inputs.run_mode,
+                        );
+                    }
+                    if let Some(c) = &caption {
+                        let extent = c.extent();
+                        if inputs.run_mode == RunMode::PerformLayout {
+                            let ctx = &table_wrapper.ctx;
+                            if !c.bottom {
+                                for cell in &ctx.cells {
+                                    table_wrapper.doc.nodes[cell.node_id]
+                                        .unrounded_layout_mut()
+                                        .location
+                                        .y += extent;
+                                }
+                            }
+                            let y = if c.bottom {
+                                output.size.height + c.margin.top
+                            } else {
+                                c.margin.top
+                            };
+                            let mut layout = Layout::with_order(
+                                (ctx.cells.len() + ctx.oof_children.len()) as u32,
+                            );
+                            layout.location = taffy::Point { x: c.margin.left, y };
+                            layout.size = c.size;
+                            layout.border = c.border;
+                            layout.padding = c.padding;
+                            layout.margin = c.margin;
+                            *table_wrapper.doc.nodes[c.node].unrounded_layout_mut() = layout;
+                            *ctx.caption_extent.borrow_mut() = extent;
+                        }
+                        output.size.height += extent;
+                        if !c.bottom {
+                            output.baselines.first = output.baselines.first.map(|b| b + extent);
+                            output.baselines.last = output.baselines.last.map(|b| b + extent);
+                        }
+                    }
 
                     // Absolutely positioned children take no part in the table grid. Their
                     // static position is the top-left of the table's content box.

@@ -190,7 +190,8 @@ pub(crate) fn auto_layout(
         let from_rest = if rest > 0.0 { non_percent as f32 * 100.0 / rest } else { 0.0 };
         sum_max = sum_max.max(max_percent as i32).max(from_rest as i32);
     }
-    let pref_min = sum_min as f32 + outside;
+    // The table is at least as wide as its caption's minimum width.
+    let pref_min = (sum_min as f32 + outside).max(super::table::caption_min_width(w.doc, &ctx));
     let pref_max = sum_max as f32 + outside;
     let spec = ctx.style.size.width.into_raw();
     let width = if let Some(known) = inputs.known_dimensions.width {
