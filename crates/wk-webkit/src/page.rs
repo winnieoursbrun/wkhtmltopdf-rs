@@ -260,22 +260,33 @@ fn tag(node: &Node) -> &str {
 }
 
 /// Form controls as QtWebKit 2.2 draws them with Qt's default style
-/// (measured on the 0.12.6 binary, tests/parts/forms): text fields and
-/// textareas inherit the font, have a 1 px black frame on white and a 1 px
-/// side inset; checkboxes and radios are 13 px; push buttons use the
-/// default sans-serif face on Qt's button grey. Text field and textarea
+/// (measured on the 0.12.6 binary, tests/parts/forms and tests/fidelity/forms-*): text
+/// fields and textareas inherit the font, have a 1 px black frame on white and a 1 px
+/// side inset, their text #545454 when disabled and a placeholder in #a9a9a9; the input
+/// types QtWebKit 2.2 had no widget for (color, date and time) are text fields;
+/// checkboxes are 13 px and radios 12 px; push buttons use the default sans-serif face on
+/// Qt's button grey, inside a 2px raised bevel (drawn by blitz-paint in place of the
+/// `rgba(1, 2, 3, 0)` border), with #808080 text when disabled. Text field and textarea
 /// widths come from `size`/`cols` (blitz-dom layout).
 const QT_FORM_CONTROLS: &str = "\
 input:not([type]), input[type=text], input[type=password], input[type=search], input[type=email], \
-input[type=url], input[type=tel], input[type=number], textarea { font: inherit; color: black; \
+input[type=url], input[type=tel], input[type=number], input[type=color], input[type=date], \
+input[type=datetime], input[type=datetime-local], input[type=month], input[type=week], \
+input[type=time], textarea { font: inherit; color: black; \
 border: 1px solid black; padding: 0 1px; margin: 2px; background-color: white; line-height: normal; }
 textarea { padding: 0; }
+input[placeholder]:not([placeholder=\"\"]):not([value]), input[placeholder]:not([placeholder=\"\"])[value=\"\"] { color: #a9a9a9; }
+input[type=number] { margin-right: 5px; }
+input:disabled:not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=reset]):not([type=button]), \
+textarea:disabled { color: #545454; }
 input[type=checkbox], input[type=radio] { width: 13px; height: 13px; border: none; padding: 0; \
-margin: 3px 3px 3px 4px; color: black; }
-input[type=radio] { margin: 3px 3px 0 5px; }
+margin: 3px; color: black; }
+input[type=radio] { width: 12px; height: 12px; margin: 3px 3px 0; }
 input[type=submit], input[type=reset], input[type=button], button { font: inherit; \
-font-family: sans-serif; color: black; background-color: #d4d0c8; border: 1px solid #404040; \
-border-top-color: white; border-left-color: white; border-radius: 0; padding: 3px 6px; margin: 2px; }
+font-family: sans-serif; color: black; background-color: #d4d0c8; border: 2px solid rgba(1, 2, 3, 0); \
+border-radius: 0; padding: 4px; margin: 2px; }
+input:disabled[type=submit], input:disabled[type=reset], input:disabled[type=button], button:disabled { \
+color: #808080; }
 select { font: inherit; color: black; background-color: white; border: 1px solid black; margin: 2px; }
 ";
 
@@ -613,6 +624,7 @@ impl WebPage {
         crate::timing("render start");
         self.undo_viewport_shifts();
         self.qt_selects();
+        self.qt_widgets();
         let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
         crate::timing("viewport set");
@@ -623,7 +635,8 @@ impl WebPage {
                 self.set_viewport(layout_w, vh);
             }
         }
-        if self.settle_alt_boxes(&alt_boxes) {
+        let alt_settled = self.settle_alt_boxes(&alt_boxes);
+        if self.settle_legends() || alt_settled {
             self.set_viewport(layout_w, vh);
         }
         let pt_per_px = printable_w_pt / layout_w;
@@ -808,8 +821,15 @@ impl WebPage {
         const RAISED: &str =
             "border:1px solid;border-color:#d4d0c8 black black #d4d0c8;background-color:#d4d0c8;";
         const RAISED_IN: &str = "border:1px solid;border-color:white #6a6864 #6a6864 white;";
-        let button = |m: &mut blitz_dom::DocumentMutator, pos: &str, down: bool| {
-            let arrow = if down { "border-top:4px solid black" } else { "border-bottom:4px solid black" };
+        let button = |m: &mut blitz_dom::DocumentMutator, pos: &str, down: bool, enabled: bool| {
+            // A disabled scroll bar (every option visible) draws its arrows in Qt's
+            // disabled-text grey.
+            let ink = if enabled { "black" } else { "#a0a0a4" };
+            let arrow = if down {
+                format!("border-top:4px solid {ink}")
+            } else {
+                format!("border-bottom:4px solid {ink}")
+            };
             let a = el(
                 m,
                 format!(
@@ -827,9 +847,10 @@ impl WebPage {
                  text-indent:0;text-align:left;line-height:normal;font:inherit;color:black;margin:2px;{SUNKEN}"
             );
             if s.list_rows.is_some() {
-                // QtWebKit puts the last row on the baseline; here the box has no baseline
-                // (it sits on it), lowered by a descent and the bottom frame.
-                outer_style.push_str("overflow:hidden;vertical-align:-0.375em;");
+                // A list box has a plain 1px black frame. QtWebKit puts its baseline 7px above
+                // its bottom margin edge (RenderListBox's baselineAdjustment): the last row's
+                // baseline with 13px text. Here the box has no baseline (it sits on it).
+                outer_style.push_str("overflow:hidden;vertical-align:-7px;border:1px solid black;");
             }
             let mut kept = Vec::new();
             for a in s.attrs {
@@ -846,19 +867,22 @@ impl WebPage {
                     let (text, selected) = s.options.get(i).map_or(("", false), |o| (o.0.as_str(), o.1));
                     let t = m.create_text_node(if text.is_empty() { "\u{a0}" } else { text });
                     let colors = if selected { "background-color:#000080;color:white;" } else { "" };
-                    lines.push(el(&mut m, format!("display:block;padding:0 2px 1px;{colors}"), &[t]));
+                    // Rows are a line plus 1px apart; the last one has no gap.
+                    let gap = if i + 1 < rows { "padding-bottom:1px;" } else { "" };
+                    lines.push(el(&mut m, format!("display:block;padding:0 2px;{gap}{colors}"), &[t]));
                 }
                 let list = el(&mut m, "display:block;".into(), &lines);
-                let up = button(&mut m, "top:0;right:0;height:14px;", false);
-                let down = button(&mut m, "bottom:0;right:0;height:14px;", true);
+                let enabled = s.options.len() > rows;
+                let up = button(&mut m, "top:0;right:0;height:14px;", false, enabled);
+                let down = button(&mut m, "bottom:0;right:0;height:14px;", true, enabled);
                 let track = el(
                     &mut m,
                     "position:absolute;top:0;bottom:0;right:0;width:16px;background-color:#eae8e4;".into(),
                     &[up, down],
                 );
-                let style = format!(
-                    "display:block;position:relative;overflow:hidden;background-color:white;padding-right:16px;{SUNKEN_IN}"
-                );
+                let style =
+                    "display:block;position:relative;overflow:hidden;background-color:white;padding-right:16px;"
+                        .to_string();
                 el(&mut m, style, &[list, track])
             } else {
                 // The shown option first (the box's baseline), then the hidden ones.
@@ -873,7 +897,7 @@ impl WebPage {
                         &[t],
                     ));
                 }
-                children.push(button(&mut m, "top:0;right:0;bottom:0;", true));
+                children.push(button(&mut m, "top:0;right:0;bottom:0;", true, true));
                 let style = format!(
                     "display:block;position:relative;overflow:hidden;background-color:white;\
                      padding:1px 20px 1px 2px;{SUNKEN_IN}"
@@ -884,6 +908,201 @@ impl WebPage {
             let outer = m.create_element(span.clone(), kept);
             m.append_children(outer, &[field]);
             m.replace_node_with(s.id, &[outer]);
+        }
+    }
+
+    /// The other widgets QtWebKit 2.2 draws with Qt's Windows style, measured on the 0.12.6
+    /// binary (tests/fidelity/forms-controls, forms-inputs), rebuilt as spans like
+    /// [`qt_selects`](Self::qt_selects): `input[type=range]` (a 129×16 slider: a sunken
+    /// groove and an 11px raised thumb), `<progress>` (a 130×13 sunken trough with 7px navy
+    /// chunks every 9px), `<meter>` (a 65×13 grey gradient bar, filled in green) and
+    /// `input[type=file]` (a "Choose File" push button and "No file selected"). Their
+    /// fallback content is not shown.
+    fn qt_widgets(&mut self) {
+        enum Kind {
+            Range(f64),
+            Progress(Option<f64>),
+            Meter(f64),
+            File,
+        }
+        let num =
+            |n: &Node, a| n.attr(a).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite());
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            let kind = match tag(n) {
+                "input" => match n.attr(local_name!("type")).map(str::to_ascii_lowercase).as_deref() {
+                    Some("range") => {
+                        let (min, max) = (
+                            num(n, local_name!("min")).unwrap_or(0.0),
+                            num(n, local_name!("max")).unwrap_or(100.0),
+                        );
+                        let max = if max < min { min } else { max };
+                        let v = num(n, local_name!("value")).unwrap_or((min + max) / 2.0).clamp(min, max);
+                        Some(Kind::Range(if max > min { (v - min) / (max - min) } else { 0.0 }))
+                    }
+                    Some("file") => Some(Kind::File),
+                    _ => None,
+                },
+                "progress" => {
+                    let max = num(n, local_name!("max")).filter(|m| *m > 0.0).unwrap_or(1.0);
+                    Some(Kind::Progress(num(n, local_name!("value")).map(|v| (v / max).clamp(0.0, 1.0))))
+                }
+                "meter" => {
+                    let (min, max) = (
+                        num(n, local_name!("min")).unwrap_or(0.0),
+                        num(n, local_name!("max")).unwrap_or(1.0),
+                    );
+                    let max = if max < min { min } else { max };
+                    let v = num(n, local_name!("value")).unwrap_or(0.0).clamp(min, max);
+                    Some(Kind::Meter(if max > min { (v - min) / (max - min) } else { 0.0 }))
+                }
+                _ => None,
+            };
+            match kind {
+                Some(k) => {
+                    let attrs = n.element_data().map(|e| e.attrs.to_vec()).unwrap_or_default();
+                    found.push((id, k, attrs));
+                }
+                None => stack.extend(n.children.iter().copied()),
+            }
+        }
+        if found.is_empty() {
+            return;
+        }
+        let span = blitz_dom::QualName::new(None, blitz_dom::ns!(html), local_name!("span"));
+        let style_name = blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("style"));
+        let mut m = self.doc.mutate();
+        let el = |m: &mut blitz_dom::DocumentMutator, style: String, children: &[NodeId]| {
+            let attrs = vec![blitz_dom::Attribute { name: style_name.clone(), value: style }];
+            let e = m.create_element(span.clone(), attrs);
+            m.append_children(e, children);
+            e
+        };
+        // Whole-pixel rectangles `(x0, y0, x1, y1, colour)`.
+        let rects = |m: &mut blitz_dom::DocumentMutator,
+                     list: &[(f64, f64, f64, f64, &str)]|
+         -> Vec<NodeId> {
+            list.iter()
+                .filter(|r| r.2 > r.0 && r.3 > r.1)
+                .map(|&(x0, y0, x1, y1, c)| {
+                    el(
+                        m,
+                        format!(
+                            "position:absolute;left:{x0}px;top:{y0}px;width:{}px;height:{}px;background-color:{c};",
+                            x1 - x0,
+                            y1 - y0
+                        ),
+                        &[],
+                    )
+                })
+                .collect()
+        };
+        const LIGHT: &str = "#d4d0c8";
+        const SHADOW: &str = "#6a6864";
+        for (id, kind, attrs) in found {
+            let (outer_style, children) = match kind {
+                Kind::Range(f) => {
+                    let (w, tw) = (129.0, 11.0);
+                    let t = ((w - tw) * f).round();
+                    let list = [
+                        (0.0, 6.0, 128.0, 7.0, SHADOW),
+                        (0.0, 6.0, 1.0, 9.0, SHADOW),
+                        (0.0, 9.0, 129.0, 10.0, "white"),
+                        (128.0, 6.0, 129.0, 10.0, "white"),
+                        (1.0, 7.0, 127.0, 8.0, "black"),
+                        (t, 0.0, t + 1.0, 15.0, "white"),
+                        (t, 0.0, t + 10.0, 1.0, "white"),
+                        (t, 15.0, t + 11.0, 16.0, "black"),
+                        (t + 10.0, 0.0, t + 11.0, 16.0, "black"),
+                        (t + 1.0, 1.0, t + 2.0, 14.0, LIGHT),
+                        (t + 1.0, 1.0, t + 9.0, 2.0, LIGHT),
+                        (t + 1.0, 14.0, t + 10.0, 15.0, SHADOW),
+                        (t + 9.0, 1.0, t + 10.0, 15.0, SHADOW),
+                        (t + 2.0, 2.0, t + 9.0, 14.0, LIGHT),
+                    ];
+                    // The slider's baseline is its border box bottom (RenderSlider).
+                    let style = "display:inline-block;position:relative;width:129px;height:16px;margin:2px;                                 vertical-align:-2px;"
+                        .to_string();
+                    (style, rects(&mut m, &list))
+                }
+                Kind::Progress(f) => {
+                    let mut list = vec![
+                        (0.0, 0.0, 129.0, 1.0, SHADOW),
+                        (0.0, 1.0, 1.0, 12.0, SHADOW),
+                        (0.0, 12.0, 130.0, 13.0, "white"),
+                        (129.0, 0.0, 130.0, 12.0, "white"),
+                        (1.0, 1.0, 129.0, 12.0, LIGHT),
+                    ];
+                    // QWindowsStyle: chunks of 9px (7px and a gap) over the contents rect.
+                    let chunks = f.map_or(0, |f| (((130.0 - 6.0) / 9.0_f64).floor() * f).round() as usize);
+                    for k in 0..chunks {
+                        let x = 3.0 + 9.0 * k as f64;
+                        list.push((x, 3.0, x + 7.0, 10.0, "#000080"));
+                    }
+                    let style =
+                        "display:inline-block;position:relative;width:130px;height:13px;vertical-align:-2px;"
+                            .to_string();
+                    (style, rects(&mut m, &list))
+                }
+                Kind::Meter(f) => {
+                    // WebKit's meter gradient as Qt rasterises it: nine bands below a clear
+                    // top row and left column (the 0.12.6 binary prints it as an image).
+                    const BG: [&str; 9] = [
+                        "#e6e6e6", "#ededed", "#e0e0e0", "#d3d3d3", "#cccccc", "#cdcdcd", "#d0d0d0",
+                        "#d4d4d4", "#d8d8d8",
+                    ];
+                    const FG: [&str; 9] = [
+                        "#bce692", "#cbeda8", "#aad37b", "#89b94d", "#77aa33", "#7bae38", "#85b846",
+                        "#90c355", "#9bce64",
+                    ];
+                    let (w, band) = (65.0, 1.25);
+                    let fill = (w * f).round();
+                    let mut list = Vec::new();
+                    for i in 0..9 {
+                        let y0 = band * (i + 1) as f64;
+                        list.push((band, y0, w, y0 + band, BG[i]));
+                        list.push((band, y0, fill, y0 + band, FG[i]));
+                    }
+                    let style =
+                        "display:inline-block;position:relative;width:65px;height:13px;vertical-align:-2px;"
+                            .to_string();
+                    (style, rects(&mut m, &list))
+                }
+                Kind::File => {
+                    let label = m.create_text_node("Choose File");
+                    let button = el(
+                        &mut m,
+                        "display:inline-block;font-family:sans-serif;color:black;background-color:#d4d0c8;                         border:2px solid rgba(1, 2, 3, 0);padding:4px;margin:2px;"
+                            .into(),
+                        &[label],
+                    );
+                    // RenderFileUploadControl draws the file name 6px below the button's
+                    // baseline with 13px text, 2px after the button margin.
+                    let text = m.create_text_node("No file selected");
+                    let name = el(
+                        &mut m,
+                        "display:inline-block;vertical-align:-6px;margin-left:2px;".into(),
+                        &[text],
+                    );
+                    let style = "display:inline-block;white-space:pre;text-indent:0;".to_string();
+                    (style, vec![button, name])
+                }
+            };
+            let mut style = outer_style;
+            let mut kept = Vec::new();
+            for a in attrs {
+                match &*a.name.local {
+                    "style" => style.push_str(&a.value),
+                    "id" | "class" | "title" | "lang" | "dir" => kept.push(a),
+                    _ => {}
+                }
+            }
+            kept.push(blitz_dom::Attribute { name: style_name.clone(), value: style });
+            let outer = m.create_element(span.clone(), kept);
+            m.append_children(outer, &children);
+            m.replace_node_with(id, &[outer]);
         }
     }
 
@@ -1072,6 +1291,49 @@ impl WebPage {
                 }
             }
         }
+    }
+
+    /// RenderFieldset::layoutLegend: a `<legend>` (the fieldset's first element child)
+    /// taller than the top border sits at the top of the fieldset's border box, over its
+    /// top border and padding, and the content follows it after the top padding (the border
+    /// is drawn through the legend's middle by blitz-paint). Here the legend, laid out in
+    /// the content box, is pulled up by the top border and padding and pushes the content
+    /// down by the top padding. Returns whether the layout must be redone.
+    fn settle_legends(&mut self) -> bool {
+        let mut changes = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if tag(n) != "fieldset" {
+                continue;
+            }
+            let Some(legend) =
+                n.children.iter().filter_map(|&c| self.doc.get_node(c)).find(|c| c.is_element())
+            else {
+                continue;
+            };
+            if tag(legend) != "legend" {
+                continue;
+            }
+            let l = n.final_layout();
+            let (border, padding) = (l.border.top, l.padding.top);
+            let ll = legend.final_layout();
+            if ll.size.height <= border {
+                continue;
+            }
+            let (top, bottom) = (-(border + padding), padding);
+            if (ll.margin.top - top).abs() > 0.01 || (ll.margin.bottom - bottom).abs() > 0.01 {
+                changes.push((legend.id, top, bottom));
+            }
+        }
+        let mut m = self.doc.mutate();
+        for &(id, top, bottom) in &changes {
+            m.set_style_property(id, "margin-top", &format!("{top}px"));
+            m.set_style_property(id, "margin-bottom", &format!("{bottom}px"));
+        }
+        drop(m);
+        !changes.is_empty()
     }
 
     fn set_viewport(&mut self, w: f32, h: f32) {

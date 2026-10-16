@@ -368,7 +368,11 @@ impl LayoutPassState<'_> {
                             output.baselines = taffy::Baselines { first: Some(baseline), last: Some(baseline) };
                             return output;
                         }
-                        None | Some("text" | "password" | "email" | "tel" | "url" | "search") => {
+                        None
+                        | Some(
+                            "text" | "password" | "email" | "tel" | "url" | "search" | "number" | "color"
+                            | "date" | "datetime" | "datetime-local" | "month" | "week" | "time",
+                        ) => {
                             // wkhtmltopdf-rs: RenderTextControlSingleLine:
                             // `size` (default 20) average characters plus
                             // (max - average) character width.
@@ -379,13 +383,17 @@ impl LayoutPassState<'_> {
                                 .unwrap_or(20.0);
                             let fs = font_size.unwrap_or(16.0);
                             let (avg, max, _) = qt_control_metrics(fs);
+                            // A number field is 3px narrower (its spin button's share;
+                            // measured with 13px text on the 0.12.6 binary).
+                            let narrower =
+                                if element_data.attr(local_name!("type")) == Some("number") { 3.0 } else { 0.0 };
                             let style = node.layout_style();
                             let mut output = compute_leaf_layout(
                                 inputs,
                                 &style,
                                 resolve_calc_value,
                                 |_known_size, _available_space| taffy::Size {
-                                    width: size * avg + (max - avg),
+                                    width: size * avg + (max - avg) - narrower,
                                     height: resolved_line_height.unwrap_or(16.0),
                                 },
                             );

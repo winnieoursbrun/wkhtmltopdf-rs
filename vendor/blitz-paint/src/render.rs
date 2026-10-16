@@ -528,6 +528,18 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                     filter,
                     backdrop_filter,
                     |scene| {
+                        // wkhtmltopdf-rs: a fieldset's legend sits on its top border, which is
+                        // drawn through the legend's middle and interrupted behind it
+                        // (RenderFieldset::paintBoxDecorations).
+                        let legend = cx.fieldset_legend();
+                        let full_frame = cx.frame.clone();
+                        if let Some((offset, gap)) = legend {
+                            cx.frame.border_box.y0 += offset;
+                            cx.frame.padding_box.y0 += offset;
+                            let mut clip = full_frame.border_box.to_path(0.1);
+                            clip.extend(gap.to_path(0.1));
+                            scene.push_clip_layer(Fill::EvenOdd, cx.transform, &clip);
+                        }
                         if !is_hidden_empty_cell(self.dom, node) {
                             cx.draw_background(scene);
                             cx.draw_inset_box_shadow(scene);
@@ -536,6 +548,12 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                         if !is_hidden_empty_cell(self.dom, node) {
                             cx.draw_border(scene);
                         }
+                        if legend.is_some() {
+                            scene.pop_layer();
+                            cx.frame = full_frame;
+                        }
+                        // wkhtmltopdf-rs: Qt's push button bevel in place of the UA border.
+                        cx.draw_qt_button_bevel(scene);
                         cx.stroke_devtools(scene);
 
                         // TODO: allow layers with opacity to be unclipped (overflow: visible)

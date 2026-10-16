@@ -447,7 +447,11 @@ fn collect_layout_children_with_wrap(
                 return;
             } else if matches!(
                 type_attr,
-                None | Some("text" | "password" | "email" | "number" | "search" | "tel" | "url")
+                None | Some(
+                    "text" | "password" | "email" | "number" | "search" | "tel" | "url"
+                        // wkhtmltopdf-rs: QtWebKit 2.2 had no widget for these: text fields.
+                        | "color" | "date" | "datetime" | "datetime-local" | "month" | "week" | "time"
+                )
             ) {
                 create_text_editor(doc, container_node_id, false);
                 return;
@@ -880,7 +884,11 @@ fn create_text_editor(doc: &mut BaseDocument, input_element_id: NodeId, is_multi
     let initial_text = if is_multiline {
         node.text_content()
     } else {
-        node.attr(local_name!("value")).unwrap_or("").to_string()
+        // wkhtmltopdf-rs: an empty field shows its placeholder (greyed by the UA sheet).
+        match node.attr(local_name!("value")).unwrap_or("") {
+            "" => node.attr(local_name!("placeholder")).unwrap_or("").to_string(),
+            v => v.to_string(),
+        }
     };
     let element = &mut node.data.downcast_element_mut().unwrap();
     if !matches!(element.special_data, SpecialElementData::TextInput(_)) {
