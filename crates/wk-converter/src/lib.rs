@@ -790,8 +790,7 @@ impl Converter<'_, '_> {
                     // handleTocPage
                     o.title = page.title().map(|t| collapse_ws(&t)).unwrap_or_default();
                     let rendered = page.render_final(paper.printable_width(), paper.printable_height());
-                    o.slices =
-                        wk_print::paginate(&rendered.geometry, rendered.page_height);
+                    o.slices = wk_print::paginate(&rendered.geometry, rendered.page_height);
                     let pc = if o.settings.pages_count { o.slices.len() } else { 0 };
                     if pc != o.page_count {
                         o.page_count = pc;
@@ -934,16 +933,8 @@ impl Converter<'_, '_> {
             .iter()
             .enumerate()
             .flat_map(|(d, o)| {
-                let h = o
-                    .headers
-                    .iter()
-                    .enumerate()
-                    .map(move |(i, r)| ((d, true, i), first_slice(r)));
-                let f = o
-                    .footers
-                    .iter()
-                    .enumerate()
-                    .map(move |(i, r)| ((d, false, i), first_slice(r)));
+                let h = o.headers.iter().enumerate().map(move |(i, r)| ((d, true, i), first_slice(r)));
+                let f = o.footers.iter().enumerate().map(move |(i, r)| ((d, false, i), first_slice(r)));
                 h.chain(f)
             })
             .collect();
