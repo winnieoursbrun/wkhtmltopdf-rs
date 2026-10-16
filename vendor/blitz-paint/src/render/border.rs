@@ -530,12 +530,49 @@ impl ElementCx<'_, '_> {
         if table.border_collapse != BorderCollapse::Collapse {
             return;
         }
-        let mut fill = |x0: f64, y0: f64, x1: f64, y1: f64, color: Color| {
+        let mut fill_rect = |x0: f64, y0: f64, x1: f64, y1: f64, color: Color| {
             if x1 <= x0 || y1 <= y0 {
                 return;
             }
             let shape = Rect::new(x0, y0, x1, y1).scale_from_origin(self.scale);
             scene.fill(Fill::NonZero, self.transform, color, None, &shape);
+        };
+        // An edge in its style, as WebKit's Qt graphics context strokes collapsed
+        // borders (`drawLine`): a dash pattern of one border width for dots and
+        // three for dashes, gaps as long, with square caps that add half a width
+        // at each end -- so dots come out solid, dashes four widths on and two
+        // off -- and two thirds for double.
+        let mut fill = |x0: f64, y0: f64, x1: f64, y1: f64, style: BorderStyle, color: Color| {
+            let horizontal = x1 - x0 >= y1 - y0;
+            let width = if horizontal { y1 - y0 } else { x1 - x0 };
+            let pattern = match style {
+                BorderStyle::Dashed => Some((4.0, 2.0)),
+                _ => None,
+            };
+            if let Some((on, off)) = pattern.filter(|_| width > 0.0) {
+                let (start, end) = if horizontal { (x0, x1) } else { (y0, y1) };
+                let mut p = start;
+                while p < end {
+                    let q = (p + on * width).min(end);
+                    if horizontal {
+                        fill_rect(p, y0, q, y1, color);
+                    } else {
+                        fill_rect(x0, p, x1, q, color);
+                    }
+                    p += (on + off) * width;
+                }
+            } else if style == BorderStyle::Double && width >= 3.0 {
+                let third = (width / 3.0).round();
+                if horizontal {
+                    fill_rect(x0, y0, x1, y0 + third, color);
+                    fill_rect(x0, y1 - third, x1, y1, color);
+                } else {
+                    fill_rect(x0, y0, x0 + third, y1, color);
+                    fill_rect(x1 - third, y0, x1, y1, color);
+                }
+            } else {
+                fill_rect(x0, y0, x1, y1, color);
+            }
         };
         for cell in &table.cells {
             let Some(edges) = &cell.collapsed else { continue };
@@ -548,16 +585,16 @@ impl ElementCx<'_, '_> {
             // Each edge reaches into the neighbour by its lower half.
             let (lx0, rx1) = (x - left.outer_half(), x + w + right.inner_half());
             if top.is_painted() {
-                fill(lx0, y - top.outer_half(), rx1, y + top.inner_half(), color(top.color));
+                fill(lx0, y - top.outer_half(), rx1, y + top.inner_half(), top.style, color(top.color));
             }
             if bottom.is_painted() {
-                fill(lx0, y + h - bottom.outer_half(), rx1, y + h + bottom.inner_half(), color(bottom.color));
+                fill(lx0, y + h - bottom.outer_half(), rx1, y + h + bottom.inner_half(), bottom.style, color(bottom.color));
             }
             if left.is_painted() {
-                fill(x - left.outer_half(), y, x + left.inner_half(), y + h, color(left.color));
+                fill(x - left.outer_half(), y, x + left.inner_half(), y + h, left.style, color(left.color));
             }
             if right.is_painted() {
-                fill(x + w - right.outer_half(), y, x + w + right.inner_half(), y + h, color(right.color));
+                fill(x + w - right.outer_half(), y, x + w + right.inner_half(), y + h, right.style, color(right.color));
             }
         }
     }
