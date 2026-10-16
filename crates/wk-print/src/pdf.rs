@@ -947,7 +947,7 @@ fn outline_node(n: &OutlineNode, named: &BTreeMap<String, XyzDestination>) -> kr
 }
 
 /// Draw one band: its document range (plus repeated table groups) placed at
-/// `band.origin`, clipped horizontally to the paper. Returns `false` when drawing a draft
+/// `band.origin`, clipped horizontally to the printable area. Returns `false` when drawing a draft
 /// that cannot hold the band (an image).
 fn draw_band<'d>(
     surface: &mut Surface,
@@ -959,7 +959,10 @@ fn draw_band<'d>(
 ) -> bool {
     let s = band.page.pt_per_px;
     let (ox, oy) = band.origin;
-    let (cx0, cx1) = (-ox / s, (paper_w - ox) / s);
+    // QtWebKit prints into the printable area: what overflows the side margins (a block wider
+    // than the page without smart shrinking, a negative margin) is clipped at the margins
+    // (`tests/fidelity` wide-content-nosmart), within the paper in any case.
+    let (cx0, cx1) = ((-ox / s).max(0.0), ((paper_w - ox) / s).min(band.page.layout_width));
     surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, ox, oy));
     let page: &'d RenderedPage = band.page;
     let commands = &page.recorder.commands;
