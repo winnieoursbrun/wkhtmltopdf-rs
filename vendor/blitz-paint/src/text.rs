@@ -683,6 +683,11 @@ pub(crate) fn stroke_text<'a>(
 
         for item in line.items() {
             if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                // wkhtmltopdf-rs: text whose first family is an `@font-face` that failed to
+                // load is laid out with the fallback font but not painted (QtWebKit 2.2).
+                if !doc.failed_font_families.is_empty() && in_failed_font(doc, glyph_run.style().brush.id) {
+                    continue;
+                }
                 let run = glyph_run.run();
                 let font = run.font();
                 let font_size = run.font_size();
@@ -899,4 +904,18 @@ pub(crate) fn draw_text_selection(
         let rect = kurbo::Rect::new(rect.x0, rect.y0, rect.x1, rect.y1);
         scene.fill(Fill::NonZero, transform, SELECTION_COLOR, None, &rect);
     });
+}
+
+/// wkhtmltopdf-rs: whether the first family of `node_id`'s font is an `@font-face` family
+/// whose font failed to load (`BaseDocument::failed_font_families`).
+fn in_failed_font(doc: &BaseDocument, node_id: NodeId) -> bool {
+    let Some(styles) = doc.get_node(node_id).and_then(|n| n.primary_styles()) else {
+        return false;
+    };
+    match styles.get_font().font_family.families.list.first() {
+        Some(style::values::computed::font::SingleFontFamily::FamilyName(name)) => doc
+            .failed_font_families
+            .contains(&name.name.as_str().to_lowercase()),
+        _ => false,
+    }
 }

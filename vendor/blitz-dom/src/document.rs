@@ -244,6 +244,12 @@ pub struct BaseDocument {
     /// Thread-and-document-local copies to the font context (inline layouts built on the
     /// rayon pool, see `resolve_deferred_tasks`)
     pub(crate) thread_font_contexts: ThreadLocal<RefCell<Box<FontContext>>>,
+    /// wkhtmltopdf-rs: `@font-face` families (lowercase) whose font could not be loaded, and
+    /// none of whose faces could. QtWebKit 2.2 lays their text out with the fallback font but
+    /// never paints it (the font is still "loading" when wkhtmltopdf prints).
+    pub failed_font_families: std::collections::HashSet<String>,
+    /// wkhtmltopdf-rs: `@font-face` families (lowercase) with at least one loaded face.
+    loaded_font_families: std::collections::HashSet<String>,
     /// A Parley layout context
     pub(crate) layout_ctx: parley::LayoutContext<TextBrush>,
 
@@ -451,6 +457,8 @@ impl BaseDocument {
             stylesheet_generation: 0,
             font_ctx,
             thread_font_contexts: ThreadLocal::new(),
+            failed_font_families: Default::default(),
+            loaded_font_families: Default::default(),
             layout_ctx: parley::LayoutContext::new(),
 
             hover_node_id: None,
@@ -1352,8 +1360,16 @@ impl BaseDocument {
                 // means CSS `font-family: 'Avenir Book'` won't match a font
                 // file that internally identifies as `Avenir 45 Book`.
                 let weight_override = overrides.weight.map(parley::fontique::FontWeight::new);
+                // wkhtmltopdf-rs: web fonts live under their own family names, so that an
+                // `@font-face` reusing an installed family's name (`DejaVu Sans`) shadows it
+                // for the CSS names that ask for it, as in WebKit, while the generic families
+                // keep resolving to the installed font (see `stylo_to_parley::style`).
+                let web_family = overrides
+                    .family_name
+                    .as_deref()
+                    .map(crate::stylo_to_parley::web_font_family);
                 let info_override = parley::fontique::FontInfoOverride {
-                    family_name: overrides.family_name.as_deref(),
+                    family_name: web_family.as_deref(),
                     weight: weight_override,
                     style: overrides.style,
                     ..Default::default()
@@ -1361,11 +1377,22 @@ impl BaseDocument {
 
                 // TODO: Investigate eliminating double-box
                 let mut global_font_ctx = self.font_ctx.lock().unwrap();
-                global_font_ctx
+                let registered = global_font_ctx
                     .collection
                     .register_fonts(font.clone(), Some(info_override));
 
                 drop(global_font_ctx);
+                if let Some(name) = overrides.family_name.as_deref() {
+                    let name = name.to_lowercase();
+                    if registered.is_empty() {
+                        if !self.loaded_font_families.contains(&name) {
+                            self.failed_font_families.insert(name);
+                        }
+                    } else {
+                        self.failed_font_families.remove(&name);
+                        self.loaded_font_families.insert(name);
+                    }
+                }
                 // wkhtmltopdf-rs: the per-thread copies are made again from the document's
                 // context when next needed (instead of registering the font on every pool
                 // thread, which also registered it twice in a copy made by that broadcast).

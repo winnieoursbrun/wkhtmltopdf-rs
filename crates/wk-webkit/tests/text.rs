@@ -78,3 +78,26 @@ fn glyphs_are_painted_at_unrounded_advances() {
         assert!((got - want).abs() < 0.01, "{xs:?} != {expected:?}");
     }
 }
+
+/// A right-aligned text node is placed by its preferred width, each word and each space
+/// rounded on its own (`RenderText::maxLogicalWidth`): `Paris, 1 October 2026` in DejaVu Sans
+/// 14px is 38 + 4 + 9 + 4 + 56 + 4 + 36 = 151px (its glyphs add up to 152.19px), so in a 300px
+/// block it starts at 149px (reference: doc-letter; glyph x are relative to the block).
+#[test]
+fn right_aligned_text_uses_the_preferred_width() {
+    let r = runs(r#"<p style="font: 14px sans-serif; text-align: right; width: 300px">Paris, 1 October 2026</p>"#);
+    let run = r.iter().find(|r| r.text.starts_with("Paris")).expect("run");
+    assert!((run.xs[0] - 149.0).abs() < 0.01, "{:?}", run.xs);
+}
+
+/// Text in an `@font-face` family whose font fails to load is laid out with the fallback font
+/// but not painted (reference: fonts-webfont).
+#[test]
+fn failed_web_font_text_is_not_painted() {
+    let r = runs(
+        r#"<style>@font-face { font-family: Missing; src: url(missing.ttf); }</style>
+        <p style="font-family: Missing, monospace">hidden</p><p>shown</p>"#,
+    );
+    assert!(r.iter().all(|r| !r.text.contains("hidden")), "{r:?}");
+    assert!(r.iter().any(|r| r.text.contains("shown")), "{r:?}");
+}

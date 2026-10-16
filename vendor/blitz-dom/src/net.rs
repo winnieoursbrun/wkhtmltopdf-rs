@@ -311,6 +311,11 @@ impl NetHandler for ResourceHandler<FontFaceHandler> {
 }
 impl FontFaceHandler {
     fn parse(&mut self, bytes: Bytes) -> Result<Resource, String> {
+        // wkhtmltopdf-rs: a font that failed to load (empty body) is still reported, so that
+        // the document knows its family (see `BaseDocument::failed_font_families`).
+        if bytes.is_empty() {
+            return Ok(Resource::Font(bytes, std::mem::take(&mut self.overrides)));
+        }
         if self.format == FontFaceSourceFormatKeyword::None && bytes.len() >= 4 {
             self.format = match &bytes.as_ref()[0..4] {
                 // WOFF (v1) files begin with 0x774F4646 ('wOFF' in ascii)

@@ -454,12 +454,10 @@ pub(crate) fn style(
     let font_features = self::font_features(font_styles);
 
     // Convert font family
-    let families: Vec<_> = font_styles
-        .font_family
-        .families
-        .list
-        .iter()
-        .map(|family| match family {
+    let mut families: Vec<parley::FontFamilyName<'static>> = Vec::new();
+    for family in font_styles.font_family.families.list.iter() {
+        let web_families = &mut families;
+        let family = match family {
             stylo::SingleFontFamily::FamilyName(name) => {
                 'ret: {
                     let name = name.name.as_str();
@@ -478,14 +476,20 @@ pub(crate) fn style(
                         );
                     }
 
+                    // wkhtmltopdf-rs: an `@font-face` family of the name first, then the
+                    // installed one (see `web_font_family`).
+                    web_families.push(parley::FontFamilyName::Named(Cow::Owned(
+                        web_font_family(name),
+                    )));
                     break 'ret parley::FontFamilyName::Named(Cow::Owned(name.to_string()));
                 }
             }
             stylo::SingleFontFamily::Generic(generic) => {
                 parley::FontFamilyName::Generic(self::generic_font_family(*generic))
             }
-        })
-        .collect();
+        };
+        families.push(family);
+    }
 
     // Wrapping and breaking
     let word_break = match itext_styles.word_break {
@@ -679,4 +683,11 @@ mod tests {
         let last_tnum = flat.iter().rev().find(|(tag, _)| tag == b"tnum").unwrap();
         assert_eq!(last_tnum.1, 0);
     }
+}
+
+/// wkhtmltopdf-rs: the collection family name `@font-face` fonts of the CSS family `name` are
+/// registered under. A CSS family name tries it before the installed family of that name (an
+/// `@font-face` shadows an installed font), while generic families never see it.
+pub fn web_font_family(name: &str) -> String {
+    format!("wk-webfont:{name}")
 }

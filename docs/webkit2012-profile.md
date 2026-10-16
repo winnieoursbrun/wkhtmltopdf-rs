@@ -64,10 +64,12 @@ Implementation:
 | Font size | the computed size rounded to whole pixels (`computedPixelSize`): 11pt = 14.67px is set at 15px; `em` lengths keep the unrounded size | blitz-dom `stylo_to_parley.rs` |
 | Glyph advances | linear (unhinted) advances in 26.6 fixed point, truncated | parley_engine `shaped_text.rs` |
 | Kerning, ligatures | none in measurement (the simple text path adds advances) | blitz-dom `stylo_to_parley.rs` |
-| Word widths | the line breaker measures "spaces + word" segments, each a whole number of pixels (`QFontMetrics::width`) | parley_engine `shaped_text.rs` |
+| Word widths | the line breaker measures "spaces + word" segments, each a whole number of pixels (`QFontMetrics::width`), within one text node; a word starting a line is measured alone | parley_engine `shaped_text.rs` |
+| Max-content (shrink-to-fit) width | each word and each space rounded on its own (`RenderText::computePreferredLogicalWidths`): a float can wrap its own widest line | parley `layout/data.rs` |
 | Painted glyph positions | the unrounded advances from the text box's laid-out start (the segment rounding only moves the following boxes) | parley_engine `ShapedCluster::paint_delta`, `atom.rs` |
-| Alignment and justification | free space from the line's text box widths, each the rounded sum of its unrounded advances | parley `alignment.rs` |
+| Alignment and justification | free space from the line's text box widths: a whole text node is its preferred width, part of one the rounded sum of its unrounded advances | parley `alignment.rs` |
 | `letter-spacing`, `word-spacing` | integers, truncated (`computeLength<int>`): 0.5px is 0, 0.2em on 14px is 2px | blitz-dom `stylo_to_parley.rs` |
+| `@font-face` | shadows an installed family of the same name for the CSS names asking for it (not for generic families); a font that fails to load leaves its text laid out with the fallback font but unpainted | blitz-dom `document.rs`, `stylo_to_parley.rs`, blitz-paint `text.rs` |
 | Unknown family with no generic fallback (`Arial`) | the default face, with the run's own weight and style | parley `shape/mod.rs` (last-resort font per attributes) |
 | `line-height: <number>` | `trunc(number × rounded font size)` | blitz-dom `stylo_to_parley.rs` |
 | `line-height: normal` | ascent and descent each rounded up | parley (P2a) |
