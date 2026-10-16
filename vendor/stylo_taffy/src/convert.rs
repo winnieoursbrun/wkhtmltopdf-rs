@@ -104,6 +104,8 @@ static DEVICE_ZOOM: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32:
 pub fn set_device_zoom(zoom: f32) {
     let zoom = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
     DEVICE_ZOOM.store(zoom.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    // Boxes are placed in whole device pixels too.
+    taffy::compute::set_rounding_scale(zoom);
 }
 
 /// Device pixels per CSS px: `--zoom` × `--dpi` / 96 ([`set_device_zoom`]).

@@ -360,6 +360,27 @@ where
     computed_size_and_baselines
 }
 
+/// wkhtmltopdf-rs: device pixels per layout unit (`--zoom` × `--dpi` / 96), the unit
+/// [`round_layout`] rounds to: QtWebKit lays out in whole device pixels.
+static ROUNDING_SCALE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// Set the device pixels per layout unit [`round_layout`] rounds to (1 by default).
+pub fn set_rounding_scale(scale: f32) {
+    let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+    ROUNDING_SCALE.store(scale.to_bits(), core::sync::atomic::Ordering::Relaxed);
+}
+
+/// `value` rounded to whole device pixels ([`set_rounding_scale`]).
+#[inline(always)]
+fn round_scaled(value: f32) -> f32 {
+    let scale = f32::from_bits(ROUNDING_SCALE.load(core::sync::atomic::Ordering::Relaxed));
+    if scale == 1.0 {
+        round(value)
+    } else {
+        round(value * scale) / scale
+    }
+}
+
 /// Rounds the calculated layout to exact pixel values
 ///
 /// In order to ensure that no gaps in the layout are introduced we:
@@ -385,24 +406,24 @@ pub fn round_layout(tree: &mut impl RoundTree, node_id: NodeId) {
         let cumulative_x = cumulative_x + unrounded_layout.location.x;
         let cumulative_y = cumulative_y + unrounded_layout.location.y;
 
-        layout.location.x = round(cumulative_x) - round(parent_x);
-        layout.location.y = round(cumulative_y) - round(parent_y);
-        layout.size.width = round(cumulative_x + unrounded_layout.size.width) - round(cumulative_x);
-        layout.size.height = round(cumulative_y + unrounded_layout.size.height) - round(cumulative_y);
-        layout.scrollbar_size.width = round(unrounded_layout.scrollbar_size.width);
-        layout.scrollbar_size.height = round(unrounded_layout.scrollbar_size.height);
-        layout.border.left = round(cumulative_x + unrounded_layout.border.left) - round(cumulative_x);
-        layout.border.right = round(cumulative_x + unrounded_layout.size.width)
-            - round(cumulative_x + unrounded_layout.size.width - unrounded_layout.border.right);
-        layout.border.top = round(cumulative_y + unrounded_layout.border.top) - round(cumulative_y);
-        layout.border.bottom = round(cumulative_y + unrounded_layout.size.height)
-            - round(cumulative_y + unrounded_layout.size.height - unrounded_layout.border.bottom);
-        layout.padding.left = round(cumulative_x + unrounded_layout.padding.left) - round(cumulative_x);
-        layout.padding.right = round(cumulative_x + unrounded_layout.size.width)
-            - round(cumulative_x + unrounded_layout.size.width - unrounded_layout.padding.right);
-        layout.padding.top = round(cumulative_y + unrounded_layout.padding.top) - round(cumulative_y);
-        layout.padding.bottom = round(cumulative_y + unrounded_layout.size.height)
-            - round(cumulative_y + unrounded_layout.size.height - unrounded_layout.padding.bottom);
+        layout.location.x = round_scaled(cumulative_x) - round_scaled(parent_x);
+        layout.location.y = round_scaled(cumulative_y) - round_scaled(parent_y);
+        layout.size.width = round_scaled(cumulative_x + unrounded_layout.size.width) - round_scaled(cumulative_x);
+        layout.size.height = round_scaled(cumulative_y + unrounded_layout.size.height) - round_scaled(cumulative_y);
+        layout.scrollbar_size.width = round_scaled(unrounded_layout.scrollbar_size.width);
+        layout.scrollbar_size.height = round_scaled(unrounded_layout.scrollbar_size.height);
+        layout.border.left = round_scaled(cumulative_x + unrounded_layout.border.left) - round_scaled(cumulative_x);
+        layout.border.right = round_scaled(cumulative_x + unrounded_layout.size.width)
+            - round_scaled(cumulative_x + unrounded_layout.size.width - unrounded_layout.border.right);
+        layout.border.top = round_scaled(cumulative_y + unrounded_layout.border.top) - round_scaled(cumulative_y);
+        layout.border.bottom = round_scaled(cumulative_y + unrounded_layout.size.height)
+            - round_scaled(cumulative_y + unrounded_layout.size.height - unrounded_layout.border.bottom);
+        layout.padding.left = round_scaled(cumulative_x + unrounded_layout.padding.left) - round_scaled(cumulative_x);
+        layout.padding.right = round_scaled(cumulative_x + unrounded_layout.size.width)
+            - round_scaled(cumulative_x + unrounded_layout.size.width - unrounded_layout.padding.right);
+        layout.padding.top = round_scaled(cumulative_y + unrounded_layout.padding.top) - round_scaled(cumulative_y);
+        layout.padding.bottom = round_scaled(cumulative_y + unrounded_layout.size.height)
+            - round_scaled(cumulative_y + unrounded_layout.size.height - unrounded_layout.padding.bottom);
 
         #[cfg(feature = "content_size")]
         round_scrollable_overflow_rect(
@@ -444,10 +465,10 @@ pub fn round_layout(tree: &mut impl RoundTree, node_id: NodeId) {
         cumulative_x: f32,
         cumulative_y: f32,
     ) {
-        layout.scrollable_overflow_rect.left = round(cumulative_x + unrounded_rect.left) - round(cumulative_x);
-        layout.scrollable_overflow_rect.right = round(cumulative_x + unrounded_rect.right) - round(cumulative_x);
-        layout.scrollable_overflow_rect.top = round(cumulative_y + unrounded_rect.top) - round(cumulative_y);
-        layout.scrollable_overflow_rect.bottom = round(cumulative_y + unrounded_rect.bottom) - round(cumulative_y);
+        layout.scrollable_overflow_rect.left = round_scaled(cumulative_x + unrounded_rect.left) - round_scaled(cumulative_x);
+        layout.scrollable_overflow_rect.right = round_scaled(cumulative_x + unrounded_rect.right) - round_scaled(cumulative_x);
+        layout.scrollable_overflow_rect.top = round_scaled(cumulative_y + unrounded_rect.top) - round_scaled(cumulative_y);
+        layout.scrollable_overflow_rect.bottom = round_scaled(cumulative_y + unrounded_rect.bottom) - round_scaled(cumulative_y);
     }
 }
 
