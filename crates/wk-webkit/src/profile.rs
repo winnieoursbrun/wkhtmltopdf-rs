@@ -42,6 +42,16 @@ pub fn rewrite(css: &str, source: CssSource) -> String {
 /// Install the profile into blitz-dom (idempotent).
 pub fn install() {
     blitz_dom::css_rewrite::set_css_rewriter(rewrite);
+    // SVG text uses the same fonts as HTML text (the embedded DejaVu faces, the system fonts
+    // unless disabled, generic families to DejaVu Sans), not whatever the host has.
+    static SVG_FONTS: std::sync::Once = std::sync::Once::new();
+    SVG_FONTS.call_once(|| {
+        blitz_dom::util::set_svg_fonts(
+            wk_fonts::EMBEDDED_FONTS.iter().map(|&(_, face)| face).collect(),
+            wk_fonts::FontOptions::default().system_fonts,
+            wk_fonts::DEFAULT_FAMILY,
+        );
+    });
 }
 
 // ---------------------------------------------------------------------------

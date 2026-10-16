@@ -43,10 +43,47 @@ pub fn decode_font_bytes(bytes: &[u8]) -> Cow<'_, [u8]> {
 use std::sync::{Arc, LazyLock};
 #[cfg(feature = "svg")]
 use usvg::fontdb;
+/// wkhtmltopdf-rs: the fonts SVG text is drawn with (see [`set_svg_fonts`]).
+#[cfg(feature = "svg")]
+struct SvgFonts {
+    embedded: Vec<&'static [u8]>,
+    system_fonts: bool,
+    default_family: &'static str,
+}
+
+#[cfg(feature = "svg")]
+static SVG_FONTS: std::sync::OnceLock<SvgFonts> = std::sync::OnceLock::new();
+
+/// wkhtmltopdf-rs: give SVG text the same fonts as HTML text: the `embedded` faces, the
+/// system fonts only when `system_fonts` is set, and every generic family resolved to
+/// `default_family`. Must be called before the first SVG is parsed; later calls are ignored.
+/// Without it, SVG text uses the system fonts only, and is not drawn at all on a host
+/// without fonts.
+#[cfg(feature = "svg")]
+pub fn set_svg_fonts(embedded: Vec<&'static [u8]>, system_fonts: bool, default_family: &'static str) {
+    let _ = SVG_FONTS.set(SvgFonts { embedded, system_fonts, default_family });
+}
+
 #[cfg(feature = "svg")]
 pub(crate) static FONT_DB: LazyLock<Arc<fontdb::Database>> = LazyLock::new(|| {
     let mut db = fontdb::Database::new();
-    db.load_system_fonts();
+    match SVG_FONTS.get() {
+        Some(fonts) => {
+            for &face in &fonts.embedded {
+                db.load_font_source(fontdb::Source::Binary(Arc::new(face)));
+            }
+            if fonts.system_fonts {
+                db.load_system_fonts();
+            }
+            let family = fonts.default_family;
+            db.set_serif_family(family);
+            db.set_sans_serif_family(family);
+            db.set_cursive_family(family);
+            db.set_fantasy_family(family);
+            db.set_monospace_family(family);
+        }
+        None => db.load_system_fonts(),
+    }
     Arc::new(db)
 });
 
