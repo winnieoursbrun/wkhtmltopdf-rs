@@ -142,6 +142,15 @@ impl ElementCx<'_, '_> {
 /// `rect` (an outset shadow); `outer: Some(o)` fills `o` minus `rect` (an inset
 /// shadow). A blur is approximated by nested rings between the shape grown by
 /// -blur and +blur, whose alpha ramps linearly across the blur.
+/// The standard normal cumulative distribution (Abramowitz & Stegun 7.1.26 for `erf`).
+fn normal_cdf(z: f64) -> f64 {
+    let x = z / std::f64::consts::SQRT_2;
+    let t = 1.0 / (1.0 + 0.327_591_1 * x.abs());
+    let poly = t * (0.254_829_592 + t * (-0.284_496_736 + t * (1.421_413_741 + t * (-1.453_152_027 + t * 1.061_405_429))));
+    let erf = 1.0 - poly * (-x * x).exp();
+    0.5 * (1.0 + if x >= 0.0 { erf } else { -erf })
+}
+
 fn fill_blurred(
     scene: &mut impl PaintScene,
     transform: kurbo::Affine,
@@ -169,8 +178,14 @@ fn fill_blurred(
     let grow_at = |k: usize| blur - 2.0 * blur * k as f64 / steps as f64;
     // Ring k lies between the shapes grown by grow_at(k) and grow_at(k + 1)
     // (outside to inside); its coverage is the share of the blur behind it.
+    // wkhtmltopdf-rs: QtWebKit's ShadowBlur is close to a Gaussian of standard deviation
+    // 0.4 × the blur radius across the shape's edge (measured on the 0.12.6 binary's shadow
+    // masks, tests/fidelity/box-shadow-outline): each ring gets the Gaussian's coverage at
+    // its middle.
+    let sigma = 0.4 * blur;
     for k in 0..steps {
-        let t = (k as f64 + 0.5) / steps as f64;
+        let mid = (grow_at(k) + grow_at(k + 1)) / 2.0;
+        let t = 1.0 - normal_cdf(mid / sigma);
         let coverage = match outer {
             None => t,
             Some(_) => 1.0 - t,
