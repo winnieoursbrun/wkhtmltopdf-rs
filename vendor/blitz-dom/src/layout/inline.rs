@@ -227,7 +227,68 @@ impl LayoutPassState<'_> {
         StyleFlags::empty()
     }
 
+    /// wkhtmltopdf-rs: `::first-line`. The first line's text takes the pseudo-element's font,
+    /// which can move the line's end: the block is laid out, its text built again with that
+    /// font up to the first line's end, and laid out again (from the same floats) until the
+    /// end stays (at most twice more).
     fn compute_inline_layout_inner(
+        &mut self,
+        node_id: NodeId,
+        inputs: taffy::tree::LayoutInput,
+        block_ctx: &mut BlockContext<'_>,
+    ) -> taffy::LayoutOutput {
+        let has_first_line = {
+            let node = &self.nodes[node_id];
+            super::construct::first_line_properties(node, node.primary_styles().as_deref().map(|s| &**s)).is_some()
+        };
+        if !has_first_line {
+            return self.compute_inline_layout_pass(node_id, inputs, block_ctx);
+        }
+        let snapshot = block_ctx.snapshot();
+        let mut output = self.compute_inline_layout_pass(node_id, inputs, block_ctx);
+        for _ in 0..2 {
+            let Some(layout) = self.nodes[node_id].element_data().and_then(|e| e.inline_layout_data.as_deref())
+            else {
+                break;
+            };
+            let end = layout.layout.lines().next().map(|l| l.text_range().end);
+            if end.is_none() || end == layout.first_line_end {
+                break;
+            }
+            // Build the text again with the first line's font up to `end`.
+            let mut text_layout = self.nodes[node_id]
+                .data
+                .downcast_element_mut()
+                .unwrap()
+                .take_inline_layout()
+                .unwrap();
+            text_layout.first_line_end = end;
+            text_layout.content_widths = None;
+            {
+                let scale = self.viewport.scale();
+                let doc = &mut *self.doc;
+                let mut font_ctx = doc.font_ctx.lock().unwrap();
+                super::construct::build_inline_layout_into(
+                    &doc.nodes,
+                    &mut doc.layout_ctx,
+                    &mut font_ctx,
+                    &mut text_layout,
+                    scale,
+                    node_id,
+                );
+            }
+            self.nodes[node_id]
+                .data
+                .downcast_element_mut()
+                .unwrap()
+                .inline_layout_data = Some(text_layout);
+            block_ctx.restore(snapshot.clone());
+            output = self.compute_inline_layout_pass(node_id, inputs, block_ctx);
+        }
+        output
+    }
+
+    fn compute_inline_layout_pass(
         &mut self,
         node_id: NodeId,
         inputs: taffy::tree::LayoutInput,

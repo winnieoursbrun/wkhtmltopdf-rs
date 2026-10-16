@@ -173,6 +173,21 @@ fn soft_hyphen_break_draws_a_hyphen() {
     assert_eq!(hyphens.len(), 1, "{r:?}");
 }
 
+/// `::first-line` sets the font of the first line only, which is broken with that font
+/// (reference: css-generated).
+#[test]
+fn first_line_is_bold() {
+    let r = runs(
+        r#"<style>p:first-line { font-weight: bold } p { width: 150px; font: 13px sans-serif }</style>
+        <p>one two three four five six seven eight nine ten</p>"#,
+    );
+    let bold: String =
+        r.iter().filter(|r| r.face == "DejaVuSans-Bold.ttf").map(|r| r.text.as_str()).collect();
+    let regular: String = r.iter().filter(|r| r.face == "DejaVuSans.ttf").map(|r| r.text.as_str()).collect();
+    assert!(bold.starts_with("one two three"), "{r:?}");
+    assert!(regular.contains("ten") && !bold.contains("ten"), "{r:?}");
+}
+
 /// A tab is drawn as a space, also in preformatted text (reference: typo-whitespace).
 #[test]
 fn tab_is_a_space() {

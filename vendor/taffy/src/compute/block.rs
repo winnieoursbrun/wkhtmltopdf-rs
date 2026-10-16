@@ -107,6 +107,38 @@ pub struct BlockContext<'bfc> {
     top_adjoining_floats: Option<[bool; 2]>,
 }
 
+/// wkhtmltopdf-rs: the float state of a [`BlockContext`], to lay an inline formatting
+/// context out again (blitz-dom's `::first-line`).
+#[cfg(feature = "float_layout")]
+#[derive(Clone)]
+pub struct BlockContextSnapshot {
+    float_context: FloatContext,
+    float_content_contribution: f32,
+    adjoining_floats: [bool; 2],
+    top_adjoining_floats: Option<[bool; 2]>,
+}
+
+#[cfg(feature = "float_layout")]
+impl BlockContext<'_> {
+    /// wkhtmltopdf-rs: save the floats placed so far.
+    pub fn snapshot(&self) -> BlockContextSnapshot {
+        BlockContextSnapshot {
+            float_context: self.bfc.float_context.clone(),
+            float_content_contribution: self.float_content_contribution,
+            adjoining_floats: self.adjoining_floats,
+            top_adjoining_floats: self.top_adjoining_floats,
+        }
+    }
+
+    /// wkhtmltopdf-rs: go back to the floats saved by [`Self::snapshot`].
+    pub fn restore(&mut self, snapshot: BlockContextSnapshot) {
+        self.bfc.float_context = snapshot.float_context;
+        self.float_content_contribution = snapshot.float_content_contribution;
+        self.adjoining_floats = snapshot.adjoining_floats;
+        self.top_adjoining_floats = snapshot.top_adjoining_floats;
+    }
+}
+
 impl BlockContext<'_> {
     /// Create a sub-`BlockContext` for a child block node
     pub fn sub_context(&mut self, additional_y_offset: f32, insets: [f32; 2]) -> BlockContext<'_> {

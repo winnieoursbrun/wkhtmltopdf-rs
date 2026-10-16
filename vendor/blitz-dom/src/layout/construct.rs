@@ -1199,6 +1199,73 @@ pub(crate) fn find_inline_layout_embedded_boxes(
     }
 }
 
+/// wkhtmltopdf-rs: the `::first-line` style of an inline root, as modifications of its own
+/// style (font weight, style and size).
+struct FirstLine<'a> {
+    end: usize,
+    props: &'a [StyleProperty<'static, TextBrush>],
+}
+
+/// wkhtmltopdf-rs: the properties a block's `::first-line` changes, if it has one changing any.
+pub(crate) fn first_line_properties(
+    root: &Node,
+    root_style: Option<&style::properties::ComputedValues>,
+) -> Option<Vec<StyleProperty<'static, TextBrush>>> {
+    let data = root.try_stylo_element_data()?;
+    let data = data.get()?;
+    let fl = data.styles.pseudos.as_array()[4].clone()?;
+    let root_style = root_style?;
+    let base = stylo_to_parley::style(root.id, root_style);
+    let line = stylo_to_parley::style(root.id, &fl);
+    let mut props = Vec::new();
+    if line.font_weight != base.font_weight {
+        props.push(StyleProperty::FontWeight(line.font_weight));
+    }
+    if line.font_style != base.font_style {
+        props.push(StyleProperty::FontStyle(line.font_style));
+    }
+    if line.font_size != base.font_size {
+        props.push(StyleProperty::FontSize(line.font_size));
+    }
+    (!props.is_empty()).then_some(props)
+}
+
+/// wkhtmltopdf-rs: push `text`, the part of it before the end of the first line with the
+/// `::first-line` properties. The text is pushed word by word (with the white space after
+/// each), as the first line ends at a break opportunity.
+fn push_first_line_text(
+    builder: &mut TreeBuilder<TextBrush>,
+    text: &str,
+    first_line: &mut Option<FirstLine<'_>>,
+) {
+    let mut rest = text;
+    while let Some(fl) = first_line.as_ref() {
+        if rest.is_empty() {
+            return;
+        }
+        let at = builder.text().len() + usize::from(builder.has_pending_whitespace());
+        if at >= fl.end {
+            *first_line = None;
+            break;
+        }
+        // One word and the white space after it.
+        let word_end = rest
+            .char_indices()
+            .find(|&(_, c)| c.is_whitespace())
+            .map_or(rest.len(), |(i, _)| i);
+        let chunk_end = rest[word_end..]
+            .char_indices()
+            .find(|&(_, c)| !c.is_whitespace())
+            .map_or(rest.len(), |(i, _)| word_end + i);
+        let (chunk, tail) = rest.split_at(chunk_end.max(1).min(rest.len()));
+        builder.push_style_modification_span(fl.props);
+        builder.push_text(chunk);
+        builder.pop_style_span();
+        rest = tail;
+    }
+    builder.push_text(rest);
+}
+
 pub(crate) fn build_inline_layout_into(
     nodes: &crate::NodeTree,
     layout_ctx: &mut LayoutContext<TextBrush>,
@@ -1267,6 +1334,35 @@ pub(crate) fn build_inline_layout_into(
     let mut text_transformer = TextTransformer::default();
     text_transformer.word_break(&builder);
 
+    // wkhtmltopdf-rs: `::first-line`: the text up to `first_line_end` (found by laying the
+    // block out, see `layout::inline`) takes the pseudo-element's font weight, style and size.
+    // The box of a `::first-letter` is on the first line: it takes the weight and style of the
+    // block's `::first-line` that it does not set itself.
+    let in_first_letter = is_first_letter_box(root_node);
+    let first_line_props = if in_first_letter {
+        root_node.parent.and_then(|parent_id| {
+            let parent = &nodes[parent_id];
+            let parent_style = parent.primary_styles()?;
+            let own = stylo_to_parley::style(root_node.id, root_node_style.as_deref()?);
+            let base = stylo_to_parley::style(parent_id, &parent_style);
+            let props: Vec<_> = first_line_properties(parent, Some(&parent_style))?
+                .into_iter()
+                .filter(|p| match p {
+                    StyleProperty::FontWeight(_) => own.font_weight == base.font_weight,
+                    StyleProperty::FontStyle(_) => own.font_style == base.font_style,
+                    _ => false,
+                })
+                .collect();
+            (!props.is_empty()).then_some(props)
+        })
+    } else {
+        first_line_properties(root_node, root_node_style.as_deref().map(|s| &**s))
+    };
+    let first_line_end = if in_first_letter { Some(usize::MAX) } else { text_layout.first_line_end };
+    let mut first_line = match (first_line_end, &first_line_props) {
+        (Some(end), Some(props)) => Some(FirstLine { end, props }),
+        _ => None,
+    };
     // wkhtmltopdf-rs: the first letter is in the `::first-letter` box, not in the text.
     let mut first_letter = false;
     if let Some(before_id) = root_node.before() {
@@ -1277,6 +1373,7 @@ pub(crate) fn build_inline_layout_into(
             before_id,
             &text_transform,
             &mut first_letter,
+            &mut first_line,
         );
         first_letter = is_first_letter_box(&nodes[before_id]);
     }
@@ -1288,6 +1385,7 @@ pub(crate) fn build_inline_layout_into(
             child_id,
             &text_transform,
             &mut first_letter,
+            &mut first_line,
         );
     }
     if let Some(after_id) = root_node.after() {
@@ -1298,6 +1396,7 @@ pub(crate) fn build_inline_layout_into(
             after_id,
             &text_transform,
             &mut first_letter,
+            &mut first_line,
         );
     }
 
@@ -1315,6 +1414,7 @@ pub(crate) fn build_inline_layout_into(
         node_id: NodeId,
         parent_text_transform: &CaseTransform,
         first_letter: &mut bool,
+        first_line: &mut Option<FirstLine<'_>>,
     ) {
         let node = &nodes[node_id];
 
@@ -1378,6 +1478,7 @@ pub(crate) fn build_inline_layout_into(
                                 child_id,
                                 &text_transform,
                                 first_letter,
+                                first_line,
                             );
                         }
                         builder.pop_style_span();
@@ -1441,6 +1542,7 @@ pub(crate) fn build_inline_layout_into(
                                     before_id,
                                     &text_transform,
                                     first_letter,
+                                    first_line,
                                 );
                             }
 
@@ -1452,6 +1554,7 @@ pub(crate) fn build_inline_layout_into(
                                     child_id,
                                     &text_transform,
                                     first_letter,
+                                    first_line,
                                 );
                             }
                             if let Some(after_id) = node.after() {
@@ -1462,6 +1565,7 @@ pub(crate) fn build_inline_layout_into(
                                     after_id,
                                     &text_transform,
                                     first_letter,
+                                    first_line,
                                 );
                             }
                             if let Some((_, close)) = bidi {
@@ -1530,6 +1634,7 @@ pub(crate) fn build_inline_layout_into(
                         })
                 });
                 match small_caps {
+                    None if first_line.is_some() => push_first_line_text(builder, text, first_line),
                     None => builder.push_text(text),
                     Some(small) => {
                         let is_small = |c: char| c.is_lowercase() && c.to_uppercase().next() != Some(c);

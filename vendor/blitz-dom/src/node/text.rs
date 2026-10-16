@@ -33,6 +33,9 @@ pub struct TextLayout {
     /// containing block (as `SPAN_*_CB` flags). The inline root claims those boxes in its place.
     /// Set by each `RunMode::PerformLayout` run of inline layout.
     pub span_cb_flags: stylo_taffy::StyleFlags,
+    /// wkhtmltopdf-rs: the end (byte offset in `text`) of the first line, up to which the
+    /// text was built with the block's `::first-line` style (see `layout::inline`).
+    pub first_line_end: Option<usize>,
 }
 
 impl TextLayout {

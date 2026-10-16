@@ -42,6 +42,8 @@ pub use oof::{compute_oof_layout, compute_oof_layout_for_area, resolve_static_of
 
 #[cfg(feature = "block_layout")]
 pub use self::block::{compute_block_align_content_offset, compute_block_layout, BlockContext, BlockFormattingContext};
+#[cfg(all(feature = "block_layout", feature = "float_layout"))]
+pub use self::block::BlockContextSnapshot;
 
 #[cfg(feature = "flexbox")]
 pub use self::flexbox::compute_flexbox_layout;
