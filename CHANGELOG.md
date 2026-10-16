@@ -8,6 +8,12 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 
 ## [Unreleased]
 
+## [0.1.0-rc.1] - 2026-10-16
+
+First release candidate for 0.1.0. No functional change since 0.1.0-alpha.3: the command-line
+contract, the rendering and the performance are those of alpha.3. Remaining divergences from
+wkhtmltopdf 0.12.6 are listed in the README (Known divergences).
+
 ## [0.1.0-alpha.3] - 2026-10-15
 
 ### Changed
@@ -77,7 +83,8 @@ First public pre-release. Not a drop-in replacement yet: see the status table in
 
 -
 
-[Unreleased]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.3...HEAD
+[Unreleased]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-rc.1...HEAD
+[0.1.0-rc.1]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.3...v0.1.0-rc.1
 [0.1.0-alpha.3]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/winnieoursbrun/wkhtmltopdf-rs/releases/tag/v0.1.0-alpha.1

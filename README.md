@@ -10,7 +10,7 @@ wrapper that shells out to `wkhtmltopdf`). No Qt, no WebKit, no headless browser
 that QtWebKit provided is rebuilt from Rust components (html5ever, Stylo, Taffy, Parley, Boa,
 krilla). One static binary, embedded fonts, runs on a bare `alpine` or `scratch`-like image.
 
-> **Status: alpha.** It renders real-world invoice/report pages with the same page count and text
+> **Status: release candidate (0.1.0-rc.1).** It renders real-world invoice/report pages with the same page count and text
 > as wkhtmltopdf 0.12.6, and every pdfkit scenario we test behaves the same. Rendering is close but
 > not pixel-identical. See [Known divergences](#known-divergences) before putting it in production.
 
@@ -144,7 +144,7 @@ Not yet matched:
 | P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | **Done**: text and HTML headers/footers with every variable, cover/TOC/page objects with per-object options, default and custom-XSL TOCs, outline and `--dump-outline`, named-destination links, `--page-offset`, forms, copies/collate, grayscale, including the upstream quirks of spec §10. `tests/parts`: 22 of 22 reference cases pass at L2 (`parts.rs`). Deviations: see below the table |
 | P4 — JavaScript | Boa, DOM bindings, `--javascript-delay`, `--window-status` | **Done** (`crates/wk-js`): scripts run in document order with a script-pausing parser, `document.write`, events, timers and `Date` on a virtual clock, `--window-status`, `--run-script`, `window.print()`, `--debug-javascript`, dialogs, the slow-script budget, XMLHttpRequest over the loader, canvas 2D painted as vector. `warn` and `info_b` reproduce exactly; `tests/js` (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution, …) is at L2 parity on 13/13 cases. Gaps: see below the table |
 | P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: QtWebKit's table-row pagination struts (statement page 2), canvas painted as vector where the reference rasterises it |
-| P6 — release | Static musl builds, pdfkit test suite | **Alpha**: static musl/macOS/Windows release builds, pdfkit integration run, benchmark and visual parity reports (`bench/`) |
+| P6 — release | Static musl builds, pdfkit test suite | **Release candidate**: static musl/macOS/Windows release builds, pdfkit integration run, benchmark and visual parity reports (`bench/`) |
 
 P4 gaps: timers fire on a virtual clock that stops at the end of the wait, so a timer set
 during loading for more than `--javascript-delay` never fires (upstream's load time lets some of
