@@ -230,6 +230,9 @@ pub struct WebPage {
     pub url: Url,
     /// Canvas content recorded by script.
     canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
+    /// Boxes positioned against the initial containing block and moved by
+    /// [`place_viewport_boxes`](Self::place_viewport_boxes): node, shift, resulting `y`.
+    viewport_shifts: Vec<(NodeId, f32, f32)>,
 }
 
 /// A document moved to a pool thread only to be dropped there ([`WebPage::render_final`]).
@@ -392,6 +395,7 @@ impl WebPage {
             password_values: HashMap::new(),
             url,
             canvases: HashMap::new(),
+            viewport_shifts: Vec::new(),
         };
         page.mask_passwords();
         page.load_resources(fetcher);
@@ -409,7 +413,16 @@ impl WebPage {
         url: Url,
         canvases: HashMap<NodeId, Rc<blitz_paint::canvas::CanvasPicture>>,
     ) -> WebPage {
-        let mut page = WebPage { doc, net, settings, bodies, password_values: HashMap::new(), url, canvases };
+        let mut page = WebPage {
+            doc,
+            net,
+            settings,
+            bodies,
+            password_values: HashMap::new(),
+            url,
+            canvases,
+            viewport_shifts: Vec::new(),
+        };
         page.mask_passwords();
         page
     }
@@ -579,7 +592,7 @@ impl WebPage {
     /// path of the conversion.
     pub fn render_final(mut self, printable_w_pt: f32, printable_h_pt: f32) -> RenderedPage {
         let rendered = self.render_inner(printable_w_pt, printable_h_pt, true);
-        let WebPage { doc, net, settings, bodies, password_values, url, canvases } = self;
+        let WebPage { doc, net, settings, bodies, password_values, url, canvases, .. } = self;
         // The canvas pictures are reference counted without atomics: released here.
         drop(canvases);
         let rest = (net, settings, bodies, password_values, url);
@@ -598,6 +611,7 @@ impl WebPage {
         let max_shrink = if self.settings.smart_shrinking { MAX_SHRINK } else { 1.0 };
         let base_w = printable_w_pt / 0.75 / zoom;
         crate::timing("render start");
+        self.undo_viewport_shifts();
         self.qt_selects();
         let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
@@ -615,7 +629,10 @@ impl WebPage {
         let pt_per_px = printable_w_pt / layout_w;
 
         crate::timing("pre-geometry");
-        let geometry = collect_geometry(&self.doc);
+        let mut geometry = collect_geometry(&self.doc);
+        if self.place_viewport_boxes(&geometry, vh) {
+            geometry = collect_geometry(&self.doc);
+        }
         crate::timing("geometry");
         let doc_h = geometry.doc_height.ceil().max(1.0) as u32;
         let mut recorder = Recorder::default();
@@ -984,6 +1001,79 @@ impl WebPage {
         !changes.is_empty()
     }
 
+    /// Move the boxes positioned against the initial containing block (`position: absolute`
+    /// without a positioned ancestor, `position: fixed`) to where QtWebKit 2.2 prints them.
+    /// Its printed document starts at the first in-flow content, the margins above being
+    /// truncated (see `paginate`), and the containing block runs from there down to the end
+    /// of the document: `top: 0` is the top of the first page, `bottom: 0` the end of the
+    /// content on the last page, not the bottom of the viewport the layout used (all verified
+    /// on the 0.12.6 binary, `tests/fidelity/cases/position-fixed.html` and `positioning.html`).
+    /// Returns whether a box moved.
+    fn place_viewport_boxes(&mut self, g: &Geometry, viewport_h: f32) -> bool {
+        let root = self.doc.root_element();
+        let root_id = root.id;
+        let doc_h = root.final_layout().size.height;
+        let origin = g
+            .content_starts
+            .iter()
+            .copied()
+            .find(|&c| c >= -0.01 && c < g.doc_height)
+            .unwrap_or(0.0)
+            .max(0.0);
+        let mut moves = Vec::new();
+        let mut stack = vec![root_id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if !n.is_element() {
+                continue;
+            }
+            let Some(styles) = n.primary_styles() else { continue };
+            use style::computed_values::position::T as Position;
+            if !matches!(styles.get_box().position, Position::Absolute | Position::Fixed) {
+                continue;
+            }
+            let against_icb = match n.containing_block() {
+                None => true,
+                Some(cb) => cb == root_id || self.doc.get_node(cb).is_none_or(|c| !c.is_element()),
+            };
+            if !against_icb {
+                continue;
+            }
+            let pos = styles.get_position();
+            let dy = if !pos.top.is_auto() {
+                origin
+            } else if !pos.bottom.is_auto() {
+                doc_h - viewport_h
+            } else {
+                0.0
+            };
+            if dy != 0.0 {
+                moves.push((id, dy));
+            }
+        }
+        for &(id, dy) in &moves {
+            if let Some(n) = self.doc.get_node_mut(id) {
+                n.final_layout_mut().location.y += dy;
+                let y = n.final_layout().location.y;
+                self.viewport_shifts.push((id, dy, y));
+            }
+        }
+        !moves.is_empty()
+    }
+
+    /// Put back the boxes [`place_viewport_boxes`](Self::place_viewport_boxes) moved, unless a
+    /// new layout already replaced their position.
+    fn undo_viewport_shifts(&mut self) {
+        for (id, dy, y) in std::mem::take(&mut self.viewport_shifts) {
+            if let Some(n) = self.doc.get_node_mut(id) {
+                if n.final_layout().location.y == y {
+                    n.final_layout_mut().location.y -= dy;
+                }
+            }
+        }
+    }
+
     fn set_viewport(&mut self, w: f32, h: f32) {
         self.doc.set_viewport(Viewport::new(w as u32, h as u32, 1.0, ColorScheme::Light));
         for _ in 0..4 {
@@ -1216,7 +1306,7 @@ fn collect_cell_edges(doc: &BaseDocument, node: &Node, out: &mut Vec<(f32, f32)>
 pub fn collect_geometry(doc: &BaseDocument) -> Geometry {
     let mut g = Geometry::default();
     let root = doc.root_element();
-    walk(doc, root, &mut g);
+    walk(doc, root, &mut g, false);
     g.doc_height = g.doc_height.max(root.final_layout().size.height);
     g.candidates.push(g.doc_height);
     g.candidates.sort_by(f32::total_cmp);
@@ -1228,7 +1318,38 @@ pub fn collect_geometry(doc: &BaseDocument) -> Geometry {
     g
 }
 
-fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
+/// Whether `node` has in-flow content of its own: text, or a child box that is neither floated,
+/// out of flow nor `display: none`.
+fn has_flow_content(doc: &BaseDocument, node: &Node) -> bool {
+    if node.element_data().is_some_and(|e| e.inline_layout_data.is_some()) {
+        return true;
+    }
+    let children = node.layout_children.borrow();
+    let ids: Vec<NodeId> = match children.as_ref() {
+        Some(c) => c.iter().copied().collect(),
+        None => node.children.iter().copied().collect(),
+    };
+    drop(children);
+    ids.iter().filter_map(|&id| doc.get_node(id)).any(|c| {
+        if !c.is_element() {
+            return false;
+        }
+        c.primary_styles().is_some_and(|s| {
+            let b = s.get_box();
+            // A float's margin is not truncated: a container of floats keeps its own top.
+            !b.display.is_none()
+                && b.float == style::computed_values::float::T::None
+                && !matches!(
+                    b.position,
+                    style::computed_values::position::T::Absolute
+                        | style::computed_values::position::T::Fixed
+                )
+        })
+    })
+}
+
+/// `oof`: inside an absolutely positioned or fixed box, whose content does not start a page.
+fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry, mut oof: bool) {
     let layout = node.final_layout();
     let (top, bottom) = extent(doc, node).unwrap_or_else(|| {
         let y = node.absolute_position(0.0, 0.0).y;
@@ -1248,12 +1369,27 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
                 g.forced.push(bottom);
             }
             avoid_inside = !matches!(b.break_inside, BreakWithin::Auto);
+            oof |= matches!(
+                b.position,
+                style::computed_values::position::T::Absolute | style::computed_values::position::T::Fixed
+            );
             // A page starts at the first box edge at or after the cut: the
             // margins there are truncated, empty boxes with a height are not
             // (QtWebKit keeps a 30px empty div at the top of page 1 but
-            // drops the body's margin).
-            if t != "html" && bottom > top {
+            // drops the body's margin). A container whose top edge has no
+            // border or padding starts where its content does: the margin of
+            // a first child that does not collapse through it (Bootstrap's
+            // `.container::before` table) is truncated too (verified on the
+            // 0.12.6 binary, tests/fidelity/cases/doc-bootstrap.html), while
+            // a top border or padding is kept with what lies below it.
+            let solid_top =
+                layout.border.top + layout.padding.top > 0.0 || t == "table" || !has_flow_content(doc, node);
+            if t != "html" && bottom > top && !oof && solid_top {
                 g.content_starts.push(top);
+            }
+            // A float's margin is not truncated: its margin box starts the content.
+            if b.float != style::computed_values::float::T::None && bottom > top && !oof {
+                g.content_starts.push(top - layout.margin.top.max(0.0));
             }
             if b.display.is_none() {
                 return;
@@ -1278,7 +1414,9 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
             | "button"
     ) || avoid_inside;
     if atomic && bottom > top {
-        g.content_starts.push(top);
+        if !oof {
+            g.content_starts.push(top);
+        }
         g.atomic.push((top, bottom));
         g.straddlers.push((top, bottom));
         g.content_boxes.push((top, bottom));
@@ -1339,7 +1477,9 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
             g.straddlers.push((ca, cb));
             g.atomic.push((if i == 0 { ca.min(a) } else { ca }, cb));
             g.content_boxes.push((a, b));
-            g.content_starts.push(a);
+            if !oof {
+                g.content_starts.push(a);
+            }
             g.candidates.extend([a, b, ca, cb]);
         }
     }
@@ -1352,7 +1492,7 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry) {
     drop(children);
     for id in ids {
         if let Some(child) = doc.get_node(id) {
-            walk(doc, child, g);
+            walk(doc, child, g, oof);
         }
     }
 }
