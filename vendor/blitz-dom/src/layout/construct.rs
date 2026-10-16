@@ -931,6 +931,27 @@ fn create_text_editor(doc: &mut BaseDocument, input_element_id: NodeId, is_multi
     editor.refresh_layout(&mut doc.font_ctx.lock().unwrap(), &mut doc.layout_ctx);
 }
 
+/// wkhtmltopdf-rs: the explicit bidi formatting characters that open and close an inline
+/// element's `unicode-bidi` (UAX #9 §2): `embed` is an embedding (LRE/RLE … PDF),
+/// `bidi-override` an override (LRO/RLO … PDF). QtWebKit 2.2 (2011) knew no isolation:
+/// `isolate` (the UA sheet's value for `[dir]`) and `isolate-override` (`<bdo>`) are an
+/// embedding and an override there, which changes how the text around them is ordered.
+pub(crate) fn bidi_controls(style: &style::properties::ComputedValues) -> Option<(&'static str, &'static str)> {
+    use style::computed_values::direction::T as Direction;
+    use style::computed_values::unicode_bidi::T as UnicodeBidi;
+    let rtl = style.clone_direction() == Direction::Rtl;
+    let open = match style.clone_unicode_bidi() {
+        UnicodeBidi::Embed | UnicodeBidi::Isolate => {
+            if rtl { "\u{202B}" } else { "\u{202A}" }
+        }
+        UnicodeBidi::BidiOverride | UnicodeBidi::IsolateOverride => {
+            if rtl { "\u{202E}" } else { "\u{202D}" }
+        }
+        _ => return None,
+    };
+    Some((open, "\u{202C}"))
+}
+
 fn create_checkbox_input(doc: &mut BaseDocument, input_element_id: NodeId) {
     let node = &mut doc.nodes[input_element_id];
 
@@ -1265,6 +1286,13 @@ pub(crate) fn build_inline_layout_into(
                                 });
 
                             builder.push_style_span(style);
+                            // wkhtmltopdf-rs: an inline element's `unicode-bidi` opens an
+                            // embedding or an override, as explicit formatting characters the
+                            // bidi algorithm reads (`bidi_controls`).
+                            let bidi = node.primary_styles().and_then(|s| bidi_controls(&s));
+                            if let Some((open, _)) = bidi {
+                                builder.push_text(open);
+                            }
 
                             if let Some(before_id) = node.before() {
                                 build_inline_layout_recursive(
@@ -1293,6 +1321,9 @@ pub(crate) fn build_inline_layout_into(
                                     after_id,
                                     &text_transform,
                                 );
+                            }
+                            if let Some((_, close)) = bidi {
+                                builder.push_text(close);
                             }
 
                             builder.pop_style_span();

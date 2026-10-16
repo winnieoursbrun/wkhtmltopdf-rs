@@ -46,6 +46,10 @@ pub(crate) fn relative_inline_offset(doc: &BaseDocument, node_id: NodeId, inline
 /// inline-block as wide as the edge, holding its place in the line).
 const EDGE_TAG: &str = "wkedge";
 
+fn style_brush_id(glyph_run: &parley::GlyphRun<'_, TextBrush>) -> NodeId {
+    glyph_run.style().brush.id
+}
+
 /// One line's fragment of an inline element.
 struct Fragment {
     id: NodeId,
@@ -870,6 +874,30 @@ pub(crate) fn stroke_text<'a>(
                     continue;
                 }
                 let run = glyph_run.run();
+                // wkhtmltopdf-rs: the run's source text, per glyph; the glyphs of the bidi
+                // formatting characters of inline embeddings and overrides (blitz-dom
+                // `bidi_controls`) are neither drawn nor text.
+                crate::run_text::publish(source_text, &glyph_run, style_brush_id(&glyph_run));
+                let mut run_text = crate::run_text::take();
+                let hidden: Vec<bool> = run_text.as_ref().map_or_else(Vec::new, |rt| {
+                    rt.glyph_ranges
+                        .iter()
+                        .map(|r| {
+                            rt.text.get(r.clone()).is_some_and(|t| {
+                                !t.is_empty()
+                                    && t.chars().all(|c| matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'))
+                            })
+                        })
+                        .collect()
+                });
+                if let Some(rt) = run_text.as_mut() {
+                    let mut i = 0;
+                    rt.glyph_ranges.retain(|_| {
+                        i += 1;
+                        !hidden[i - 1]
+                    });
+                }
+                let shown = |i: usize| !hidden.get(i).copied().unwrap_or(false);
                 let font = run.font();
                 let font_size = run.font_size();
                 let metrics = run.font_metrics();
@@ -943,7 +971,7 @@ pub(crate) fn stroke_text<'a>(
                             1.0,
                             offset,
                             glyph_xform,
-                            glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).map(|glyph| anyrender::Glyph {
+                            glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).map(|glyph| anyrender::Glyph {
                                 id: glyph.id as _,
                                 x: glyph.x,
                                 y: glyph.y,
@@ -952,11 +980,13 @@ pub(crate) fn stroke_text<'a>(
                     }
                 }
                 // wkhtmltopdf-rs: publish the run's source text before the glyphs are drawn.
-                crate::run_text::publish(source_text, &glyph_run, style.brush.id);
+                if let Some(rt) = run_text {
+                    crate::run_text::set(rt);
+                }
                 if cut.is_some() {
-                    let kept = glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).count();
+                    let kept = glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).count();
                     if let Some(end) =
-                        glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).map(|g| g.x + g.advance).last()
+                        glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).map(|g| g.x + g.advance).last()
                     {
                         ellipsis_x = ellipsis_x.max(end as f64);
                     }
@@ -976,7 +1006,7 @@ pub(crate) fn stroke_text<'a>(
                     1.0, // alpha
                     transform,
                     glyph_xform,
-                    glyph_run.positioned_glyphs().filter(|g| keep(g.x, g.advance)).map(|glyph| anyrender::Glyph {
+                    glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).map(|glyph| anyrender::Glyph {
                         id: glyph.id as _,
                         x: glyph.x,
                         y: glyph.y,

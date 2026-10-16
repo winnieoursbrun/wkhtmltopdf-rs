@@ -297,6 +297,9 @@ select { font: inherit; color: black; background-color: white; border: 1px solid
 
 pub(crate) fn ua_css(settings: &WebSettings) -> String {
     let mut css = String::from(QT_FORM_CONTROLS);
+    // WebKit's html.css: `<bdo>` overrides the bidi order (blitz's rule for it has a Gecko
+    // selector the style system drops).
+    css.push_str("bdo, bdo[dir] { unicode-bidi: bidi-override; }\n");
     if settings.enable_javascript {
         css.push_str("noscript { display: none !important; }\n");
     }
