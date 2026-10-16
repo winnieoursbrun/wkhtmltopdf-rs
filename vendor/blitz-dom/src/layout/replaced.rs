@@ -299,6 +299,10 @@ pub fn compute_replaced_layout(
             .unwrap_or(transferred.maybe_clamp(min_size, style_max_size));
 
         let size = size.map(|s| s.max(0.0));
+        let size = Size {
+            width: if content_box_known_dimensions.width.is_some() { size.width } else { webkit_floor(size.width) },
+            height: if content_box_known_dimensions.height.is_some() { size.height } else { webkit_floor(size.height) },
+        };
         return LayoutOutput::from_sizes(size + pb_sum, overflow_rect_for(size));
     }
 
@@ -332,7 +336,7 @@ pub fn compute_replaced_layout(
 
     // Without an intrinsic aspect ratio, each axis is clamped independently
     let Some(aspect_ratio) = aspect_ratio else {
-        let size = size.maybe_clamp(min_size, max_size);
+        let size = size.maybe_clamp(min_size, max_size).map(webkit_floor);
         return LayoutOutput::from_sizes(size + pb_sum, overflow_rect_for(size));
     };
     let inv_aspect_ratio = 1.0 / aspect_ratio;
@@ -425,8 +429,21 @@ pub fn compute_replaced_layout(
             }
         }
     };
+    let size = size.map(webkit_floor);
 
     LayoutOutput::from_sizes(size + pb_sum, overflow_rect_for(size))
+}
+
+/// wkhtmltopdf-rs: QtWebKit 2.2 computes the used size of a replaced element in whole
+/// device pixels, truncating (`RenderReplaced::computeReplacedLogicalHeight` divides
+/// integers): a 160x100 image 300px wide is 187px tall, not 187.5.
+fn webkit_floor(px: f32) -> f32 {
+    if !px.is_finite() {
+        return px;
+    }
+    let z = stylo_taffy::convert::device_zoom();
+    // Absorb f32 noise (e.g. 37.999998) before truncating.
+    ((px * z) + 1e-3).floor() / z
 }
 
 /// Inline-level elements that are laid out as atomic inline boxes (with their own
