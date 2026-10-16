@@ -183,7 +183,9 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
             end
         } else if forced.is_some() {
             let next = next_content(g, end);
-            let edge_between = g.candidates.iter().any(|&c| c > end + 0.5 && c < next - 0.5);
+            // `candidates` is sorted (`collect_geometry`).
+            let first = g.candidates.partition_point(|&c| c <= end + 0.5);
+            let edge_between = g.candidates.get(first).is_some_and(|&c| c < next - 0.5);
             if edge_between { end } else { next }
         } else {
             next_content(g, end)
