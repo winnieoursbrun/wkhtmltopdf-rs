@@ -395,12 +395,23 @@ fn qt_dashed_side(
         if (end - start).hypot() <= 0.0 {
             return;
         }
+        // The dashes, as rectangles (one path).
         let dash = if dotted { w } else { 3.0 * w };
-        let stroke = Stroke::new(w).with_caps(Cap::Butt).with_dashes(0.0, [dash, dash]);
-        let mut line = BezPath::new();
-        line.move_to(start);
-        line.line_to(end);
-        scene.stroke(&stroke, transform, color, None, &line);
+        let horizontal = start.y == end.y;
+        let len = if horizontal { end.x - start.x } else { end.y - start.y };
+        let mut dashes = BezPath::new();
+        let mut t = 0.0;
+        while t < len {
+            let e = (t + dash).min(len);
+            let r = if horizontal {
+                Rect::new(start.x + t, start.y - h, start.x + e, start.y + h)
+            } else {
+                Rect::new(start.x - h, start.y + t, start.x + h, start.y + e)
+            };
+            dashes.extend(kurbo::Shape::path_elements(&r, 0.1));
+            t += 2.0 * dash;
+        }
+        scene.fill(Fill::NonZero, transform, color, None, &dashes);
     }
 }
 
