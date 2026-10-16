@@ -176,7 +176,18 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
         // The next page starts at the cut (QtWebKit's `printedPagesHeight`) when content
         // straddles it, so the rest of a box cut through shows at its top; a cut in a gap
         // between boxes moves to the next content: the adjoining margins are truncated.
-        y = if forced.is_some() || thead.is_some() || straddled(g, end) { end } else { next_content(g, end) };
+        // After a forced break (`page-break-after` puts it at the bottom of its box) the
+        // margins down to the next box are truncated too, unless a box edge (an ancestor's
+        // bottom padding or border) lies in between.
+        y = if thead.is_some() || straddled(g, end) {
+            end
+        } else if forced.is_some() {
+            let next = next_content(g, end);
+            let edge_between = g.candidates.iter().any(|&c| c > end + 0.5 && c < next - 0.5);
+            if edge_between { end } else { next }
+        } else {
+            next_content(g, end)
+        };
         // Skip the real footer of a table that ends right after the cut.
         if let Some((fa, fb)) = tfoot {
             if (y - fa).abs() < 0.5 {
@@ -259,6 +270,22 @@ mod tests {
         // A cut in the gap between two blocks: the next page starts at the next content.
         let p = paginate(&g, 110.0);
         assert_eq!((p[0].y1, p[1].y0), (110.0, 120.0));
+    }
+
+    #[test]
+    fn margins_after_a_forced_break_are_truncated() {
+        // `page-break-after` on a box ending at 40, the next block's content at 60.
+        let mut g = Geometry { doc_height: 300.0, ..Default::default() };
+        paragraph(&mut g, 0.0, 2);
+        paragraph(&mut g, 60.0, 2);
+        g.forced.push(40.0);
+        let p = paginate(&g, 1000.0);
+        assert_eq!((p[0].y1, p[1].y0), (40.0, 60.0));
+        // An ancestor's bottom edge in the gap (its padding, border) stays on the next page.
+        g.candidates.push(50.0);
+        g.candidates.sort_by(f32::total_cmp);
+        let p = paginate(&g, 1000.0);
+        assert_eq!(p[1].y0, 40.0);
     }
 
     #[test]
