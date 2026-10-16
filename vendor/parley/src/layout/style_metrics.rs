@@ -105,17 +105,49 @@ pub(crate) fn resolve_style_metrics<B: Brush>(
     rcx: &ResolveContext,
     fcx: &mut FontContext,
     styles: &[ResolvedStyle<B>],
-    shaped_text: &ShapedText,
+    shaped_text: &mut ShapedText,
     quantize: bool,
     out: &mut Vec<StyleMetrics>,
-) {
+) -> Vec<usize> {
     out.clear();
     out.reserve(styles.len());
+
+    // wkhtmltopdf-rs: the `@font-face` families of these styles (see `regular_metrics_font`).
+    let mut web_families: Vec<fontique::FamilyId> = Vec::new();
+    for style in styles {
+        for &id in rcx.stack(style.font_family).unwrap_or(&[]) {
+            if !web_families.contains(&id)
+                && fcx
+                    .collection
+                    .family_name(id)
+                    .is_some_and(|name| name.starts_with("wk-webfont:"))
+            {
+                web_families.push(id);
+            }
+        }
+    }
+
+    // Bold `@font-face` faces measured as their family's regular face.
+    let mut regular_faces: Vec<(FontInstance, FontInstance)> = Vec::new();
 
     let mut query = fcx.collection.query(&mut fcx.source_cache);
 
     for (index, style) in styles.iter().enumerate() {
         let font_metrics = first_available_font(&mut query, rcx, style)
+            .map(|(font, family)| {
+                if !web_families.contains(&family) {
+                    return font;
+                }
+                match regular_metrics_font(&mut query, style, family) {
+                    Some(regular) => {
+                        if !regular_faces.iter().any(|(bold, _)| *bold == font) {
+                            regular_faces.push((font, regular.clone()));
+                        }
+                        regular
+                    }
+                    None => font,
+                }
+            })
             .and_then(|font| {
                 let variations = rcx.variations(style.font_variations).unwrap_or(&[]);
                 shaped_run_metrics(shaped_text, &font, style.font_size, variations)
@@ -171,6 +203,28 @@ pub(crate) fn resolve_style_metrics<B: Brush>(
 
         out.push(metrics);
     }
+    drop(query);
+
+    // The runs shaped with such a bold face size the line with the regular face's metrics too
+    // (`run_box_metrics`).
+    // Returns the indices of the runs changed.
+    let mut changed = Vec::new();
+    if !regular_faces.is_empty() {
+        let fonts = shaped_text.fonts().to_vec();
+        for (index, run) in shaped_text.runs_mut().iter_mut().enumerate() {
+            let font = &fonts[run.font_index];
+            let Some((_, regular)) = regular_faces.iter().find(|(bold, _)| bold == font) else {
+                continue;
+            };
+            if let Some(m) = FontMetrics::from_font_instance(regular, run.font_size, &[]) {
+                run.font_metrics.ascent = m.ascent;
+                run.font_metrics.descent = m.descent;
+                run.font_metrics.leading = m.leading;
+                changed.push(index);
+            }
+        }
+    }
+    changed
 }
 
 /// The metrics of a shaped run using `font` at `font_size`, if any: the shaper has then already
@@ -361,7 +415,7 @@ fn first_available_font<B: Brush>(
     query: &mut Query<'_>,
     rcx: &ResolveContext,
     style: &ResolvedStyle<B>,
-) -> Option<FontInstance> {
+) -> Option<(FontInstance, fontique::FamilyId)> {
     let families = rcx.stack(style.font_family).unwrap_or(&[]);
     query.set_families(families.iter().copied().map(QueryFamily::Id));
     query.set_attributes(fontique::Attributes {
@@ -370,7 +424,39 @@ fn first_available_font<B: Brush>(
         style: style.font_style,
     });
     let font = query.first_available_font()?;
-    Some(FontInstance {
+    Some((
+        FontInstance {
+            font: FontData {
+                data: font.blob,
+                index: font.index,
+            },
+            synthesis: font.synthesis,
+        },
+        font.family.0,
+    ))
+}
+
+/// wkhtmltopdf-rs: QtWebKit 2.2 measures an `@font-face` font through a `QFont` of the face's
+/// family that only asks for synthetic bold: a bold face is painted bold but its line metrics
+/// are those of the family's regular face (DejaVu Serif Bold at 16px makes 19px lines, as
+/// DejaVu Serif, not the 20px of the installed bold face). The regular face of the same
+/// `@font-face` family, if it has one.
+fn regular_metrics_font<B: Brush>(
+    query: &mut Query<'_>,
+    style: &ResolvedStyle<B>,
+    family: fontique::FamilyId,
+) -> Option<FontInstance> {
+    if style.font_weight.value() < 600. {
+        return None;
+    }
+    query.set_families([QueryFamily::Id(family)]);
+    query.set_attributes(fontique::Attributes {
+        width: style.font_width,
+        weight: fontique::FontWeight::NORMAL,
+        style: style.font_style,
+    });
+    let font = query.first_available_font()?;
+    (!font.synthesis.embolden()).then_some(FontInstance {
         font: FontData {
             data: font.blob,
             index: font.index,

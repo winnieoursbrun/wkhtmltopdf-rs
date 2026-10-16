@@ -410,14 +410,20 @@ fn build_into_layout<B: Brush>(
     }
 
     // After shaping, so that the metrics of fonts used for shaping can be reused.
-    crate::layout::style_metrics::resolve_style_metrics(
+    let changed_runs = crate::layout::style_metrics::resolve_style_metrics(
         &lcx.rcx,
         fcx,
         &lcx.style_table,
-        &layout.data.shaped_text,
+        &mut layout.data.shaped_text,
         options.quantize,
         &mut layout.data.style_metrics,
     );
+    // wkhtmltopdf-rs: runs whose font metrics changed (bold `@font-face` faces).
+    for run_idx in changed_runs {
+        layout
+            .data
+            .refresh_run_metrics(run_idx, &lcx.char_style_indices);
+    }
 
     // Move inline boxes into the layout
     layout.data.inline_boxes.clear();

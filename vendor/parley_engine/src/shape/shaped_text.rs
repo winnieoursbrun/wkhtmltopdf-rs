@@ -217,6 +217,12 @@ impl ShapedText {
         &self.runs
     }
 
+    /// wkhtmltopdf-rs: the shaped runs, to adjust their font metrics after shaping (the line
+    /// metrics of bold `@font-face` faces, see parley's `style_metrics.rs`).
+    pub fn runs_mut(&mut self) -> &mut [ShapedRun] {
+        &mut self.runs
+    }
+
     /// Escape hatch for `parley` tests that remap style indices to check whether layouts are
     /// otherwise identical. This is not for public consumption!
     #[doc(hidden)]

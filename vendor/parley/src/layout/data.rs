@@ -392,6 +392,31 @@ impl<B: Brush> LayoutData<B> {
         });
     }
 
+    /// wkhtmltopdf-rs: recompute the line height and box of run `run_idx` (one run per shaped
+    /// run) after its shaped run's font metrics changed.
+    pub(crate) fn refresh_run_metrics(&mut self, run_idx: usize, char_styles: &[u16]) {
+        let shaped_run = &self.shaped_text.runs()[run_idx];
+        let chars = shaped_run.range.char_range.clone();
+        let first_style = char_styles[chars.start];
+        let style = &self.styles[usize::from(first_style)];
+        let line_height =
+            style
+                .line_height
+                .resolve(shaped_run.font_size, &shaped_run.font_metrics, self.quantize);
+        let uniform_line_height = char_styles[chars].iter().all(|&s| {
+            s == first_style || self.styles[usize::from(s)].line_height == style.line_height
+        });
+        let run_box = if uniform_line_height {
+            run_box_metrics(style, shaped_run, self.quantize)
+        } else {
+            None
+        };
+        if let Some(run) = self.runs.get_mut(run_idx) {
+            run.line_height = line_height;
+            run.run_box = run_box;
+        }
+    }
+
     /// Calculates the min- and max-content widths of the layout.
     ///
     /// The max-content width is the widest line when breaking only at forced breaks. The
