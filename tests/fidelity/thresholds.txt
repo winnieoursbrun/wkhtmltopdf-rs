@@ -36,7 +36,7 @@ cover-toc                   5 0.98
 css-generated               1 0.66
 display-misc                1 0.81
 doc-bootstrap               1 0.96
-doc-certificate             1 0.96
+doc-certificate             1 0.97
 doc-invoice                 1 0.42
 doc-letter                  1 0.98
 doc-packing-slip            1 0.88
@@ -54,7 +54,7 @@ doc-report-toc              6 0.98
 doc-resume                  1 0.92
 doc-statement               1 0.51
 doc-statement               2 0.92
-dpi-300                     1 0.58
+dpi-300                     1 0.95
 floats                      1 0.88
 fonts-unicode               1 0.96
 fonts-webfont               1 0.51
@@ -81,7 +81,7 @@ media-viewport              1 0.98
 overflow                    1 0.75
 page-a4                     1 0.98
 page-a5-landscape           1 0.98
-page-custom                 1 0.68
+page-custom                 1 0.98
 page-legal                  1 0.97
 position-fixed              1 0.98
 positioning                 1 0.97
@@ -111,6 +111,6 @@ typo-weights                1 0.98
 typo-whitespace             1 0.72
 wide-content                1 0.98
 wide-content-nosmart        1 0.98
-zoom-075                    1 0.65
-zoom-150                    1 0.75
-zoom-150-nosmart            1 0.65
+zoom-075                    1 0.95
+zoom-150                    1 0.95
+zoom-150-nosmart            1 0.95
