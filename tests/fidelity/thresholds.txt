@@ -33,8 +33,8 @@ cover-toc                   2 0.98
 cover-toc                   3 0.98
 cover-toc                   4 0.98
 cover-toc                   5 0.98
-css-generated               1 0.66
-display-misc                1 0.81
+css-generated               1 0.91
+display-misc                1 0.97
 doc-bootstrap               1 0.96
 doc-certificate             1 0.97
 doc-invoice                 1 0.42
@@ -57,7 +57,7 @@ doc-statement               2 0.92
 dpi-300                     1 0.95
 floats                      1 0.88
 fonts-unicode               1 0.96
-fonts-webfont               1 0.51
+fonts-webfont               1 0.98
 forms-acroform              1 0.79
 forms-controls              1 0.83
 forms-inputs                1 0.85
@@ -71,7 +71,7 @@ images-formats              1 0.93
 images-none                 1 0.98
 images-sizing               1 0.84
 inline-block                1 0.95
-lists-nested                1 0.93
+lists-nested                1 0.98
 lists-types                 1 0.97
 margins-mixed               1 0.98
 margins-zero                1 0.96
@@ -101,14 +101,14 @@ toc                         4 0.98
 typo-align                  1 0.98
 typo-colors                 1 0.94
 typo-decoration             1 0.97
-typo-elements               1 0.85
+typo-elements               1 0.98
 typo-families               1 0.98
 typo-line-height            1 0.98
 typo-sizes                  1 0.98
 typo-spacing                1 0.98
 typo-vertical-align         1 0.98
 typo-weights                1 0.98
-typo-whitespace             1 0.72
+typo-whitespace             1 0.96
 wide-content                1 0.98
 wide-content-nosmart        1 0.98
 zoom-075                    1 0.95
