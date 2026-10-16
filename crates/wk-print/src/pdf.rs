@@ -844,6 +844,45 @@ impl Replayer<'_, '_, '_> {
                         else {
                             continue;
                         };
+                        // Repeated only when the shape reaches past one image (an `<img>`
+                        // brush repeats too, over its own rectangle).
+                        let in_image = c
+                            .brush_transform
+                            .unwrap_or(Affine::IDENTITY)
+                            .inverse()
+                            .transform_rect_bbox(kurbo::Shape::bounding_box(&c.shape));
+                        let (iw, ih) = (f64::from(img.image.width), f64::from(img.image.height));
+                        let repeat = (img.sampler.x_extend == peniko::Extend::Repeat
+                            || img.sampler.y_extend == peniko::Extend::Repeat)
+                            && (in_image.x0 < -0.5
+                                || in_image.y0 < -0.5
+                                || in_image.x1 > iw + 0.5
+                                || in_image.y1 > ih + 0.5);
+                        if repeat {
+                            // A repeated background: a tiling pattern of the image, as Qt's
+                            // PDF engine writes a pattern brush (QtWebKit's Image::drawPattern).
+                            let mut builder = surface.stream_builder();
+                            let mut tile = builder.surface();
+                            tile.draw_image(kimg, size);
+                            tile.finish();
+                            let stream = builder.finish();
+                            let pattern = krilla::paint::Pattern {
+                                stream,
+                                transform: tf(c.brush_transform.unwrap_or(Affine::IDENTITY)),
+                                width: size.width(),
+                                height: size.height(),
+                            };
+                            surface.push_transform(&tf(c.transform));
+                            surface.set_fill(Some(Fill {
+                                paint: pattern.into(),
+                                opacity: norm(1.0),
+                                rule: FillRule::NonZero,
+                            }));
+                            surface.set_stroke(None);
+                            surface.draw_path(&clip);
+                            surface.pop();
+                            continue;
+                        }
                         surface.push_transform(&tf(c.transform));
                         surface.push_clip_path(&clip, &FillRule::NonZero);
                         surface.push_transform(&tf(c.brush_transform.unwrap_or(Affine::IDENTITY)));

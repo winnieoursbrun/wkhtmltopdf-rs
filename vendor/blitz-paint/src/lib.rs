@@ -18,6 +18,27 @@ pub mod canvas;
 // wkhtmltopdf-rs: inline layouts freed as their text is painted.
 pub mod inline_layouts;
 
+/// wkhtmltopdf-rs: where Qt's PDF engine anchors pattern brushes: the top left corner of
+/// the first page, in document coordinates (QtWebKit's printing starts the first page at
+/// the first content, the top margins being cut). Set around `paint_scene`.
+pub mod pattern_origin {
+    use std::cell::Cell;
+
+    thread_local! {
+        static ORIGIN: Cell<(f64, f64)> = const { Cell::new((0.0, 0.0)) };
+    }
+
+    /// Set the pattern origin for the next paints on this thread.
+    pub fn set(x: f64, y: f64) {
+        ORIGIN.with(|o| o.set((x, y)));
+    }
+
+    /// The pattern origin (document coordinates).
+    pub fn get() -> (f64, f64) {
+        ORIGIN.with(|o| o.get())
+    }
+}
+
 use std::collections::HashMap;
 
 use anyrender::{PaintScene, Scene};

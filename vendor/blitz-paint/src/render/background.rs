@@ -464,6 +464,49 @@ impl ElementCx<'_, '_> {
         anyrender_svg::render_svg_tree(scene, &svg.tree, transform);
     }
 
+    /// wkhtmltopdf-rs: QtWebKit 2.2 draws a repeated background whose one tile does not
+    /// cover the area to paint (Image::drawTiled) as a Qt pattern brush. WebKit passes the
+    /// tile phase as the brush origin, which Qt's PDF engine drops: the pattern's tiles start
+    /// at the page's origin ([`crate::pattern_origin`]; later pages are not distinguished),
+    /// not at the background position (every pattern of the 0.12.6 binary's PDFs has the
+    /// page matrix; tests/fidelity/backgrounds*). Returns the
+    /// background position (relative to `origin_rect`) that puts a tile corner on the
+    /// document origin, or `None` when the background is drawn at its own position.
+    fn qt_pattern_anchor(
+        &self,
+        layer: &ImageLayerStyles,
+        base_transform: Affine,
+        origin_rect: Rect,
+        bg_pos: Point,
+        bg_size: Size,
+    ) -> Option<Point> {
+        use style::values::specified::background::BackgroundRepeatKeyword::{NoRepeat, Space};
+        let BackgroundRepeat(rx, ry) = layer.repeat;
+        if matches!(rx, NoRepeat | Space) || matches!(ry, NoRepeat | Space) || self.layer_is_fixed(layer) {
+            return None;
+        }
+        if bg_size.width <= 0.0 || bg_size.height <= 0.0 {
+            return None;
+        }
+        let [a, b, c, d, tx, ty] = base_transform.as_coeffs();
+        if a != 1.0 || b != 0.0 || c != 0.0 || d != 1.0 {
+            return None;
+        }
+        let tile = Rect::from_origin_size(origin_rect.origin() + bg_pos.to_vec2(), bg_size);
+        let clip = self.box_rect(layer.clip);
+        if tile.contains_rect(clip) {
+            return None;
+        }
+        // Positions of a tile corner relative to the origin box: -(document position) modulo
+        // the tile size.
+        let (ox, oy) = crate::pattern_origin::get();
+        let phase = |abs: f64, len: f64| (-abs).rem_euclid(len);
+        Some(Point::new(
+            phase(tx + origin_rect.x0 - ox, bg_size.width),
+            phase(ty + origin_rect.y0 - oy, bg_size.height),
+        ))
+    }
+
     fn draw_raster_image_layer(&self, scene: &mut impl PaintScene, layer: &ImageLayerStyles) {
         let Some(bg_image) = layer.image_data else {
             return;
@@ -499,11 +542,12 @@ impl ElementCx<'_, '_> {
 
         let BackgroundRepeat(repeat_x, repeat_y) = layer.repeat;
 
+        let anchor = self.qt_pattern_anchor(layer, base_transform, origin_rect, bg_pos, bg_size);
         let x = raster_axis_tiling(
             *repeat_x,
             origin_rect.x0,
             origin_rect.width(),
-            bg_pos.x,
+            anchor.map_or(bg_pos.x, |a| a.x),
             bg_size.width,
             image_width,
             x_ratio,
@@ -512,7 +556,7 @@ impl ElementCx<'_, '_> {
             *repeat_y,
             origin_rect.y0,
             origin_rect.height(),
-            bg_pos.y,
+            anchor.map_or(bg_pos.y, |a| a.y),
             bg_size.height,
             image_height,
             y_ratio,
@@ -576,13 +620,14 @@ impl ElementCx<'_, '_> {
 
         let BackgroundRepeat(repeat_x, repeat_y) = layer.repeat;
 
+        let anchor = self.qt_pattern_anchor(layer, base_transform, origin_rect, bg_pos, bg_size);
         let x = gradient_axis_tiling(
             *repeat_x,
             origin_rect.x0,
             origin_rect.width(),
             clip_rect.x0,
             clip_rect.width(),
-            bg_pos.x,
+            anchor.map_or(bg_pos.x, |a| a.x),
             bg_size.width,
         );
         let y = gradient_axis_tiling(
@@ -591,7 +636,7 @@ impl ElementCx<'_, '_> {
             origin_rect.height(),
             clip_rect.y0,
             clip_rect.height(),
-            bg_pos.y,
+            anchor.map_or(bg_pos.y, |a| a.y),
             bg_size.height,
         );
 

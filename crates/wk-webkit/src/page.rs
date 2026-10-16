@@ -674,6 +674,15 @@ impl WebPage {
         let doc_h = geometry.doc_height.ceil().max(1.0) as u32;
         let mut recorder = Recorder::default();
         blitz_paint::canvas::set_pictures(self.canvases.clone());
+        // Qt anchors pattern brushes at the first page's top left corner: the first content.
+        let first_page_top = geometry
+            .content_starts
+            .iter()
+            .copied()
+            .find(|&c| c >= -0.01 && c < geometry.doc_height)
+            .unwrap_or(0.0)
+            .max(0.0);
+        blitz_paint::pattern_origin::set(0.0, f64::from(first_page_top));
         if release_text {
             blitz_paint::inline_layouts::set(self.doc.take_inline_layouts());
         }
