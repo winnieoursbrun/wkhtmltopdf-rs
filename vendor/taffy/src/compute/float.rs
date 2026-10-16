@@ -525,6 +525,17 @@ impl FloatContext {
                 if min_y > last_y_end {
                     self.segments.push(Segment { y: last_y_end..min_y, insets: [0.0, 0.0], has_float: [false; 2] });
                 }
+                // The float extends below every existing segment: the part below them needs a
+                // segment of its own, or content beside it would not avoid it.
+                let last_y_end = self.segments.last().map(|seg| seg.y.end).unwrap_or(0.0);
+                let end_y = start_y + floated_box.height;
+                if end_y > last_y_end {
+                    self.segments.push(Segment {
+                        y: last_y_end..end_y,
+                        insets: containing_block_insets,
+                        has_float: [false; 2],
+                    });
+                }
                 self.segments.len() - 1
             }
             Some(mut end_idx) => {
