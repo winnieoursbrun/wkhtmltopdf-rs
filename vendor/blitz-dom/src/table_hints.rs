@@ -16,6 +16,7 @@ use style::context::QuirksMode;
 use style::properties::PropertyDeclarationBlock;
 use style::properties::declaration_block::parse_style_attribute;
 use style::servo_arc::Arc as ServoArc;
+use style::shared_lock::{Locked, SharedRwLock};
 use style::stylesheets::{CssRuleType, UrlExtraData};
 
 use crate::node::{Node, NodeData};
@@ -275,7 +276,11 @@ fn part_hints(node: &Node, css: &mut String) {
 }
 
 thread_local! {
-    static CACHE: RefCell<HashMap<String, PropertyDeclarationBlock>> = RefCell::new(HashMap::new());
+    /// The parsed hints, per document lock and declaration text. The rule tree
+    /// keys its nodes by block, so cells with the same hints share one block
+    /// (and their rule node, and the style sharing cache).
+    static CACHE: RefCell<HashMap<(usize, String), ServoArc<Locked<PropertyDeclarationBlock>>>> =
+        RefCell::new(HashMap::new());
 }
 
 /// Whether `align` on this element is mapped here rather than to the generic
@@ -284,8 +289,12 @@ pub(crate) fn handles_align(tag: &str) -> bool {
     matches!(tag, "table" | "caption" | "td" | "th" | "tr" | "tbody" | "thead" | "tfoot" | "col" | "colgroup")
 }
 
-/// The declaration block of WebKit's table attribute mapping for `node`.
-pub(crate) fn table_hints(node: &Node) -> Option<PropertyDeclarationBlock> {
+/// The declaration block of WebKit's table attribute mapping for `node`,
+/// locked with the document's `lock`.
+pub(crate) fn table_hints(
+    node: &Node,
+    lock: &SharedRwLock,
+) -> Option<ServoArc<Locked<PropertyDeclarationBlock>>> {
     let tag = element_tag(node)?;
     if !handles_align(tag) {
         return None;
@@ -294,14 +303,16 @@ pub(crate) fn table_hints(node: &Node) -> Option<PropertyDeclarationBlock> {
     if css.is_empty() {
         return None;
     }
+    let key = (lock.id(), css);
     CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
-        if let Some(block) = cache.get(&css) {
+        if let Some(block) = cache.get(&key) {
             return Some(block.clone());
         }
         let url = UrlExtraData(ServoArc::new(url::Url::parse("about:blank").unwrap()));
-        let block = parse_style_attribute(&css, &url, None, QuirksMode::NoQuirks, CssRuleType::Style);
-        cache.insert(css, block.clone());
+        let block = parse_style_attribute(&key.1, &url, None, QuirksMode::NoQuirks, CssRuleType::Style);
+        let block = ServoArc::new(lock.wrap(block));
+        cache.insert(key, block.clone());
         Some(block)
     })
 }

@@ -1216,9 +1216,9 @@ impl<'a> TElement for BlitzNode<'a> {
 
         // wkhtmltopdf-rs: WebKit's table attribute mapping (border, frame,
         // rules, cellpadding, cellspacing, valign…), after the other hints.
-        if let Some(block) = crate::table_hints::table_hints(self) {
+        if let Some(block) = crate::table_hints::table_hints(self, self.guard()) {
             hints.push(ApplicableDeclarationBlock::from_declarations(
-                Arc::new(self.guard().wrap(block)),
+                block,
                 CascadeLevel::new(CascadeOrigin::PresHints),
                 LayerOrder::root(),
             ));

@@ -77,6 +77,12 @@ impl SharedRwLock {
             .unwrap_or(ptr::null())
     }
 
+    /// wkhtmltopdf-rs: an identity of this lock (its cell is never freed), for
+    /// caches of blocks locked with it.
+    pub fn id(&self) -> usize {
+        self.ptr() as usize
+    }
+
     /// Wrap the given data to make its access protected by this lock.
     pub fn wrap<T>(&self, data: T) -> Locked<T> {
         Locked {
