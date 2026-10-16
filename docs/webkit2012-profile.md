@@ -51,7 +51,7 @@ Implementation:
 | `outline-offset` | applied | kept (see paint) | probe |
 | `text-shadow` | applied | kept, **not painted yet** | probe |
 | `text-overflow: ellipsis` | applied | kept; glyphs past (box width - `…` width) dropped, `…` drawn after them (blitz-paint) | probe |
-| `font-variant: small-caps` | applied | kept; lowercase letters uppercased at 0.7 of the font size, like WebKit's smallCapsFontData (blitz-dom inline construction) | probe |
+| `font-variant: small-caps` | applied | kept; lowercase letters uppercased at 0.7 of the font size, rounded to whole pixels, like WebKit's smallCapsFontData (blitz-dom inline construction) | probe |
 | `-webkit-text-stroke` | applied | dropped (unsupported by stylo) | probe |
 | `border-image` with a gradient | ignored | kept (also ignored by us) | probe |
 | other `-webkit-*`, `-moz-*`, `-ms-*` | — | dropped | |
@@ -73,6 +73,15 @@ Implementation:
 | Unknown family with no generic fallback (`Arial`) | the default face, with the run's own weight and style | parley `shape/mod.rs` (last-resort font per attributes) |
 | `line-height: <number>` | `trunc(number × rounded font size)` | blitz-dom `stylo_to_parley.rs` |
 | `line-height: normal` | ascent and descent each rounded up | parley (P2a) |
+| `line-height: <length> \| <percentage>` | whole pixels, truncated (`1.3em` on 13px is 16px, `150%` of 13px is 19px) | blitz-dom `stylo_to_parley.rs` |
+| Half-leading | `(lineHeight - fontHeight) / 2` in integers, truncated towards zero | parley `style_metrics.rs` |
+| `vertical-align: sub \| super` | `fontSize / 5 + 1` down, `fontSize / 3 + 1` up (parent's whole-pixel size) | parley `style_metrics.rs` |
+| Box positions on a line | after each text box's width (whole node: preferred width; part of one: rounded unrounded advances), not after the line breaker's segments | parley `line.rs`, `alignment.rs` |
+| Kerning, ligatures with `letter-spacing`/`word-spacing` | Qt's complex path: kerning (rounded to whole pixels) and `fi` ligatures | blitz-dom `stylo_to_parley.rs`, parley_engine `shaped_text.rs` |
+| Tab character | drawn as a space, also in `pre` | blitz-dom `layout/construct.rs` |
+| Smart shrinking width | includes text overflowing its box (`nowrap`), unless the box clips | wk-webkit `page.rs` |
+| Counters and quotes in `content` | resolved in document order; default quotes `"` then `'` | blitz-dom `generated_content.rs` |
+| List markers | WebKit 2012 numbering systems; outside disc/circle/square painted as shapes (`(a*2/3+1)/2` px, `a*2/3+7` px before the content); text markers end `a*2/3/2` px before it | blitz-dom `layout/list.rs`, blitz-paint `render.rs` |
 | Lengths from `em`, `pt`, … | whole pixels, truncated (`roundForImpreciseConversion`) | stylo_taffy `convert.rs` |
 | Auto table layout | AutoTableLayout: columns get their min width, then the rest in proportion to their max widths; fixed and percent columns first; spanning cells widen the columns under them in proportion to their max widths (`calcEffectiveLogicalWidth`); `<col>` widths count | blitz-dom `layout/table_auto.rs` |
 | Fixed table layout | FixedTableLayout: `<col>`/first-row widths as specified (no padding or border added), the rest shared equally, the last column taking the remainder | same |
@@ -94,3 +103,4 @@ Implementation:
 | Collapsed dashed/double borders | dashes 4 widths on, 2 off; dotted solid (Qt square caps); double = outer thirds | same |
 | `empty-cells: hide` | no background or border on an empty cell (separated borders) | same |
 | Inline box backgrounds | ascent and descent rounded up | same |
+| Text decorations | 1px lines from the text box top: overline at the top, line-through `2a/3` below, underline 1px below the baseline (`a` = whole-pixel ascent) | same (blitz-paint `text.rs`) |
