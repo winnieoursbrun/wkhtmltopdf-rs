@@ -390,6 +390,10 @@ const UNSUPPORTED: &[&str] = &[
     "columns",
     "column-",
     "overflow-wrap",
+    // The CSS3 fragmentation names: only `page-break-*` existed.
+    "break-before",
+    "break-after",
+    "break-inside",
     "text-decoration-line",
     "text-decoration-color",
     "text-decoration-style",
@@ -901,6 +905,18 @@ mod tests {
     fn unprefixed_transform_is_dropped_and_prefixed_applies() {
         assert_eq!(sheet(".a{transform:rotate(3deg);color:red}"), ".a{color:red}");
         assert_eq!(sheet(".a{-webkit-transform:rotate(3deg)}"), ".a{transform:rotate(3deg)}");
+    }
+
+    #[test]
+    fn only_the_page_break_names_break_pages() {
+        assert_eq!(
+            sheet("a{break-before:page;break-after:page;break-inside:avoid;page-break-before:always}"),
+            "a{page-break-before:always}"
+        );
+        assert_eq!(
+            sheet("a{-webkit-column-break-before:always;page-break-inside:avoid}"),
+            "a{page-break-inside:avoid}"
+        );
     }
 
     #[test]

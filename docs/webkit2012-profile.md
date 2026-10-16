@@ -43,6 +43,9 @@ Implementation:
 | `filter`, `-webkit-filter` | ignored | dropped | probe |
 | `column-count` / `-webkit-column-count` | no columns in the PDF | dropped | probe |
 | `@supports` | unknown at-rule: block ignored | block removed | probe |
+| `break-before`, `break-after`, `break-inside` (CSS3 names) | ignored (only `page-break-*` existed) | dropped | probe and `tests/fidelity/cases/breaks.html` |
+| `page-break-before/after: left \| right` | a plain page break, no blank page inserted | treated as `always` | probe |
+| `-webkit-column-break-*` | no break (no columns) | dropped | probe |
 | `overflow-wrap` | ignored (only `word-wrap` existed) | dropped (`word-wrap` kept) | probe |
 | `text-decoration-color` and the other longhands | ignored | dropped | probe |
 | `outline-offset` | applied | kept (see paint) | probe |
