@@ -22,12 +22,41 @@ use crate::{FONT_EMBOLDEN_ENABLED, SELECTION_COLOR};
 ///
 /// The inline root's own background is painted separately (as a normal block box), so
 /// runs belonging to the root are skipped to avoid drawing it twice.
+/// wkhtmltopdf-rs: the `position: relative` offset (`top`/`left`, else `-bottom`/`-right`) of
+/// the inline elements between a text run's node and its inline root, in scaled px. QtWebKit 2.2
+/// moves a relatively positioned inline box with its background and text.
+pub(crate) fn relative_inline_offset(doc: &BaseDocument, node_id: NodeId, inline_root_id: NodeId, scale: f64) -> kurbo::Vec2 {
+    use style::values::computed::position::Inset;
+    let px = |v: &Inset| match v {
+        Inset::LengthPercentage(lp) => lp.to_length().map(|l| l.px() as f64),
+        _ => None,
+    };
+    let mut offset = kurbo::Vec2::ZERO;
+    let mut id = Some(node_id);
+    while let Some(nid) = id {
+        if nid == inline_root_id {
+            break;
+        }
+        let Some(node) = doc.get_node(nid) else { break };
+        if let Some(styles) = node.primary_styles() {
+            if styles.get_box().position == style::computed_values::position::T::Relative {
+                let pos = styles.get_position();
+                offset.x += px(&pos.left).or_else(|| px(&pos.right).map(|r| -r)).unwrap_or(0.0);
+                offset.y += px(&pos.top).or_else(|| px(&pos.bottom).map(|b| -b)).unwrap_or(0.0);
+            }
+        }
+        id = node.parent;
+    }
+    offset * scale
+}
+
 pub(crate) fn draw_inline_backgrounds<'a>(
     scene: &mut impl PaintScene,
     lines: impl Iterator<Item = Line<'a, TextBrush>>,
     doc: &BaseDocument,
     transform: Affine,
     inline_root_id: NodeId,
+    scale: f64,
 ) {
     for line in lines {
         for item in line.items() {
@@ -63,6 +92,7 @@ pub(crate) fn draw_inline_backgrounds<'a>(
             let y0 = baseline - (metrics.ascent as f64).ceil();
             let y1 = baseline + (metrics.descent as f64).ceil();
             let rect = Rect::new(x, y0, x + w, y1);
+            let transform = transform.pre_translate(relative_inline_offset(doc, node_id, inline_root_id, scale));
 
             scene.fill(Fill::NonZero, transform, bg_color, None, &rect);
         }
@@ -701,6 +731,8 @@ pub(crate) fn stroke_text<'a>(
                 };
 
                 let normalized_coords: &[i16] = bytemuck::cast_slice(run.normalized_coords());
+                // wkhtmltopdf-rs: a relatively positioned inline element moves its text.
+                let transform = transform.pre_translate(relative_inline_offset(doc, style.brush.id, inline_root_id, scale));
                 // wkhtmltopdf-rs: `text-shadow` (QtWebKit 2.2 paints it): the glyphs
                 // again under the text, offset, in the shadow colour (no blur).
                 if let Some(node_styles) = doc.get_node(style.brush.id).and_then(|n| n.primary_styles()) {

@@ -890,6 +890,7 @@ impl ElementCx<'_, '_> {
                     self.context.dom,
                     transform,
                     self.node.id,
+                    self.scale,
                 );
             }
 
