@@ -47,4 +47,5 @@ bench-inproc = []
 pdf-extract = "0.12"
 lopdf = "0.42"
 hayro = "0.8.0"
+image.workspace = true
 url.workspace = true

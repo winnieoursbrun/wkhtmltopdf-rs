@@ -72,10 +72,10 @@ jobs:
         run: |
           set -uo pipefail
           # Integration test targets that compare against outputs of the real wkhtmltopdf 0.12.6:
-          # CLI fixtures, conversion fixtures, corpus L2/L3, parts, JS corpus and quirks.
+          # CLI fixtures, conversion fixtures, corpus L2/L3, fidelity, parts, JS corpus and quirks.
           mapfile -t suites < <(
             find crates tests -path '*/tests/*.rs' 2>/dev/null \
-              | grep -E '/(cli_fixtures|conversion_fixtures|corpus_l2|corpus_l3|parts|js_corpus|quirks)\.rs$' | sort
+              | grep -E '/(cli_fixtures|conversion_fixtures|corpus_l2|corpus_l3|fidelity|parts|js_corpus|quirks)\.rs$' | sort
           )
           echo "| Suite | Passed | Failed | Ignored | Result |" > summary.md
           echo "|---|---:|---:|---:|---|" >> summary.md
