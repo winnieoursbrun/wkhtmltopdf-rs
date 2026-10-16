@@ -111,6 +111,15 @@ fn list_marker_texts() {
     );
 }
 
+/// A tab is drawn as a space, also in preformatted text (reference: typo-whitespace).
+#[test]
+fn tab_is_a_space() {
+    let r = runs("<pre style=\"font: 14px sans-serif\">\tx</pre>");
+    let run = r.iter().find(|r| r.text.contains('x')).expect("run");
+    assert_eq!(run.text, " x", "{r:?}");
+    assert!((run.xs[1] - run.xs[0] - 4.4375).abs() < 0.01, "{r:?}");
+}
+
 /// Text in an `@font-face` family whose font fails to load is laid out with the fallback font
 /// but not painted (reference: fonts-webfont).
 #[test]

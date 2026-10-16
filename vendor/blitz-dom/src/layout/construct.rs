@@ -1307,6 +1307,15 @@ pub(crate) fn build_inline_layout_into(
 
                 let text =
                     text_transformer.transform(&data.content, parent_text_transform, builder);
+                // wkhtmltopdf-rs: QtWebKit 2.2 draws a tab as a space (`normalizeSpaces`), even
+                // where white space is preserved: no tab stops, no missing-glyph box.
+                let detabbed;
+                let text = if text.contains('\t') {
+                    detabbed = text.replace('\t', " ");
+                    detabbed.as_str()
+                } else {
+                    text
+                };
                 // wkhtmltopdf-rs: `font-variant: small-caps` like WebKit
                 // 2012: characters with an uppercase form are uppercased
                 // and drawn at 0.7 of the font size (smallCapsFontData).

@@ -1127,6 +1127,22 @@ impl WebPage {
             if l.size.width > 0.0 {
                 let p = n.absolute_position(0.0, 0.0);
                 w = w.max(p.x + l.size.width);
+                // Text overflowing its box (`white-space: nowrap`, a long word) widens the
+                // document too, unless the box clips it: QtWebKit shrinks to the document's
+                // overflow width.
+                let clips = n.primary_styles().is_some_and(|s| {
+                    s.clone_overflow_x() != style::values::computed::Overflow::Visible
+                });
+                if let Some(text) = n.element_data().and_then(|e| e.inline_layout_data.as_ref())
+                    && !clips
+                {
+                    let lines = text.layout.lines().map(|line| {
+                        let m = line.metrics();
+                        m.offset + m.advance - m.hanging_advance
+                    });
+                    let text_w = lines.fold(0.0f32, f32::max) / text.layout.scale();
+                    w = w.max(p.x + l.border.left + l.padding.left + text_w);
+                }
             }
         }
         w
