@@ -199,6 +199,8 @@ pub struct RenderedPage {
     pub layout_width: f32,
     /// PDF points per CSS px on the page.
     pub pt_per_px: f32,
+    /// Height of a page in CSS px (the document is cut every `page_height`).
+    pub page_height: f32,
     /// Original encoded bytes of raster images, by image blob id (JPEG
     /// passthrough).
     pub image_sources: HashMap<u64, Arc<Vec<u8>>>,
@@ -323,14 +325,16 @@ pub(crate) fn ua_css(settings: &WebSettings) -> String {
 }
 
 /// The viewport a page is first laid out at for printing on `printable_w_pt` ×
-/// `printable_h_pt` points: the printable area in CSS px at 96 dpi, widened by
-/// the minimum shrink factor.
+/// `printable_h_pt` points: the printable area in 96 dpi pixels widened by the
+/// minimum shrink factor and truncated (`FrameView::forceLayoutForPagination`
+/// sets `static_cast<int>(pageLogicalWidth)`: 649 px of A4 lay out 811 px wide,
+/// 233 px 291), in CSS px (÷ `--zoom`).
 fn print_viewport(settings: &WebSettings, printable_w_pt: f32, printable_h_pt: f32) -> (f32, f32) {
     let zoom = if settings.zoom > 0.0 { settings.zoom } else { 1.0 };
     let min_shrink = if settings.smart_shrinking { MIN_SHRINK } else { 1.0 };
-    let base_w = printable_w_pt / 0.75 / zoom;
-    let base_h = printable_h_pt / 0.75 / zoom;
-    ((base_w * min_shrink).round().max(1.0), (base_h * min_shrink).round().max(1.0))
+    let w = (printable_w_pt / 0.75 * min_shrink + 1e-3).floor().max(1.0);
+    let h = (printable_h_pt / 0.75 * min_shrink + 1e-3).floor().max(1.0);
+    (w / zoom, h / zoom)
 }
 
 /// Device pixels per CSS px: `--zoom` × `--dpi` / 96 (QtWebKit's frame zoom factor).
@@ -643,7 +647,12 @@ impl WebPage {
         let (mut layout_w, vh) = print_viewport(&self.settings, printable_w_pt, printable_h_pt);
         let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
         let max_shrink = if self.settings.smart_shrinking { MAX_SHRINK } else { 1.0 };
-        let base_w = printable_w_pt / 0.75 / zoom;
+        // The page rect in 96 dpi pixels (whole, see `Paper` in wk-converter).
+        let print_w = printable_w_pt / 0.75;
+        let print_h = printable_h_pt / 0.75;
+        // The page height the document is paginated at, in layout pixels (`pageLogicalHeight`,
+        // truncated): the printable height widened like the width, so 979 px of A4 are 1223 px.
+        let mut page_h = vh * zoom;
         crate::timing("render start");
         self.undo_viewport_shifts();
         blitz_dom::set_device_zoom(device_zoom(&self.settings));
@@ -656,7 +665,11 @@ impl WebPage {
         if self.settings.smart_shrinking {
             let content_w = self.content_width();
             if content_w > layout_w + 0.5 {
-                layout_w = content_w.min((base_w * max_shrink).round()).ceil();
+                // A wider document lays out at its width, up to the maximum shrink, keeping the
+                // page's ratio (`resizePageRectsKeepingRatio`), both truncated.
+                let w = ((content_w * zoom - 1e-3).ceil()).min((print_w * max_shrink + 1e-3).floor());
+                page_h = (w * print_h / print_w + 1e-3).floor();
+                layout_w = w / zoom;
                 self.set_viewport(layout_w, vh);
             }
         }
@@ -723,6 +736,7 @@ impl WebPage {
             anchors,
             layout_width: layout_w,
             pt_per_px,
+            page_height: page_h / zoom,
             image_sources,
             body_height,
             form_elements,

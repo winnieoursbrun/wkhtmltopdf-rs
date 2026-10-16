@@ -309,41 +309,50 @@ pub fn convert_raw(global: &PdfGlobal, objects: &[PdfObject], io: ConvertIo<'_>)
 /// Paper geometry of the conversion, in points.
 #[derive(Debug, Clone, Copy)]
 struct Paper {
+    /// The PDF page size (whole points).
     width: f32,
     height: f32,
     top: f32,
-    right: f32,
-    bottom: f32,
     left: f32,
+    /// The page rect QWebPrinter prints on (whole 96 dpi pixels, in points).
+    print_w: f32,
+    print_h: f32,
 }
 
 impl Paper {
     /// QPrinter's geometry in whole device pixels at `dpi`: the paper rect
-    /// is the paper size in points scaled and rounded, the page rect is
+    /// is the paper size in whole points scaled and rounded, the page rect is
     /// the paper rect less each margin rounded (A4 at 96 dpi is 793 × 1123
     /// px; 10 mm margins are 38 px, so the body starts at 28.5 pt and is
-    /// 717 px wide, as in the reference PDFs). `margins` are top, right,
-    /// bottom, left in points; the result keeps the PDF page size in points.
+    /// 717 px wide, as in the reference PDFs), and QWebPrinter divides it by
+    /// `dpi / 96` and truncates. `width` and `height` are the exact paper size
+    /// and `margins` top, right, bottom, left, all in points.
+    ///
+    /// Verified with the 0.12.6 binary on custom sizes: a 100 mm (283.46 pt) wide
+    /// page is 283 pt, 377 px, so 233 px are printable within 0.75 in margins
+    /// (not 234), and 302 pt gives 403 px; the PDF page itself is the size
+    /// rounded to device pixels then to whole points (100 mm × 150 mm is 284 × 425).
     fn snapped(width: f64, height: f64, margins: [f64; 4], dpi: i32) -> Paper {
         let k = f64::from(dpi.max(1)) / 72.0;
+        let z = f64::from(dpi.max(1)) / 96.0;
         let px = |pt: f64| (pt * k).round();
-        let (w, h) = (px(width), px(height));
         let [t, r, b, l] = margins.map(px);
+        let printable = |paper: f64, m: f64| (((px(paper.round()) - m) / z + 1e-6).floor() * 0.75).max(1.0);
         Paper {
-            width: width as f32,
-            height: height as f32,
+            width: (px(width) / k).round() as f32,
+            height: (px(height) / k).round() as f32,
             top: (t / k) as f32,
             left: (l / k) as f32,
-            right: (width - (w - r) / k) as f32,
-            bottom: (height - (h - b) / k) as f32,
+            print_w: printable(width, l + r) as f32,
+            print_h: printable(height, t + b) as f32,
         }
     }
 
     fn printable_width(&self) -> f32 {
-        (self.width - self.left - self.right).max(1.0)
+        self.print_w
     }
     fn printable_height(&self) -> f32 {
-        (self.height - self.top - self.bottom).max(1.0)
+        self.print_h
     }
 }
 
@@ -684,7 +693,7 @@ impl Converter<'_, '_> {
             // only its URL key (`o.url`) is used from here on.
             let rendered = page.render_final(paper.printable_width(), paper.printable_height());
             timing("rendered");
-            o.slices = wk_print::paginate(&rendered.geometry, paper.printable_height() / rendered.pt_per_px);
+            o.slices = wk_print::paginate(&rendered.geometry, rendered.page_height);
             o.page_count = if o.settings.pages_count { o.slices.len() } else { 0 };
             page_count += o.page_count;
             let ps = o.settings;
@@ -782,7 +791,7 @@ impl Converter<'_, '_> {
                     o.title = page.title().map(|t| collapse_ws(&t)).unwrap_or_default();
                     let rendered = page.render_final(paper.printable_width(), paper.printable_height());
                     o.slices =
-                        wk_print::paginate(&rendered.geometry, paper.printable_height() / rendered.pt_per_px);
+                        wk_print::paginate(&rendered.geometry, rendered.page_height);
                     let pc = if o.settings.pages_count { o.slices.len() } else { 0 };
                     if pc != o.page_count {
                         o.page_count = pc;
@@ -929,12 +938,12 @@ impl Converter<'_, '_> {
                     .headers
                     .iter()
                     .enumerate()
-                    .map(move |(i, r)| ((d, true, i), first_slice(r, paper.height)));
+                    .map(move |(i, r)| ((d, true, i), first_slice(r)));
                 let f = o
                     .footers
                     .iter()
                     .enumerate()
-                    .map(move |(i, r)| ((d, false, i), first_slice(r, paper.height)));
+                    .map(move |(i, r)| ((d, false, i), first_slice(r)));
                 h.chain(f)
             })
             .collect();
@@ -1198,8 +1207,8 @@ fn mm_to_pt(mm: f32) -> f32 {
 
 /// The first page of a header/footer document (`spoolPage(1)`), laid out on
 /// the whole paper height.
-fn first_slice(r: &RenderedPage, paper_h: f32) -> PageSlice {
-    wk_print::paginate(&r.geometry, paper_h / r.pt_per_px).into_iter().next().unwrap_or(PageSlice {
+fn first_slice(r: &RenderedPage) -> PageSlice {
+    wk_print::paginate(&r.geometry, r.page_height).into_iter().next().unwrap_or(PageSlice {
         y0: 0.0,
         y1: 1.0,
         thead: None,

@@ -102,11 +102,9 @@ pub fn paper_points(ps: PageSize) -> (f64, f64) {
 /// `--page-size`.
 pub fn paper_size(g: &PdfGlobal) -> (f64, f64) {
     let (w, h) = if g.size.height.value != -1.0 && g.size.width.value != -1.0 {
-        let unit = g.size.height.unit;
-        // QPrinter rounds custom sizes to whole device pixels at `dpi`.
-        let dpi = f64::from(g.dpi.max(1));
-        let px = |v: f64| (v * points_per_unit(unit, g.dpi) / 72.0 * dpi).round() * 72.0 / dpi;
-        (px(g.size.width.value), px(g.size.height.value))
+        // Exact: QPrinter's rounding happens in the converter's `Paper`.
+        let ppu = points_per_unit(g.size.height.unit, g.dpi);
+        (g.size.width.value * ppu, g.size.height.value * ppu)
     } else {
         paper_points(g.size.page_size)
     };
