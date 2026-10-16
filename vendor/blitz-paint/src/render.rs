@@ -1155,6 +1155,21 @@ impl ElementCx<'_, '_> {
             });
             let baseline = pos.y + (y_offset + first_marker_line.metrics().baseline / scale) as f64;
 
+            // wkhtmltopdf-rs: a loaded `list-style-image` replaces the marker: an image sitting
+            // on the first line's baseline, 7px (`cMarkerPadding`) before the content box.
+            let marker_image = self.element.list_marker_images.first().and_then(|i| i.as_ref());
+            if let Some(blitz_dom::node::ImageData::Raster(image)) = marker_image.map(|i| &i.image) {
+                if !rtl {
+                    let (w, h) = (f64::from(image.width), f64::from(image.height));
+                    let x = pos.x - w - 7.0;
+                    let y = baseline - h;
+                    let quality = to_image_quality(self.style.clone_image_rendering());
+                    let transform = self.transform * Affine::scale(self.scale) * Affine::translate((x, y));
+                    scene.draw_image(to_peniko_image(image, quality).as_ref(), transform);
+                    return;
+                }
+            }
+
             if let Marker::Char(c @ ('•' | '◦' | '▪')) = marker {
                 let size = f64::from((offset + 1) / 2);
                 // Right to left: the bullet starts `size + 6` px after the content box.

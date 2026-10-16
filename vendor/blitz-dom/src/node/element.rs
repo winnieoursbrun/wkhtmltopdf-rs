@@ -69,6 +69,9 @@ pub struct ElementData {
 
     pub mask_images: ThinVec<Option<ImageResourceData>>,
 
+    /// wkhtmltopdf-rs: the `list-style-image` of a list item (at most one entry).
+    pub list_marker_images: ThinVec<Option<ImageResourceData>>,
+
     /// Parley text layout (elements with inline inner display mode only)
     pub inline_layout_data: Option<Box<TextLayout>>,
 
@@ -281,6 +284,7 @@ impl std::fmt::Debug for ElementData {
             .field("special_data", &self.special_data)
             .field("background_images", &self.background_images)
             .field("mask_images", &self.mask_images)
+            .field("list_marker_images", &self.list_marker_images)
             .field("inline_layout_data", &self.inline_layout_data)
             .field("list_item_data", &self.list_item_data)
             .field("template_contents", &self.template_contents)
@@ -306,6 +310,7 @@ impl Clone for ElementData {
             special_data: self.special_data.clone(),
             background_images: self.background_images.clone(),
             mask_images: self.mask_images.clone(),
+            list_marker_images: self.list_marker_images.clone(),
             inline_layout_data: self.inline_layout_data.clone(),
             list_item_data: self.list_item_data.clone(),
             template_contents: self.template_contents,
@@ -417,6 +422,7 @@ impl ElementData {
             template_contents: None,
             background_images: ThinVec::new(),
             mask_images: ThinVec::new(),
+            list_marker_images: ThinVec::new(),
 
             stylo_element_data: Default::default(),
             selector_flags: Cell::new(ElementSelectorFlags::empty()),

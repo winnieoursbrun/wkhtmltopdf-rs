@@ -531,6 +531,7 @@ impl BaseDocument {
             }
             self.flush_image_layers_from_style(node_id, ImageLayerKind::Background);
             self.flush_image_layers_from_style(node_id, ImageLayerKind::Mask);
+            self.flush_image_layers_from_style(node_id, ImageLayerKind::ListMarker);
         }
     }
 
@@ -558,10 +559,18 @@ impl BaseDocument {
 
         let (style_images, elem_images) = match kind {
             ImageLayerKind::Background => (
-                &style.get_background().background_image.0,
+                &style.get_background().background_image.0[..],
                 &mut elem.background_images,
             ),
-            ImageLayerKind::Mask => (&style.get_svg().mask_image.0, &mut elem.mask_images),
+            ImageLayerKind::Mask => (&style.get_svg().mask_image.0[..], &mut elem.mask_images),
+            ImageLayerKind::ListMarker => {
+                // Only list items draw it.
+                let image = &style.get_list().list_style_image;
+                let is_item = style.get_box().display.is_list_item();
+                let images: &[style::values::computed::Image] =
+                    if is_item { std::slice::from_ref(image) } else { &[] };
+                (images, &mut elem.list_marker_images)
+            }
         };
 
         let len = style_images.len();

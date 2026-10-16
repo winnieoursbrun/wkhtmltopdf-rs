@@ -93,6 +93,8 @@ pub(crate) static FONT_DB: LazyLock<Arc<fontdb::Database>> = LazyLock::new(|| {
 pub enum ImageLayerKind {
     Background,
     Mask,
+    /// wkhtmltopdf-rs: `list-style-image`.
+    ListMarker,
 }
 
 impl ImageLayerKind {
@@ -100,6 +102,7 @@ impl ImageLayerKind {
         match self {
             Self::Background => ImageType::Background(idx),
             Self::Mask => ImageType::Mask(idx),
+            Self::ListMarker => ImageType::ListMarker(idx),
         }
     }
 }
@@ -109,6 +112,8 @@ pub enum ImageType {
     Image,
     Background(usize),
     Mask(usize),
+    /// wkhtmltopdf-rs: `list-style-image`.
+    ListMarker(usize),
 }
 
 /// A point

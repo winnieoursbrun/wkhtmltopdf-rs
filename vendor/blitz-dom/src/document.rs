@@ -1453,11 +1453,12 @@ impl BaseDocument {
                     node.clear_layout_cache();
                     node.insert_damage(ALL_DAMAGE);
                 }
-                ImageType::Background(idx) | ImageType::Mask(idx) => {
+                ImageType::Background(idx) | ImageType::Mask(idx) | ImageType::ListMarker(idx) => {
                     let layer_image = node.element_data_mut().and_then(|el| {
                         let images = match image_type {
                             ImageType::Background(_) => &mut el.background_images,
                             ImageType::Mask(_) => &mut el.mask_images,
+                            ImageType::ListMarker(_) => &mut el.list_marker_images,
                             ImageType::Image => unreachable!(),
                         };
                         images.get_mut(idx)

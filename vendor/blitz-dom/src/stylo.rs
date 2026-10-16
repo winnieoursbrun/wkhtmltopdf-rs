@@ -1512,6 +1512,12 @@ fn needs_style_image_flush(node: &Node, style: &ComputedValues) -> bool {
             &style.get_background().background_image.0,
             &el.background_images,
         ) || out_of_sync(&style.get_svg().mask_image.0, &el.mask_images)
+            // wkhtmltopdf-rs: `list-style-image` (inherited, so only list items keep it).
+            || (style.get_box().display.is_list_item()
+                && out_of_sync(
+                    std::slice::from_ref(&style.get_list().list_style_image),
+                    &el.list_marker_images,
+                ))
     })
 }
 
