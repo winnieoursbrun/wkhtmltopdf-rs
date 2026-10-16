@@ -204,17 +204,32 @@ impl BlockContext<'_> {
         clear: Clear,
         adjoins_unresolved_strut: bool,
     ) -> Point<f32> {
+        self.place_floated_box_shifted(floated_box, min_y, direction, clear, adjoins_unresolved_strut, 0.0)
+    }
+
+    /// [`Self::place_floated_box`] for a float whose exclusion area is placed `strut_shift` below
+    /// its (container-relative) position: the margins expected to collapse into the unresolved
+    /// strut it adjoins, which move the container (and the float) down by that much.
+    fn place_floated_box_shifted(
+        &mut self,
+        floated_box: Size<f32>,
+        min_y: f32,
+        direction: FloatDirection,
+        clear: Clear,
+        adjoins_unresolved_strut: bool,
+        strut_shift: f32,
+    ) -> Point<f32> {
         if adjoins_unresolved_strut {
             self.adjoining_floats[direction as usize] = true;
         }
         let mut pos = self.bfc.float_context.place_floated_box(
             floated_box,
-            min_y + self.y_offset,
+            min_y + strut_shift + self.y_offset,
             self.content_box_insets,
             direction,
             clear,
         );
-        pos.y -= self.y_offset;
+        pos.y -= self.y_offset + strut_shift;
         pos.x -= self.insets[0];
 
         self.float_content_contribution = self.float_content_contribution.max(pos.y + floated_box.height);
@@ -1160,7 +1175,27 @@ fn perform_final_layout_on_in_flow_children(
     #[cfg(not(feature = "float_layout"))]
     let has_active_floats = false;
 
-    for item in items.iter_mut() {
+    // wkhtmltopdf-rs: for each item, the top margin of the next in-flow, non-floated sibling.
+    // A float placed while the container's top margin strut is unresolved moves down with the
+    // margins that later collapse into that strut (WebKit positions such floats once the
+    // margins of the next block are collapsed), so its exclusion area must be placed where
+    // that next block's content will look for it.
+    #[cfg(feature = "float_layout")]
+    let next_inflow_top_margin: Vec<Option<f32>> = {
+        let mut next = None;
+        let mut out = vec![None; items.len()];
+        for (idx, item) in items.iter().enumerate().rev() {
+            out[idx] = next;
+            if !item.position.is_out_of_flow() && !item.float.is_floated() {
+                next = Some(
+                    item.margin.top.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis)).unwrap_or(0.0),
+                );
+            }
+        }
+        out
+    };
+
+    for (_item_idx, item) in items.iter_mut().enumerate() {
         if item.position.is_out_of_flow() {
             let x = match direction {
                 Direction::Ltr => resolved_content_box_inset.left,
@@ -1232,13 +1267,20 @@ fn perform_final_layout_on_in_flow_children(
                 } else {
                     committed_y_offset + active_collapsible_margin_set.resolve()
                 };
+                // The margins expected to escape through the unresolved strut: the next block's
+                // content is laid out that far down, and the float moves down with them.
+                let strut_shift = match (adjoins_unresolved_strut, next_inflow_top_margin[_item_idx]) {
+                    (true, Some(margin)) => active_collapsible_margin_set.collapse_with_margin(margin).resolve().max(0.0),
+                    _ => 0.0,
+                };
 
-                let mut location = block_ctx.place_floated_box(
+                let mut location = block_ctx.place_floated_box_shifted(
                     margin_box,
                     y_offset_for_float,
                     float_direction,
                     item.clear,
                     adjoins_unresolved_strut,
+                    strut_shift,
                 );
 
                 // Ensure that content that appears after a float does not get positioned before/above the float
