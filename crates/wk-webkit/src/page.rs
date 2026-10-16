@@ -666,6 +666,7 @@ impl WebPage {
         set_device_zoom(&self.settings);
         self.qt_selects();
         self.qt_widgets();
+        self.qt_sized_field_margins();
         self.inline_edges();
         let alt_boxes = self.broken_images();
         self.set_viewport(layout_w, vh);
@@ -1161,6 +1162,74 @@ impl WebPage {
             let outer = m.create_element(span.clone(), kept);
             m.append_children(outer, &children);
             m.replace_node_with(id, &[outer]);
+        }
+    }
+
+    /// Text fields and text areas lose the 2px theme margins in an axis whose size the author
+    /// sets (`RenderThemeQt::computeSizeBasedOnStyle` only sizes, and spaces, an auto axis):
+    /// a textarea `width: 100px` has no left and right margins, one `height: 50px` no top
+    /// and bottom margins (measured on the 0.12.6 binary).
+    fn qt_sized_field_margins(&mut self) {
+        let is_field = |n: &Node| match tag(n) {
+            "textarea" => true,
+            "input" => n.attr(local_name!("type")).map(str::to_ascii_lowercase).is_none_or(|t| {
+                matches!(
+                    t.as_str(),
+                    "text"
+                        | "password"
+                        | "search"
+                        | "email"
+                        | "url"
+                        | "tel"
+                        | "number"
+                        | "color"
+                        | "date"
+                        | "datetime"
+                        | "datetime-local"
+                        | "month"
+                        | "week"
+                        | "time"
+                )
+            }),
+            _ => false,
+        };
+        let mut found = Vec::new();
+        let mut stack = vec![self.doc.root_node().id];
+        while let Some(id) = stack.pop() {
+            let Some(n) = self.doc.get_node(id) else { continue };
+            stack.extend(n.children.iter().copied());
+            if !is_field(n) {
+                continue;
+            }
+            let Some(st) = n.primary_styles() else { continue };
+            let (pos, m) = (st.get_position(), st.get_margin());
+            let theme = |v: &style::values::generics::length::GenericMargin<
+                style::values::computed::LengthPercentage,
+            >| {
+                matches!(v, style::values::generics::length::GenericMargin::LengthPercentage(lp)
+                if lp.to_length().is_some_and(|l| l.px() == 2.0))
+            };
+            let mut extra = String::new();
+            if !pos.width.is_auto() && theme(&m.margin_left) && theme(&m.margin_right) {
+                extra.push_str("margin-left:0;margin-right:0;");
+            }
+            if !pos.height.is_auto() && theme(&m.margin_top) && theme(&m.margin_bottom) {
+                extra.push_str("margin-top:0;margin-bottom:0;");
+            }
+            if !extra.is_empty() {
+                let style = n.attr(local_name!("style")).unwrap_or("").to_string();
+                let sep =
+                    if style.trim_end().is_empty() || style.trim_end().ends_with(';') { "" } else { ";" };
+                found.push((id, format!("{style}{sep}{extra}")));
+            }
+        }
+        let mut m = self.doc.mutate();
+        for (id, style) in found {
+            m.set_attribute(
+                id,
+                blitz_dom::QualName::new(None, blitz_dom::ns!(), local_name!("style")),
+                &style,
+            );
         }
     }
 
