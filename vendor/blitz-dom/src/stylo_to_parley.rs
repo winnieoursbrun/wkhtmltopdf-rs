@@ -427,7 +427,11 @@ pub(crate) fn style(
         stylo::LineHeight::Number(num) => {
             parley::LineHeight::Absolute((num.0 * font_size.round()).trunc())
         }
-        stylo::LineHeight::Length(value) => parley::LineHeight::Absolute(value.0.px()),
+        // wkhtmltopdf-rs: lengths and percentages are whole pixels, truncated (`1.3em` on
+        // 13px text is 16px, `150%` is 13 * 150 / 100 = 19px).
+        stylo::LineHeight::Length(value) => {
+            parley::LineHeight::Absolute((value.0.px() + 0.01).trunc())
+        }
     };
     let vertical_align = self::vertical_align(style);
 

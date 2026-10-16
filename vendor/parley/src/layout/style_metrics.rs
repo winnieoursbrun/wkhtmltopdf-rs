@@ -231,8 +231,11 @@ impl BoxMetrics {
             (font.ascent, font.descent)
         };
         let half_leading = (line_height - (ascent + descent)) / 2.;
+        // wkhtmltopdf-rs: WebKit 2012 divides the leading in integers
+        // (`(lineHeight - fontMetrics.height()) / 2`), truncating towards zero: a 14px line of
+        // 17px-high text has its baseline 1px (not 2px) above the font's ascent.
         let over = if quantize {
-            ascent + half_leading.floor()
+            ascent + half_leading.trunc()
         } else {
             ascent + half_leading
         };
