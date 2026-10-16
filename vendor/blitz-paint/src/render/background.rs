@@ -313,6 +313,14 @@ impl ElementCx<'_, '_> {
             let Some(mut rect) = cell_rect(cell.node_id) else {
                 continue;
             };
+            if self
+                .context
+                .dom
+                .get_node(cell.node_id)
+                .is_some_and(|n| super::is_hidden_empty_cell(self.context.dom, n))
+            {
+                continue;
+            }
             if let Some(bounds) = bounds {
                 rect = Rect::new(
                     rect.x0 - before.width,

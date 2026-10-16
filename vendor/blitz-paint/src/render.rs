@@ -528,10 +528,14 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                     filter,
                     backdrop_filter,
                     |scene| {
-                        cx.draw_background(scene);
-                        cx.draw_inset_box_shadow(scene);
+                        if !is_hidden_empty_cell(self.dom, node) {
+                            cx.draw_background(scene);
+                            cx.draw_inset_box_shadow(scene);
+                        }
                         cx.draw_table_row_backgrounds(scene);
-                        cx.draw_border(scene);
+                        if !is_hidden_empty_cell(self.dom, node) {
+                            cx.draw_border(scene);
+                        }
                         cx.stroke_devtools(scene);
 
                         // TODO: allow layers with opacity to be unclipped (overflow: visible)
@@ -712,6 +716,30 @@ struct ElementCx<'dom, 'a> {
     devtools: &'dom DevtoolSettings,
     #[cfg_attr(not(feature = "custom-widget"), expect(unused))]
     custom_widget_scene: Option<&'a Scene>,
+}
+
+/// wkhtmltopdf-rs: a cell WebKit paints no background or border for: an
+/// empty cell (no box inside it) of a separated-borders table under
+/// `empty-cells: hide` (`RenderTableCell::paintBoxDecorations`).
+pub(crate) fn is_hidden_empty_cell(dom: &BaseDocument, node: &Node) -> bool {
+    use style::computed_values::empty_cells::T as EmptyCells;
+    let Some(style) = node.primary_styles() else { return false };
+    if style.get_inherited_table().empty_cells != EmptyCells::Hide
+        || node.collapsed_border.get().is_some()
+        || style.get_box().display.inside() != style::values::specified::box_::DisplayInside::TableCell
+    {
+        return false;
+    }
+    node.children.iter().all(|&id| {
+        let Some(child) = dom.get_node(id) else { return true };
+        match &child.data {
+            NodeData::Text(_) => child.is_whitespace_node(),
+            NodeData::Element(_) => child.primary_styles().is_some_and(|s| {
+                s.get_box().display.outside() == style::values::specified::box_::DisplayOutside::None
+            }),
+            _ => true,
+        }
+    })
 }
 
 /// wkhtmltopdf-rs: the whole-pixel advance of a space in the marker's font.
