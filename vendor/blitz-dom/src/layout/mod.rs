@@ -27,6 +27,7 @@ pub(crate) mod damage;
 pub(crate) mod inline;
 pub(crate) mod list;
 pub(crate) mod paint_tree;
+pub(crate) mod qt_line_break;
 pub(crate) mod replaced;
 pub(crate) mod table;
 pub(crate) mod table_auto;
