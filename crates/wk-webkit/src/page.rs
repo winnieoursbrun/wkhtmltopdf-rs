@@ -1175,12 +1175,13 @@ impl WebPage {
         use style::values::generics::length::GenericMargin;
         use style::values::specified::box_::{DisplayInside, DisplayOutside};
         const EDGE: &str = "wkedge";
-        // Lengths in whole pixels (WebKit's `roundForImpreciseConversion`); percentages of
-        // the containing block are left out.
+        // Lengths in whole device pixels (WebKit's `roundForImpreciseConversion`); percentages
+        // of the containing block are left out.
+        let zoom = blitz_dom::device_zoom();
         let px = |v: &LengthPercentage| match v.unpack() {
             Unpacked::Length(l) => {
-                let x = l.px();
-                if (x.ceil() - x) <= 0.01 { x.ceil() } else { x.trunc() }
+                let x = l.px() * zoom;
+                (if (x.ceil() - x) <= 0.01 { x.ceil() } else { x.trunc() }) / zoom
             }
             _ => 0.0,
         };
@@ -1225,7 +1226,7 @@ impl WebPage {
             let b = s.get_border();
             let border = |w: &style::values::computed::BorderSideWidth,
                           st: style::values::specified::border::BorderStyle| {
-                if st.none_or_hidden() { 0.0 } else { w.0.to_f32_px() }
+                if st.none_or_hidden() { 0.0 } else { blitz_dom::webkit_border_width(w.0.to_f32_px()) }
             };
             let (m, p) = (s.get_margin(), s.get_padding());
             let start = margin(&m.margin_left)

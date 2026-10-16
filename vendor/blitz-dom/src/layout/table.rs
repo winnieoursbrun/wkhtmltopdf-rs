@@ -486,6 +486,12 @@ pub(crate) fn build_table_context(
 
     let border_collapse = stylo_styles.clone_border_collapse();
     let border_spacing = stylo_styles.clone_border_spacing().0;
+    // wkhtmltopdf-rs: whole device pixels, truncated (QtWebKit 2.2's `computeLength<short>`):
+    // 2px is 1px at zoom 0.75.
+    let (spacing_w, spacing_h) = (
+        stylo_taffy::convert::webkit_int_zoomed(border_spacing.width.px()),
+        stylo_taffy::convert::webkit_int_zoomed(border_spacing.height.px()),
+    );
 
     drop(stylo_styles);
 
@@ -590,7 +596,7 @@ pub(crate) fn build_table_context(
         // (from which only the outer border-spacing has been removed via padding). Fold
         // the inner border-spacing into the percentage using `calc(N% - N * spacing)`.
         let spacing_x = match border_collapse {
-            BorderCollapse::Separate => border_spacing.width.px(),
+            BorderCollapse::Separate => spacing_w,
             BorderCollapse::Collapse => 0.0,
         };
         let inner_spacing = spacing_x * num_columns.saturating_sub(1) as f32;
@@ -660,8 +666,8 @@ pub(crate) fn build_table_context(
         BorderCollapse::Separate => {
             // In the separated borders model, `border-spacing` also applies between
             // the table border and the outermost cells, in addition to between cells.
-            let spacing_x = border_spacing.width.px();
-            let spacing_y = border_spacing.height.px();
+            let spacing_x = spacing_w;
+            let spacing_y = spacing_h;
             let padding = style.padding.resolve_or_zero(None, resolve_calc_value);
             style.padding = taffy::Rect {
                 left: style_helpers::length(padding.left + spacing_x),

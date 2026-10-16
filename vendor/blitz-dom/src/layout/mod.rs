@@ -429,7 +429,12 @@ impl LayoutPassState<'_> {
                     let (intrinsic_sizes, default_object_size) = match &element_data.special_data {
                         SpecialElementData::Image(image_data) => match &**image_data {
                             ImageData::Raster(image) => {
-                                let (width, height) = (image.width as f32, image.height as f32);
+                                // wkhtmltopdf-rs: QtWebKit 2.2 zooms an image's size into whole
+                                // device pixels, truncated (`imageSize(zoom)`): 100px tall at
+                                // zoom 3.125 are 312 device px, not 312.5.
+                                let zoom = stylo_taffy::convert::device_zoom();
+                                let zoomed = |px: u32| ((px as f32 * zoom + 1e-3).floor().max(1.0)) / zoom;
+                                let (width, height) = (zoomed(image.width), zoomed(image.height));
                                 (
                                     IntrinsicSizes {
                                         width: Some(width),
