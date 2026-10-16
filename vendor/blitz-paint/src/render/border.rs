@@ -9,7 +9,7 @@ use style::{
 };
 
 use crate::{
-    color::{ToColorColor as _, contrast_ratio},
+    color::ToColorColor as _,
     kurbo_css::Edge,
     render::ElementCx,
 };
@@ -21,61 +21,23 @@ fn darken(color: Color) -> Color {
     let [r, g, b, a] = color.components;
     let v = r.max(g).max(b);
     if v == 0.0 {
-        return color;
+        // wkhtmltopdf-rs: WebKit's `darkenedBlack` (0x545454).
+        return Color::new([0x54 as f32 / 255.0, 0x54 as f32 / 255.0, 0x54 as f32 / 255.0, a]);
     }
     let multiplier = ((v - 0.33) / v).max(0.0);
     Color::new([r * multiplier, g * multiplier, b * multiplier, a])
 }
 
-/// A lighter version of a colour (mirrors WebKit/Blink's `Color::Light`): the
-/// brightest channel is increased by a fixed amount and the others scaled to
-/// match, preserving hue.
-fn lighten(color: Color) -> Color {
-    let [r, g, b, a] = color.components;
-    let v = r.max(g).max(b);
-    if v == 0.0 {
-        // Pure black: WebKit uses a fixed dark grey (0x545454).
-        return Color::new([0.33, 0.33, 0.33, a]);
-    }
-    let multiplier = (v + 0.33).min(1.0) / v;
-    Color::new([r * multiplier, g * multiplier, b * multiplier, a])
-}
-
 /// The colour of a single edge of an `inset`/`outset` border.
 ///
-/// An `outset` border is raised: the top/left edges use the "lighter" shade and
-/// the bottom/right edges the "darker" shade (`inset` is the reverse). The exact
-/// shading matches Chrome's `CalculateInsetOutsetColor`:
-///
-/// * The darker edge is always darkened.
-/// * The lighter edge keeps the base colour unchanged, *except* for colours dark
-///   enough that the darkened edge wouldn't have enough contrast against the base
-///   colour, which are lightened instead so the bevel stays visible.
+/// An `outset` border is raised: the top/left edges keep the colour and the bottom/right
+/// edges are darkened (`inset` is the reverse).
+/// wkhtmltopdf-rs: as QtWebKit 2.2 (RenderObject::drawLineForBoxSide) shades them, with
+/// `Color::dark` only; Chrome's lightening of dark colours came later (measured on the
+/// 0.12.6 binary, tests/fidelity/borders-styles).
 fn beveled_edge_color(color: Color, edge: Edge, inset: bool) -> Color {
     let top_or_left = matches!(edge, Edge::Top | Edge::Left);
-    let should_darken = top_or_left == inset;
-
-    let dark_color = darken(color);
-    if should_darken {
-        return dark_color;
-    }
-
-    // Lighter edge. Chrome uses the base colour as-is unless the colour is dark
-    // enough that the darkened edge lacks contrast against it. The red/green
-    // shortcut mirrors Chrome: for those colours the contrast is always
-    // sufficient, so the base colour is used without a contrast check.
-    let [r, g, _, _] = color.components;
-    if r >= 150.0 / 255.0 || g >= 92.0 / 255.0 {
-        return color;
-    }
-
-    // Lighten only when the darkened edge would be too low-contrast to read.
-    const MIN_CONTRAST_RATIO: f32 = 1.75;
-    if contrast_ratio(color, dark_color) < MIN_CONTRAST_RATIO {
-        lighten(color)
-    } else {
-        color
-    }
+    if top_or_left == inset { darken(color) } else { color }
 }
 
 /// The (outer half, inner half) colours of a single edge of a `groove`/`ridge`
@@ -264,6 +226,9 @@ impl ElementCx<'_, '_> {
                 BorderStyle::Dotted if self.frame.border_radii.average() > 0.0 => {
                     borders.push((color, self.frame.border_edge_shape(edge)));
                 }
+                BorderStyle::Dotted | BorderStyle::Dashed if !self.frame.has_border_radius() => {
+                    self.draw_qt_dashed_edge(scene, edge, color, edge_style == BorderStyle::Dotted)
+                }
                 BorderStyle::Dotted => self.draw_dotted_border_edge(scene, edge, color),
                 BorderStyle::Dashed => self.draw_dashed_border_edge(scene, edge, color),
 
@@ -278,14 +243,17 @@ impl ElementCx<'_, '_> {
                     let path = if self.edge_width(edge) < 3.0 * self.scale {
                         self.frame.border_edge_shape(edge)
                     } else {
+                        // wkhtmltopdf-rs: WebKit's lines are `(width + 1) / 3` whole pixels.
+                        let w = (self.edge_width(edge) / self.scale).round();
+                        let third = ((w + 1.0) / 3.0).floor() / w;
                         let mut path = self
                             .frame
-                            .border_slice(0.0, 1.0 / 3.0)
+                            .border_slice(0.0, third)
                             .border_edge_shape(edge);
                         path.extend(
                             &self
                                 .frame
-                                .border_slice(2.0 / 3.0, 1.0)
+                                .border_slice(1.0 - third, 1.0)
                                 .border_edge_shape(edge),
                         );
                         path
@@ -307,13 +275,23 @@ impl ElementCx<'_, '_> {
                 BorderStyle::Groove | BorderStyle::Ridge => {
                     let ridge = edge_style == BorderStyle::Ridge;
                     let (outer, inner) = grooved_edge_colors(color, edge, ridge);
+                    // wkhtmltopdf-rs: WebKit splits the edge at `(a + b + 1) / 2` in whole
+                    // pixels: the top or left half gets the odd pixel (the outer half of the
+                    // top and left edges, the inner half of the bottom and right ones).
+                    let w = (self.edge_width(edge) / self.scale).round();
+                    let split = if w > 0.0 {
+                        let first = (w / 2.0).ceil();
+                        if matches!(edge, Edge::Top | Edge::Left) { first / w } else { (w - first) / w }
+                    } else {
+                        0.5
+                    };
                     borders.push((
                         outer,
-                        self.frame.border_slice(0.0, 0.5).border_edge_shape(edge),
+                        self.frame.border_slice(0.0, split).border_edge_shape(edge),
                     ));
                     borders.push((
                         inner,
-                        self.frame.border_slice(0.5, 1.0).border_edge_shape(edge),
+                        self.frame.border_slice(split, 1.0).border_edge_shape(edge),
                     ));
                 }
 
@@ -358,6 +336,57 @@ impl ElementCx<'_, '_> {
             Edge::Left => self.frame.border_width.x0,
             Edge::Right => self.frame.border_width.x1,
         }
+    }
+
+    /// A `dashed` or `dotted` edge of a box with square corners as QtWebKit 2.2 draws it
+    /// (GraphicsContext::drawLine on a QPainter): a `w`×`w` square at each end, and between
+    /// them a line `w` wide dashed by Qt's pattern from its start, `3w` dashes and gaps
+    /// (dotted: `w` and `w`), with flat ends (measured on the 0.12.6 binary,
+    /// tests/fidelity/borders-styles).
+    fn draw_qt_dashed_edge(&self, scene: &mut impl PaintScene, edge: Edge, color: Color, dotted: bool) {
+        let w = self.edge_width(edge);
+        if w <= 0.0 {
+            return;
+        }
+        let bb = self.frame.border_box;
+        let h = w / 2.0;
+        let (a, b, start, end) = match edge {
+            Edge::Top => (
+                Rect::new(bb.x0, bb.y0, bb.x0 + w, bb.y0 + w),
+                Rect::new(bb.x1 - w, bb.y0, bb.x1, bb.y0 + w),
+                Point::new(bb.x0 + w, bb.y0 + h),
+                Point::new(bb.x1 - w, bb.y0 + h),
+            ),
+            Edge::Bottom => (
+                Rect::new(bb.x0, bb.y1 - w, bb.x0 + w, bb.y1),
+                Rect::new(bb.x1 - w, bb.y1 - w, bb.x1, bb.y1),
+                Point::new(bb.x0 + w, bb.y1 - h),
+                Point::new(bb.x1 - w, bb.y1 - h),
+            ),
+            Edge::Left => (
+                Rect::new(bb.x0, bb.y0, bb.x0 + w, bb.y0 + w),
+                Rect::new(bb.x0, bb.y1 - w, bb.x0 + w, bb.y1),
+                Point::new(bb.x0 + h, bb.y0 + w),
+                Point::new(bb.x0 + h, bb.y1 - w),
+            ),
+            Edge::Right => (
+                Rect::new(bb.x1 - w, bb.y0, bb.x1, bb.y0 + w),
+                Rect::new(bb.x1 - w, bb.y1 - w, bb.x1, bb.y1),
+                Point::new(bb.x1 - h, bb.y0 + w),
+                Point::new(bb.x1 - h, bb.y1 - w),
+            ),
+        };
+        scene.fill(Fill::NonZero, self.transform, color, None, &a);
+        scene.fill(Fill::NonZero, self.transform, color, None, &b);
+        if (end - start).hypot() <= 0.0 {
+            return;
+        }
+        let dash = if dotted { w } else { 3.0 * w };
+        let stroke = Stroke::new(w).with_caps(Cap::Butt).with_dashes(0.0, [dash, dash]);
+        let mut line = BezPath::new();
+        line.move_to(start);
+        line.line_to(end);
+        scene.stroke(&stroke, self.transform, color, None, &line);
     }
 
     /// Draw a single `dashed` border edge.

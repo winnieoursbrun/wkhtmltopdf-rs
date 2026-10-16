@@ -26,6 +26,8 @@ impl ToColorColor for AbsoluteColor {
 
 /// The WCAG contrast ratio (>= 1) between two colours, matching Chrome's
 /// `color_utils::GetContrastRatio`.
+// wkhtmltopdf-rs: only the scroll bars use it (bevels are shaded as QtWebKit 2.2 did).
+#[cfg_attr(not(feature = "scrollbars"), allow(dead_code))]
 pub(crate) fn contrast_ratio(a: Color, b: Color) -> f32 {
     // `relative_luminance` is defined on `OpaqueColor`; discard the alpha (which
     // it ignores anyway) with `split`.
