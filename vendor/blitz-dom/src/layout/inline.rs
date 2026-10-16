@@ -495,8 +495,13 @@ impl LayoutPassState<'_> {
             hanging: text_indent.hanging,
         };
         // Percentage indents do not contribute to intrinsic widths.
+        let marker_indent = if super::construct::inside_bullet(&self.nodes[node_id]) {
+            inline_layout.layout.strut_ascent().ceil()
+        } else {
+            0.0
+        };
         inline_layout.layout.set_text_indent(
-            text_indent.length.resolve(CSSPixelLength::new(0.0)).px() * scale,
+            text_indent.length.resolve(CSSPixelLength::new(0.0)).px() * scale + marker_indent,
             indent_options,
         );
 
@@ -705,9 +710,16 @@ impl LayoutPassState<'_> {
             .length
             .resolve(CSSPixelLength::new((width / scale).max(0.0)))
             .px();
+        // wkhtmltopdf-rs: an inside bullet takes the font's ascent at the start of the first
+        // line (see `construct::inside_bullet`).
+        let marker_indent = if super::construct::inside_bullet(&self.nodes[node_id]) {
+            inline_layout.layout.strut_ascent().ceil()
+        } else {
+            0.0
+        };
         inline_layout
             .layout
-            .set_text_indent(resolved_text_indent * scale, indent_options);
+            .set_text_indent(resolved_text_indent * scale + marker_indent, indent_options);
 
         #[cfg(not(feature = "floats"))]
         {

@@ -67,6 +67,12 @@ impl<B: Brush> Layout<B> {
         self.data.scale
     }
 
+    /// wkhtmltopdf-rs: the ascent of the root style's first available font (the strut), in
+    /// layout units (whole pixels when the layout is quantized).
+    pub fn strut_ascent(&self) -> f32 {
+        self.data.style_metrics.first().map_or(0., |m| m.ascent)
+    }
+
     /// Returns the style collection for the layout.
     pub fn styles(&self) -> &[Style<B>] {
         &self.data.styles

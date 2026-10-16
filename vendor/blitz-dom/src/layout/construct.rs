@@ -686,6 +686,19 @@ fn pe_content_text(
     }
 }
 
+/// wkhtmltopdf-rs: whether `node` is a left-to-right list item with an inside disc, circle or
+/// square marker, which QtWebKit 2.2 draws as a shape in a box as wide as the font's ascent at
+/// the start of the first line (`RenderListMarker`: margin-start -1, margin-end
+/// `ascent - width + 1`).
+pub(crate) fn inside_bullet(node: &Node) -> bool {
+    matches!(
+        node.element_data().and_then(|el| el.list_item_data.as_deref()),
+        Some(ListItemLayout { marker: Marker::Char('•' | '◦' | '▪'), position: ListItemLayoutPosition::Inside })
+    ) && node
+        .primary_styles()
+        .is_some_and(|s| s.clone_direction() == style::computed_values::direction::T::Ltr)
+}
+
 /// wkhtmltopdf-rs: the local name of the box of a `::first-letter` (see `first_letter`).
 pub(crate) const FIRST_LETTER_NAME: &str = "wk-first-letter";
 
@@ -1237,6 +1250,9 @@ pub(crate) fn build_inline_layout_into(
             // path already asks for it; without the same span here a marker like
             // disclosure-closed (U+25B8) falls back to the element's own font and
             // renders as a missing glyph.
+            // wkhtmltopdf-rs: a disc, circle or square is a shape painted by blitz-paint in
+            // the first line's indent (see `inside_bullet` and `layout/inline.rs`).
+            Marker::Char(_) if inside_bullet(root_node) => {}
             Marker::Char(char) => {
                 let mut marker_style = parley_style.clone();
                 marker_style.font_family = BULLET_FONT_FAMILY.into();

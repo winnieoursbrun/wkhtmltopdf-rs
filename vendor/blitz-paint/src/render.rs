@@ -1065,6 +1065,50 @@ impl ElementCx<'_, '_> {
     }
 
     fn draw_marker(&self, scene: &mut impl PaintScene, pos: Point) {
+        // wkhtmltopdf-rs: an inside disc, circle or square (left to right) is a shape at the
+        // start of the first line, in the indent blitz-dom leaves for it (the font's ascent `a`):
+        // `(a * 2 / 3 + 1) / 2` px, `3 * (a - a * 2 / 3) / 2` px below the top of the ascent.
+        if let Some(ListItemLayout {
+            marker: Marker::Char(c @ ('•' | '◦' | '▪')),
+            position: ListItemLayoutPosition::Inside,
+        }) = self.list_item
+        {
+            if self.style.clone_direction() != style::computed_values::direction::T::Ltr {
+                return;
+            }
+            crate::inline_layouts::with(self.node.id, |released| {
+                let Some(text_layout) = released.or(self.element.inline_layout_data.as_deref())
+                else {
+                    return;
+                };
+                let layout = &text_layout.layout;
+                let Some(line) = layout.lines().next() else { return };
+                let scale = layout.scale();
+                let ascent_px = layout.strut_ascent().ceil();
+                let ascent = (ascent_px / scale).round() as i32;
+                let offset = ascent * 2 / 3;
+                let size = f64::from((offset + 1) / 2);
+                let m = line.metrics();
+                let x = pos.x + f64::from((m.offset - ascent_px) / scale);
+                let baseline = pos.y + f64::from(m.baseline / scale + text_layout.block_offset);
+                let y = baseline - f64::from(ascent) + f64::from(3 * (ascent - offset) / 2);
+                let color = self.style.clone_color().as_srgb_color();
+                let transform = self.transform * Affine::scale(self.scale);
+                let rect = Rect::new(x, y, x + size, y + size);
+                let stroke = Stroke::new(1.0);
+                if *c == '▪' {
+                    scene.fill(Fill::NonZero, transform, color, None, &rect);
+                    scene.stroke(&stroke, transform, color, None, &rect);
+                } else {
+                    let ellipse = kurbo::Ellipse::from_rect(rect);
+                    if *c == '•' {
+                        scene.fill(Fill::NonZero, transform, color, None, &ellipse);
+                    }
+                    scene.stroke(&stroke, transform, color, None, &ellipse);
+                }
+            });
+            return;
+        }
         if let Some(ListItemLayout {
             marker,
             position: ListItemLayoutPosition::Outside(layout),
