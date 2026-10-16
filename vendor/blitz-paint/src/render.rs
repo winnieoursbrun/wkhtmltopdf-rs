@@ -543,6 +543,7 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                             cx.draw_background(scene);
                             // wkhtmltopdf-rs: Qt's scroll bar groove (list boxes).
                             cx.draw_qt_scroll_track(scene);
+                            cx.draw_qt_broken_image_frame(scene);
                             cx.draw_inset_box_shadow(scene);
                         }
                         cx.draw_table_row_backgrounds(scene);

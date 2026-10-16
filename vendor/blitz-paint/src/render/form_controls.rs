@@ -38,7 +38,27 @@ fn is_qt_track_sentinel(c: Color) -> bool {
     (c.r, c.g, c.b, c.a) == (1, 2, 5, 0)
 }
 
+/// The outline colour wk-webkit gives the box standing in for a broken image
+/// (`rgba(1, 2, 6, 0)`): drawn as [`ElementCx::draw_qt_broken_image_frame`].
+fn is_qt_broken_image_sentinel(c: Color) -> bool {
+    let c = c.to_rgba8();
+    (c.r, c.g, c.b, c.a) == (1, 2, 6, 0)
+}
+
 impl ElementCx<'_, '_> {
+    /// QtWebKit's frame of an image that failed to load (`RenderImage::paintReplaced`): a
+    /// light gray (#c0c0c0) cosmetic (zero-width, one device pixel) line on the edges of
+    /// the box, as the 0.12.6 binary strokes it.
+    pub(super) fn draw_qt_broken_image_frame(&self, scene: &mut impl PaintScene) {
+        let outline = self.style.get_outline();
+        let color = outline.outline_color.resolve_to_absolute(&self.style.clone_color()).as_srgb_color();
+        if !is_qt_broken_image_sentinel(color) {
+            return;
+        }
+        let frame = Color::from_rgba8(0xc0, 0xc0, 0xc0, 255);
+        scene.stroke(&Stroke::new(0.0), self.transform, frame, None, &self.frame.border_box);
+    }
+
     /// The groove of a Qt scroll bar as QWindowsStyle prints it: black under a white
     /// `Qt::Dense4Pattern`, a checkerboard of 2px squares (the 0.12.6 binary writes it as an
     /// 8x8 tiling pattern of dashed lines over a black fill). The squares start 1px off the

@@ -258,8 +258,9 @@ struct AltBox {
     span: NodeId,
     /// The alt text node.
     text: NodeId,
-    /// Both dimensions given: the box does not take the size of its text.
-    sized: bool,
+    /// The width (height) is given: the box does not take the width (height) of its text.
+    sized_w: bool,
+    sized_h: bool,
 }
 
 fn tag(node: &Node) -> &str {
@@ -1352,14 +1353,16 @@ impl WebPage {
         }
     }
 
-    /// QtWebKit's `RenderImage::paintReplaced` for an image that failed to load: a 1px light
-    /// gray (`Color::lightGray`) rectangle on its content box, and the `alt` text at its top
-    /// left when it fits. Not with `--no-images`, where the 0.12.6 binary draws nothing.
+    /// QtWebKit's `RenderImage::paintReplaced` for an image that failed to load: a light
+    /// gray (`Color::lightGray`) cosmetic line on the edges of its box (drawn by blitz-paint
+    /// for the `rgba(1, 2, 6, 0)` outline colour), and the `alt` text at its top left when it
+    /// fits. Not with `--no-images`, where the 0.12.6 binary draws nothing.
     ///
     /// Each such image becomes an inline-block span with its `id`, `class` and `style`, sized
     /// by its `width`/`height` attributes or inline style, holding the alt text. A dimension
-    /// given neither way is the alt text's (width plus 4px; 4px when there is no text), and
-    /// QtWebKit then leaves the text out. Sizes from style sheet rules on `img` are lost.
+    /// given neither way is the alt text's (its width truncated to whole pixels, so that the
+    /// text no longer fits and is left out; 4px when there is no text). Sizes from style
+    /// sheet rules on `img` are lost.
     /// Returns the boxes for [`settle_alt_boxes`](Self::settle_alt_boxes).
     fn broken_images(&mut self) -> Vec<AltBox> {
         if !self.settings.load_images {
@@ -1402,12 +1405,12 @@ impl WebPage {
             let display = if block { "block" } else { "inline-block" };
             let (sized_w, sized_h) = (w.is_some(), h.is_some());
             // An empty alt text sizes the box like a 4px padding alone.
-            let pad_w = if sized_w { "" } else { "padding-right:4px;" };
+            let pad_w = if sized_w || !alt.is_empty() { "" } else { "padding-right:4px;" };
             let pad_h = if sized_h || !alt.is_empty() { "" } else { "padding-bottom:4px;" };
             let mut style = format!(
                 "display:{display};box-sizing:content-box;{}{}{pad_w}{pad_h}overflow:hidden;\
                  white-space:pre;line-height:normal;text-indent:0;text-align:left;\
-                 outline:1px solid #c0c0c0;outline-offset:-1px;",
+                 outline:0 none rgba(1, 2, 6, 0);",
                 w.unwrap_or_default(),
                 h.unwrap_or_default(),
             );
@@ -1430,7 +1433,7 @@ impl WebPage {
             let text = m.create_text_node(&alt);
             m.append_children(span, &[text]);
             m.replace_node_with(id, &[span]);
-            out.push(AltBox { span, text, sized: sized_w && sized_h });
+            out.push(AltBox { span, text, sized_w, sized_h });
         }
         drop(m);
         out
@@ -1446,12 +1449,17 @@ impl WebPage {
             let l = n.final_layout();
             let (cw, ch) = (l.content_box_width(), l.content_box_height());
             let text = n.element_data().and_then(|e| e.inline_layout_data.as_ref());
-            if !b.sized {
-                changes.push((b.span, Some((cw, ch)), b.text));
-            } else if text.is_some_and(|t| {
-                t.layout.width() > cw + 0.01 || t.layout.lines().count() > 1 || t.layout.height() > ch + 0.01
-            }) {
-                changes.push((b.span, None, b.text));
+            // A width taken from the text is that text's truncated to whole pixels (QtWebKit
+            // lays out in integers), so the text no longer fits and is not drawn.
+            let fits = b.sized_w
+                && !text.is_some_and(|t| {
+                    t.layout.width() > cw + 0.01
+                        || t.layout.lines().count() > 1
+                        || t.layout.height() > ch + 0.01
+                });
+            if !(b.sized_w && b.sized_h) || !fits {
+                let size = (!(b.sized_w && b.sized_h)).then_some((cw.floor(), ch));
+                changes.push((b.span, size, (!fits).then_some(b.text)));
             }
         }
         let mut m = self.doc.mutate();
@@ -1460,7 +1468,9 @@ impl WebPage {
                 m.set_style_property(span, "width", &format!("{w}px"));
                 m.set_style_property(span, "height", &format!("{h}px"));
             }
-            m.set_node_text(text, "");
+            if let Some(text) = text {
+                m.set_node_text(text, "");
+            }
         }
         drop(m);
         !changes.is_empty()
