@@ -471,6 +471,13 @@ fn flush_line_decorations(
             continue;
         }
         let brush = anyrender::Paint::from(deco.color);
+        // wkhtmltopdf-rs: QtWebKit 2.2 (`InlineTextBox::paintDecoration`) draws every
+        // decoration as a 1px line from the text box's top, with `a` the font's whole-pixel
+        // ascent: the overline at the top, the line-through `2 * a / 3` px below it, the
+        // underline one pixel below the baseline (reference: typo-decoration).
+        let webkit_px = scale as f32;
+        let webkit_ascent = ((geom.ascent / webkit_px).ceil()) * webkit_px;
+        let _ = win_ascent_ratios;
 
         // `text-decoration-inset` shortens (or, when negative, extends) the line from the
         // inline-start/end edges. Percentages resolve against the decoration line length
@@ -489,12 +496,8 @@ fn flush_line_decorations(
         };
 
         if deco.line.contains(TextDecorationLine::UNDERLINE) {
-            let size = decoration_size(
-                &deco.thickness,
-                geom.underline_size,
-                geom.css_font_size,
-                scale,
-            );
+            let _ = (&deco.thickness, geom.underline_size);
+            let size = webkit_px;
 
             // `text-underline-offset` moves the underline away from the text. `auto` keeps
             // the font's suggested position; otherwise it resolves against the font size
@@ -518,7 +521,8 @@ fn flush_line_decorations(
             } else {
                 geom.underline_offset
             };
-            let offset = base_offset - extra_underline_offset as f32;
+            let _ = (base_offset, extra_underline_offset);
+            let offset = -webkit_px;
 
             // A `double` underline extends downward, away from the text.
             draw_decoration_line(
@@ -546,15 +550,8 @@ fn flush_line_decorations(
             // hhea-based ascent Parley reports; using the smaller value would draw the
             // overline too low. Fall back to Parley's ascent for fonts without a usable
             // OS/2 table.
-            let size = decoration_size(
-                &deco.thickness,
-                geom.underline_size,
-                geom.css_font_size,
-                scale,
-            );
-            let ascent =
-                win_ascent(win_ascent_ratios, &geom.font, geom.font_size).unwrap_or(geom.ascent);
-            let offset = ascent + size;
+            let size = webkit_px;
+            let offset = webkit_ascent;
 
             // A `double` overline extends upward, away from the text.
             draw_decoration_line(
@@ -574,20 +571,10 @@ fn flush_line_decorations(
             );
         }
         if deco.line.contains(TextDecorationLine::LINE_THROUGH) {
-            let size = decoration_size(
-                &deco.thickness,
-                geom.strikethrough_size,
-                geom.css_font_size,
-                scale,
-            );
-
-            // Centre the line-through a third of the ascent above the baseline, matching
-            // Chrome (which places it `2/3 * ascent` below the text-top). Parley's
-            // `strikethrough_offset` (the font's `yStrikeoutPosition`) sits lower and would
-            // draw the line too close to the baseline.
-            let ascent =
-                win_ascent(win_ascent_ratios, &geom.font, geom.font_size).unwrap_or(geom.ascent);
-            let offset = ascent / 3.0 + size / 2.0;
+            let _ = geom.strikethrough_size;
+            let size = webkit_px;
+            let a = (webkit_ascent / webkit_px) as i32;
+            let offset = (a - 2 * a / 3) as f32 * webkit_px;
 
             draw_decoration_line(
                 scene,

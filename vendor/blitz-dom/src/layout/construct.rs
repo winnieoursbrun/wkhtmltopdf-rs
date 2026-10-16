@@ -1336,7 +1336,9 @@ pub(crate) fn build_inline_layout_into(
                         == style::computed_values::font_variant_caps::T::SmallCaps)
                         .then(|| {
                             let mut t = stylo_to_parley::style(p, &s);
-                            t.font_size *= 0.7;
+                            // Qt is asked for a whole-pixel size: 15px small caps are
+                            // 11px (10.5 rounded), as in the reference.
+                            t.font_size = (t.font_size * 0.7).round();
                             t
                         })
                 });
