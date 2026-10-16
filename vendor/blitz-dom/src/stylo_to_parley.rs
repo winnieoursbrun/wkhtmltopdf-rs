@@ -426,16 +426,25 @@ pub(crate) fn style(
     };
     let vertical_align = self::vertical_align(style);
 
-    let letter_spacing = itext_styles
-        .letter_spacing
-        .0
-        .resolve(Length::new(font_size))
-        .px();
+    // wkhtmltopdf-rs: QtWebKit 2.2 keeps `letter-spacing` and `word-spacing` as integers
+    // (`RenderStyle::letterSpacing()` is an `int`, computed by `computeLength<int>`, which
+    // truncates after adding 0.01 away from zero): 0.5px and -0.5px are 0, 0.2em on 14px
+    // text is 2px.
+    let whole_px = |px: f32| (px + 0.01f32.copysign(px)).trunc();
+    let letter_spacing = whole_px(
+        itext_styles
+            .letter_spacing
+            .0
+            .resolve(Length::new(font_size))
+            .px(),
+    );
 
-    let word_spacing = itext_styles
-        .word_spacing
-        .resolve(Length::new(font_size))
-        .px();
+    let word_spacing = whole_px(
+        itext_styles
+            .word_spacing
+            .resolve(Length::new(font_size))
+            .px(),
+    );
 
     // Convert Bold/Italic
     let font_weight = self::font_weight(font_styles.font_weight);
