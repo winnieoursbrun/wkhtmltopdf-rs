@@ -344,11 +344,25 @@ impl ElementCx<'_, '_> {
     /// (dotted: `w` and `w`), with flat ends (measured on the 0.12.6 binary,
     /// tests/fidelity/borders-styles).
     fn draw_qt_dashed_edge(&self, scene: &mut impl PaintScene, edge: Edge, color: Color, dotted: bool) {
-        let w = self.edge_width(edge);
+        qt_dashed_side(scene, self.transform, self.frame.border_box, self.edge_width(edge), edge, color, dotted);
+    }
+}
+
+/// One `dashed`/`dotted` side `w` wide of the box `bb` as QtWebKit draws it
+/// ([`ElementCx::draw_qt_dashed_edge`]).
+fn qt_dashed_side(
+    scene: &mut impl PaintScene,
+    transform: kurbo::Affine,
+    bb: Rect,
+    w: f64,
+    edge: Edge,
+    color: Color,
+    dotted: bool,
+) {
+    {
         if w <= 0.0 {
             return;
         }
-        let bb = self.frame.border_box;
         let h = w / 2.0;
         let (a, b, start, end) = match edge {
             Edge::Top => (
@@ -376,8 +390,8 @@ impl ElementCx<'_, '_> {
                 Point::new(bb.x1 - h, bb.y1 - w),
             ),
         };
-        scene.fill(Fill::NonZero, self.transform, color, None, &a);
-        scene.fill(Fill::NonZero, self.transform, color, None, &b);
+        scene.fill(Fill::NonZero, transform, color, None, &a);
+        scene.fill(Fill::NonZero, transform, color, None, &b);
         if (end - start).hypot() <= 0.0 {
             return;
         }
@@ -386,8 +400,11 @@ impl ElementCx<'_, '_> {
         let mut line = BezPath::new();
         line.move_to(start);
         line.line_to(end);
-        scene.stroke(&stroke, self.transform, color, None, &line);
+        scene.stroke(&stroke, transform, color, None, &line);
     }
+}
+
+impl ElementCx<'_, '_> {
 
     /// Draw a single `dashed` border edge.
     ///
@@ -664,9 +681,27 @@ impl ElementCx<'_, '_> {
         let offset = outline.outline_offset.to_f64_px() * self.scale;
         let inner = self.frame.border_box.inflate(offset, offset);
         let outer = inner.inflate(width, width);
-        let mut path = outer.to_path(0.1);
-        path.extend(inner.to_path(0.1));
-        let _ = Fill::NonZero;
-        scene.fill(Fill::EvenOdd, self.transform, color, None, &path);
+        // Each side as QtWebKit draws a border side of that style (drawLineForBoxSide).
+        match style {
+            BorderStyle::Dashed | BorderStyle::Dotted => {
+                for edge in [Edge::Top, Edge::Right, Edge::Bottom, Edge::Left] {
+                    qt_dashed_side(scene, self.transform, outer, width, edge, color, style == BorderStyle::Dotted);
+                }
+            }
+            BorderStyle::Double if width >= 3.0 * self.scale => {
+                let w = (width / self.scale).round();
+                let third = ((w + 1.0) / 3.0).floor() * self.scale;
+                for (o, i) in [(outer, outer.inflate(-third, -third)), (inner.inflate(third, third), inner)] {
+                    let mut path = o.to_path(0.1);
+                    path.extend(i.to_path(0.1));
+                    scene.fill(Fill::EvenOdd, self.transform, color, None, &path);
+                }
+            }
+            _ => {
+                let mut path = outer.to_path(0.1);
+                path.extend(inner.to_path(0.1));
+                scene.fill(Fill::EvenOdd, self.transform, color, None, &path);
+            }
+        }
     }
 }

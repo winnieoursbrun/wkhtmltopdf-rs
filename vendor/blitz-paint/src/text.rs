@@ -221,7 +221,15 @@ pub(crate) fn draw_inline_backgrounds<'a>(
             let bl = if f.starts { side(&border.border_left_width, border.border_left_style) } else { 0.0 };
             let br = if f.ends { side(&border.border_right_width, border.border_right_style) } else { 0.0 };
             let has_border = bt > 0.0 || bb > 0.0 || bl > 0.0 || br > 0.0;
-            if bg_color == Color::TRANSPARENT && !has_border {
+            // An outline (RenderInline::paintOutline) around each fragment.
+            let outline = styles.get_outline();
+            let outline_width = match outline.outline_style {
+                style::values::computed::OutlineStyle::BorderStyle(st) if !st.none_or_hidden() => {
+                    f64::from(blitz_dom::webkit_border_width(outline.outline_width.0.to_f32_px()))
+                }
+                _ => 0.0,
+            };
+            if bg_color == Color::TRANSPARENT && !has_border && outline_width <= 0.0 {
                 continue;
             }
             // Vertical padding does not move the line; it widens the fragment.
@@ -237,6 +245,15 @@ pub(crate) fn draw_inline_backgrounds<'a>(
             let transform = transform.pre_translate(relative_inline_offset(doc, f.id, inline_root_id, scale));
             if bg_color != Color::TRANSPARENT {
                 scene.fill(Fill::NonZero, transform, bg_color, None, &rect);
+            }
+            if outline_width > 0.0 {
+                let offset = f64::from(outline.outline_offset.to_f32_px());
+                let inner = rect.inflate(offset, offset);
+                let outer = inner.inflate(outline_width, outline_width);
+                let oc = outline.outline_color.resolve_to_absolute(&current_color).as_srgb_color();
+                let mut ring = kurbo::Shape::to_path(&outer, 0.1);
+                ring.extend(kurbo::Shape::to_path(&inner, 0.1));
+                scene.fill(Fill::EvenOdd, transform, oc, None, &ring);
             }
             if !has_border {
                 continue;

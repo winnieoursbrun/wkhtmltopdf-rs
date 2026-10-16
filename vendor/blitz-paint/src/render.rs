@@ -475,7 +475,6 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
             None,
         );
 
-        cx.draw_outline(scene);
         cx.draw_outset_box_shadow(scene);
 
         // clip-path clip ayer
@@ -619,6 +618,10 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                 cx.maybe_pop_css_mask_layer(scene, mask_layer_pushed);
             },
         );
+
+        // wkhtmltopdf-rs: WebKit paints outlines after the box's content (its outline phase),
+        // so one inset by a negative `outline-offset` shows over the background and content.
+        cx.draw_outline(scene);
 
         self.layer_manager
             .maybe_pop_layer(scene, css_clip_layer_pushed);
