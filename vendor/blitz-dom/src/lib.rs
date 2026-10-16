@@ -55,6 +55,7 @@ pub mod css_rewrite;
 mod mutator;
 mod query_selector;
 mod resolve;
+mod generated_content;
 /// Computation of resolved CSS property values (`getComputedStyle()`)
 mod resolved_style;
 /// Scrolling of nodes and the viewport, and scroll animations.

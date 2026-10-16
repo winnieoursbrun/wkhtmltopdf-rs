@@ -80,6 +80,8 @@ impl BaseDocument {
 
         // we need to resolve stylist first since it will need to drive our layout bits
         self.resolve_stylist(current_time_for_animations);
+        // wkhtmltopdf-rs: counters and quotes, in document order.
+        self.resolve_generated_content();
         timer.record_time("style");
 
         // Non-incremental mode is "every node is damaged every frame": mark the

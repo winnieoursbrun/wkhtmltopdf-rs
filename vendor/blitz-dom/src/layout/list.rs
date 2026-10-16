@@ -193,6 +193,24 @@ fn font_for_bullet_style(list_style_type: ListStyleType) -> Option<FontFamily<'s
     None
 }
 
+/// wkhtmltopdf-rs: the text of `counter(name, style)` with the counter at `value` (WebKit
+/// 2012's numbering systems, without the marker suffix).
+pub(crate) fn counter_text(style: &CounterStyle, value: i32) -> String {
+    let CounterStyle::Name(name) = style else { return value.to_string() };
+    match &*name.0 {
+        "none" => String::new(),
+        "disc" => "\u{2022}".into(),
+        "circle" => "\u{25e6}".into(),
+        "square" => "\u{25aa}".into(),
+        "lower-alpha" | "lower-latin" | "upper-alpha" | "upper-latin" if value >= 1 => {
+            let mut s = String::new();
+            build_alpha_marker(value as usize - 1, &mut s);
+            if name.0.starts_with("upper") { s.to_ascii_uppercase() } else { s }
+        }
+        other => webkit_marker_text(other, i64::from(value)),
+    }
+}
+
 /// wkhtmltopdf-rs: marker text of `value` in the numbering systems WebKit 2012 implements in
 /// `RenderListMarker.cpp` (out of range values fall back to decimal, as there).
 fn webkit_marker_text(name: &str, value: i64) -> String {

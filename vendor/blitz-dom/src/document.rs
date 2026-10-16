@@ -250,6 +250,9 @@ pub struct BaseDocument {
     pub failed_font_families: std::collections::HashSet<String>,
     /// wkhtmltopdf-rs: `@font-face` families (lowercase) with at least one loaded face.
     loaded_font_families: std::collections::HashSet<String>,
+    /// wkhtmltopdf-rs: the text of each `::before` (index 1) and `::after` (index 0) whose
+    /// `content` depends on document order (counters, quotes), by element.
+    pub(crate) generated_content: HashMap<(NodeId, usize), String>,
     /// A Parley layout context
     pub(crate) layout_ctx: parley::LayoutContext<TextBrush>,
 
@@ -459,6 +462,7 @@ impl BaseDocument {
             thread_font_contexts: ThreadLocal::new(),
             failed_font_families: Default::default(),
             loaded_font_families: Default::default(),
+            generated_content: Default::default(),
             layout_ctx: parley::LayoutContext::new(),
 
             hover_node_id: None,

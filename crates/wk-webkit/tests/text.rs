@@ -121,6 +121,21 @@ fn letter_spaced_text_is_kerned() {
     assert!((run.xs[1] - run.xs[0] - 7.828).abs() < 0.01, "{r:?}");
 }
 
+/// `counter()` and nested quotes in generated content, resolved in document order (reference:
+/// css-generated).
+#[test]
+fn counters_and_quotes() {
+    let r = runs(
+        r#"<style>body { counter-reset: ch } h2 { counter-increment: ch; counter-reset: sec }
+        h3 { counter-increment: sec } h2:before { content: "C" counter(ch) " " }
+        h3:before { content: counter(ch) "." counter(sec, lower-roman) " " }</style>
+        <h2>a</h2><h3>b</h3><h3>c</h3><h2>d</h2><h3>e</h3><p><q>x <q>y</q></q></p>"#,
+    );
+    let text: String = r.iter().map(|r| r.text.as_str()).collect();
+    assert!(text.contains("C1 a1.i b1.ii cC2 d2.i e"), "{text:?}");
+    assert!(text.contains("\"x 'y'\""), "{text:?}");
+}
+
 /// A tab is drawn as a space, also in preformatted text (reference: typo-whitespace).
 #[test]
 fn tab_is_a_space() {
