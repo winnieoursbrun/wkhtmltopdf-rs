@@ -68,8 +68,12 @@ Implementation:
 | `line-height: <number>` | `trunc(number × rounded font size)` | blitz-dom `stylo_to_parley.rs` |
 | `line-height: normal` | ascent and descent each rounded up | parley (P2a) |
 | Lengths from `em`, `pt`, … | whole pixels, truncated (`roundForImpreciseConversion`) | stylo_taffy `convert.rs` |
-| Auto table layout | AutoTableLayout: columns get their min width, then the rest in proportion to their max widths; fixed and percent columns first | blitz-dom `layout/table_auto.rs` |
-| Collapsed borders | resolved per cell edge (width, then style; cell, row, table); each cell takes half, the extra pixel on the top/left | blitz-dom `layout/table.rs` |
+| Auto table layout | AutoTableLayout: columns get their min width, then the rest in proportion to their max widths; fixed and percent columns first; spanning cells widen the columns under them in proportion to their max widths (`calcEffectiveLogicalWidth`); `<col>` widths count | blitz-dom `layout/table_auto.rs` |
+| Fixed table layout | FixedTableLayout: `<col>`/first-row widths as specified (no padding or border added), the rest shared equally, the last column taking the remainder | same |
+| Row heights | a cell spanning rows only grows the last row it spans (`calcRowLogicalHeight`) | same |
+| Table attributes | `border` (outset table, inset cells, grey), `frame`, `rules` (collapsing), `cellpadding`, `cellspacing`, `bordercolor`, `align`, `valign` mapped as `HTMLTableElement` does | blitz-dom `table_hints.rs` |
+| Captions | the first caption only, at the table's content width, above or below it, outside its borders | blitz-dom `layout/table.rs`, `layout/mod.rs` |
+| Collapsed borders | resolved per cell edge (width, then style; cell, row, table); each cell takes half, the extra pixel on the top/left; the table's start/end borders come from the first row only | blitz-dom `layout/table.rs` |
 | Floats in a BFC root | contained above the box's bottom padding and border | taffy `compute/block.rs` |
 
 ## Paint
@@ -81,4 +85,6 @@ Implementation:
 | Dotted border with `border-radius` | drawn solid | drawn solid (dashed stays dashed) |
 | Outlines | rectangles (no radius), `outline-offset` away from the border box | same |
 | Collapsed table borders | painted after the cell backgrounds | same |
+| Collapsed dashed/double borders | dashes 4 widths on, 2 off; dotted solid (Qt square caps); double = outer thirds | same |
+| `empty-cells: hide` | no background or border on an empty cell (separated borders) | same |
 | Inline box backgrounds | ascent and descent rounded up | same |
