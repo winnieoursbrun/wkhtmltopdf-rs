@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>lists-nested</title>
+<style>
+body { font-family: serif; font-size: 14px; }
+</style>
+</head>
+<body>
+<ul><li>Level 1 disc
+  <ul><li>Level 2 circle
+    <ul><li>Level 3 square<ul><li>Level 4</li></ul></li></ul></li><li>Level 2 again</li></ul></li>
+<li>The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</li></ul>
+<ol><li>First<ol><li>Nested 1.1</li><li>Nested 1.2<ol type="a"><li>alpha</li></ol></li></ol></li><li>Second</li></ol>
+<ul style="list-style-position:inside;border:1px solid #aaa"><li>inside marker The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</li><li>inside short</li></ul>
+<ul style="list-style-image:url(../assets/bullet.png)"><li>list-style-image</li><li>second image bullet</li></ul>
+<ol style="font-size:22px"><li>Big marker</li></ol><ol style="padding-left:0"><li>padding-left 0 (marker in margin)</li></ol>
+<ul style="list-style:none;padding:0"><li>no style</li><li>no style</li></ul>
+<ol style="direction:rtl"><li>rtl list</li><li>second</li></ol>
+<ul><li><p>Paragraph inside li</p></li><li style="float:left;width:150px">floated li</li></ul>
+<div style="clear:both"></div>
+<ol><li style="list-style-type:upper-roman">per-item type</li><li style="color:#c00">red item (red marker)</li></ol>
+</body></html>

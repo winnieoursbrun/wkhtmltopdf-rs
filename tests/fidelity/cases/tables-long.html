@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>tables-long</title>
+<style>
+body { font-family: sans-serif; font-size: 11px; } table { width: 100%; border-collapse: collapse; } th { background: #1e3c8c; color: #fff; text-align: left; } td, th { border-bottom: 1px solid #ccc; padding: 3px 6px; } tbody tr:nth-child(even) td { background: #f2f5fb; } tfoot td { font-weight: bold; border-top: 2px solid #333; } thead { display: table-header-group; } tfoot { display: table-footer-group; } tr { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+<h2>Long table: thead and tfoot repeat on every page</h2>
+<table><thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Amount</th></tr></thead>
+<tfoot><tr><td colspan="3">Carried forward</td><td>—</td></tr></tfoot>
+<tbody><tr><td>1</td><td>Item 001 </td><td>2</td><td>3.01</td></tr>
+<tr><td>2</td><td>Item 002 </td><td>3</td><td>6.02</td></tr>
+<tr><td>3</td><td>Item 003 </td><td>4</td><td>9.03</td></tr>
+<tr><td>4</td><td>Item 004 </td><td>5</td><td>12.04</td></tr>
+<tr><td>5</td><td>Item 005 </td><td>6</td><td>15.05</td></tr>
+<tr><td>6</td><td>Item 006 </td><td>7</td><td>18.06</td></tr>
+<tr><td>7</td><td>Item 007 with a longer description that wraps</td><td>8</td><td>21.07</td></tr>
+<tr><td>8</td><td>Item 008 </td><td>9</td><td>24.08</td></tr>
+<tr><td>9</td><td>Item 009 </td><td>1</td><td>27.09</td></tr>
+<tr><td>10</td><td>Item 010 </td><td>2</td><td>30.10</td></tr>
+<tr><td>11</td><td>Item 011 </td><td>3</td><td>33.11</td></tr>
+<tr><td>12</td><td>Item 012 </td><td>4</td><td>36.12</td></tr>
+<tr><td>13</td><td>Item 013 </td><td>5</td><td>39.13</td></tr>
+<tr><td>14</td><td>Item 014 with a longer description that wraps</td><td>6</td><td>42.14</td></tr>
+<tr><td>15</td><td>Item 015 </td><td>7</td><td>45.15</td></tr>
+<tr><td>16</td><td>Item 016 </td><td>8</td><td>48.16</td></tr>
+<tr><td>17</td><td>Item 017 </td><td>9</td><td>51.17</td></tr>
+<tr><td>18</td><td>Item 018 </td><td>1</td><td>54.18</td></tr>
+<tr><td>19</td><td>Item 019 </td><td>2</td><td>57.19</td></tr>
+<tr><td>20</td><td>Item 020 </td><td>3</td><td>60.20</td></tr>
+<tr><td>21</td><td>Item 021 with a longer description that wraps</td><td>4</td><td>63.21</td></tr>
+<tr><td>22</td><td>Item 022 </td><td>5</td><td>66.22</td></tr>
+<tr><td>23</td><td>Item 023 </td><td>6</td><td>69.23</td></tr>
+<tr><td>24</td><td>Item 024 </td><td>7</td><td>72.24</td></tr>
+<tr><td>25</td><td>Item 025 </td><td>8</td><td>75.25</td></tr>
+<tr><td>26</td><td>Item 026 </td><td>9</td><td>78.26</td></tr>
+<tr><td>27</td><td>Item 027 </td><td>1</td><td>81.27</td></tr>
+<tr><td>28</td><td>Item 028 with a longer description that wraps</td><td>2</td><td>84.28</td></tr>
+<tr><td>29</td><td>Item 029 </td><td>3</td><td>87.29</td></tr>
+<tr><td>30</td><td>Item 030 </td><td>4</td><td>90.30</td></tr>
+<tr><td>31</td><td>Item 031 </td><td>5</td><td>93.31</td></tr>
+<tr><td>32</td><td>Item 032 </td><td>6</td><td>96.32</td></tr>
+<tr><td>33</td><td>Item 033 </td><td>7</td><td>99.33</td></tr>
+<tr><td>34</td><td>Item 034 </td><td>8</td><td>102.34</td></tr>
+<tr><td>35</td><td>Item 035 with a longer description that wraps</td><td>9</td><td>105.35</td></tr>
+<tr><td>36</td><td>Item 036 </td><td>1</td><td>108.36</td></tr>
+<tr><td>37</td><td>Item 037 </td><td>2</td><td>111.37</td></tr>
+<tr><td>38</td><td>Item 038 </td><td>3</td><td>114.38</td></tr>
+<tr><td>39</td><td>Item 039 </td><td>4</td><td>117.39</td></tr>
+<tr><td>40</td><td>Item 040 </td><td>5</td><td>120.40</td></tr>
+<tr><td>41</td><td>Item 041 </td><td>6</td><td>123.41</td></tr>
+<tr><td>42</td><td>Item 042 with a longer description that wraps</td><td>7</td><td>126.42</td></tr>
+<tr><td>43</td><td>Item 043 </td><td>8</td><td>129.43</td></tr>
+<tr><td>44</td><td>Item 044 </td><td>9</td><td>132.44</td></tr>
+<tr><td>45</td><td>Item 045 </td><td>1</td><td>135.45</td></tr>
+<tr><td>46</td><td>Item 046 </td><td>2</td><td>138.46</td></tr>
+<tr><td>47</td><td>Item 047 </td><td>3</td><td>141.47</td></tr>
+<tr><td>48</td><td>Item 048 </td><td>4</td><td>144.48</td></tr>
+<tr><td>49</td><td>Item 049 with a longer description that wraps</td><td>5</td><td>147.49</td></tr>
+<tr><td>50</td><td>Item 050 </td><td>6</td><td>150.50</td></tr>
+<tr><td>51</td><td>Item 051 </td><td>7</td><td>153.51</td></tr>
+<tr><td>52</td><td>Item 052 </td><td>8</td><td>156.52</td></tr>
+<tr><td>53</td><td>Item 053 </td><td>9</td><td>159.53</td></tr>
+<tr><td>54</td><td>Item 054 </td><td>1</td><td>162.54</td></tr>
+<tr><td>55</td><td>Item 055 </td><td>2</td><td>165.55</td></tr>
+<tr><td>56</td><td>Item 056 with a longer description that wraps</td><td>3</td><td>168.56</td></tr>
+<tr><td>57</td><td>Item 057 </td><td>4</td><td>171.57</td></tr>
+<tr><td>58</td><td>Item 058 </td><td>5</td><td>174.58</td></tr>
+<tr><td>59</td><td>Item 059 </td><td>6</td><td>177.59</td></tr>
+<tr><td>60</td><td>Item 060 </td><td>7</td><td>180.60</td></tr>
+<tr><td>61</td><td>Item 061 </td><td>8</td><td>183.61</td></tr>
+<tr><td>62</td><td>Item 062 </td><td>9</td><td>186.62</td></tr>
+<tr><td>63</td><td>Item 063 with a longer description that wraps</td><td>1</td><td>189.63</td></tr>
+<tr><td>64</td><td>Item 064 </td><td>2</td><td>192.64</td></tr>
+<tr><td>65</td><td>Item 065 </td><td>3</td><td>195.65</td></tr>
+<tr><td>66</td><td>Item 066 </td><td>4</td><td>198.66</td></tr>
+<tr><td>67</td><td>Item 067 </td><td>5</td><td>201.67</td></tr>
+<tr><td>68</td><td>Item 068 </td><td>6</td><td>204.68</td></tr>
+<tr><td>69</td><td>Item 069 </td><td>7</td><td>207.69</td></tr>
+<tr><td>70</td><td>Item 070 with a longer description that wraps</td><td>8</td><td>210.70</td></tr>
+<tr><td>71</td><td>Item 071 </td><td>9</td><td>213.71</td></tr>
+<tr><td>72</td><td>Item 072 </td><td>1</td><td>216.72</td></tr>
+<tr><td>73</td><td>Item 073 </td><td>2</td><td>219.73</td></tr>
+<tr><td>74</td><td>Item 074 </td><td>3</td><td>222.74</td></tr>
+<tr><td>75</td><td>Item 075 </td><td>4</td><td>225.75</td></tr>
+<tr><td>76</td><td>Item 076 </td><td>5</td><td>228.76</td></tr>
+<tr><td>77</td><td>Item 077 with a longer description that wraps</td><td>6</td><td>231.77</td></tr>
+<tr><td>78</td><td>Item 078 </td><td>7</td><td>234.78</td></tr>
+<tr><td>79</td><td>Item 079 </td><td>8</td><td>237.79</td></tr>
+<tr><td>80</td><td>Item 080 </td><td>9</td><td>240.80</td></tr>
+<tr><td>81</td><td>Item 081 </td><td>1</td><td>243.81</td></tr>
+<tr><td>82</td><td>Item 082 </td><td>2</td><td>246.82</td></tr>
+<tr><td>83</td><td>Item 083 </td><td>3</td><td>249.83</td></tr>
+<tr><td>84</td><td>Item 084 with a longer description that wraps</td><td>4</td><td>252.84</td></tr>
+<tr><td>85</td><td>Item 085 </td><td>5</td><td>255.85</td></tr>
+<tr><td>86</td><td>Item 086 </td><td>6</td><td>258.86</td></tr>
+<tr><td>87</td><td>Item 087 </td><td>7</td><td>261.87</td></tr>
+<tr><td>88</td><td>Item 088 </td><td>8</td><td>264.88</td></tr>
+<tr><td>89</td><td>Item 089 </td><td>9</td><td>267.89</td></tr>
+<tr><td>90</td><td>Item 090 </td><td>1</td><td>270.90</td></tr>
+<tr><td>91</td><td>Item 091 with a longer description that wraps</td><td>2</td><td>273.91</td></tr>
+<tr><td>92</td><td>Item 092 </td><td>3</td><td>276.92</td></tr>
+<tr><td>93</td><td>Item 093 </td><td>4</td><td>279.93</td></tr>
+<tr><td>94</td><td>Item 094 </td><td>5</td><td>282.94</td></tr>
+<tr><td>95</td><td>Item 095 </td><td>6</td><td>285.95</td></tr>
+<tr><td>96</td><td>Item 096 </td><td>7</td><td>288.96</td></tr>
+<tr><td>97</td><td>Item 097 </td><td>8</td><td>291.97</td></tr>
+<tr><td>98</td><td>Item 098 with a longer description that wraps</td><td>9</td><td>294.98</td></tr>
+<tr><td>99</td><td>Item 099 </td><td>1</td><td>297.99</td></tr>
+<tr><td>100</td><td>Item 100 </td><td>2</td><td>300.00</td></tr>
+<tr><td>101</td><td>Item 101 </td><td>3</td><td>303.01</td></tr>
+<tr><td>102</td><td>Item 102 </td><td>4</td><td>306.02</td></tr>
+<tr><td>103</td><td>Item 103 </td><td>5</td><td>309.03</td></tr>
+<tr><td>104</td><td>Item 104 </td><td>6</td><td>312.04</td></tr>
+<tr><td>105</td><td>Item 105 with a longer description that wraps</td><td>7</td><td>315.05</td></tr>
+<tr><td>106</td><td>Item 106 </td><td>8</td><td>318.06</td></tr>
+<tr><td>107</td><td>Item 107 </td><td>9</td><td>321.07</td></tr>
+<tr><td>108</td><td>Item 108 </td><td>1</td><td>324.08</td></tr>
+<tr><td>109</td><td>Item 109 </td><td>2</td><td>327.09</td></tr>
+<tr><td>110</td><td>Item 110 </td><td>3</td><td>330.10</td></tr>
+<tr><td>111</td><td>Item 111 </td><td>4</td><td>333.11</td></tr>
+<tr><td>112</td><td>Item 112 with a longer description that wraps</td><td>5</td><td>336.12</td></tr>
+<tr><td>113</td><td>Item 113 </td><td>6</td><td>339.13</td></tr>
+<tr><td>114</td><td>Item 114 </td><td>7</td><td>342.14</td></tr>
+<tr><td>115</td><td>Item 115 </td><td>8</td><td>345.15</td></tr>
+<tr><td>116</td><td>Item 116 </td><td>9</td><td>348.16</td></tr>
+<tr><td>117</td><td>Item 117 </td><td>1</td><td>351.17</td></tr>
+<tr><td>118</td><td>Item 118 </td><td>2</td><td>354.18</td></tr>
+<tr><td>119</td><td>Item 119 with a longer description that wraps</td><td>3</td><td>357.19</td></tr>
+<tr><td>120</td><td>Item 120 </td><td>4</td><td>360.20</td></tr></tbody></table><p>After the table.</p>
+</body></html>

@@ -1,0 +1,55 @@
+/* A small style sheet written for this corpus in the manner of Bootstrap 3 (float grid with
+   negative row gutters, clearfix, panels, tables, buttons, labels): the patterns pdfkit users
+   render. Not Bootstrap itself. */
+* { -webkit-box-sizing: border-box; box-sizing: border-box; }
+body { margin: 0; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.42857143; color: #333; background-color: #fff; }
+h1, h2, h3 { font-weight: 500; line-height: 1.1; margin-top: 20px; margin-bottom: 10px; }
+h1 { font-size: 36px; } h3 { font-size: 24px; }
+h1 small { font-size: 65%; font-weight: normal; color: #777; }
+p { margin: 0 0 10px; }
+.lead { font-size: 21px; font-weight: 300; margin-bottom: 20px; }
+.text-right { text-align: right; } .text-center { text-align: center; }
+.container { padding-right: 15px; padding-left: 15px; margin-right: auto; margin-left: auto; }
+.row { margin-right: -15px; margin-left: -15px; }
+.row:before, .row:after, .container:before, .container:after { display: table; content: " "; }
+.row:after, .container:after { clear: both; }
+.col-xs-3, .col-xs-4, .col-xs-6, .col-xs-8, .col-xs-12 { position: relative; min-height: 1px; padding-right: 15px; padding-left: 15px; float: left; }
+.col-xs-3 { width: 25%; } .col-xs-4 { width: 33.33333333%; } .col-xs-6 { width: 50%; } .col-xs-8 { width: 66.66666667%; } .col-xs-12 { width: 100%; }
+.page-header { padding-bottom: 9px; margin: 40px 0 20px; border-bottom: 1px solid #eee; }
+.alert { padding: 15px; margin-bottom: 20px; border: 1px solid transparent; border-radius: 4px; }
+.alert-info { color: #31708f; background-color: #d9edf7; border-color: #bce8f1; }
+.well { min-height: 20px; padding: 19px; margin-bottom: 20px; background-color: #f5f5f5; border: 1px solid #e3e3e3; border-radius: 4px; -webkit-box-shadow: inset 0 1px 1px rgba(0,0,0,.05); box-shadow: inset 0 1px 1px rgba(0,0,0,.05); }
+.well-sm { padding: 9px; border-radius: 3px; }
+.label { display: inline; padding: .2em .6em .3em; font-size: 75%; font-weight: bold; line-height: 1; color: #fff; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: .25em; }
+.label-success { background-color: #5cb85c; } .label-warning { background-color: #f0ad4e; }
+.panel { margin-bottom: 20px; background-color: #fff; border: 1px solid transparent; border-radius: 4px; -webkit-box-shadow: 0 1px 1px rgba(0,0,0,.05); box-shadow: 0 1px 1px rgba(0,0,0,.05); }
+.panel-heading { padding: 10px 15px; border-bottom: 1px solid transparent; border-top-left-radius: 3px; border-top-right-radius: 3px; }
+.panel-title { margin-top: 0; margin-bottom: 0; font-size: 16px; color: inherit; }
+.panel-body { padding: 15px; }
+.panel-default { border-color: #ddd; } .panel-default > .panel-heading { color: #333; background-color: #f5f5f5; border-color: #ddd; }
+.panel-primary { border-color: #337ab7; } .panel-primary > .panel-heading { color: #fff; background-color: #337ab7; border-color: #337ab7; }
+table { border-spacing: 0; border-collapse: collapse; background-color: transparent; }
+th { text-align: left; }
+.table { width: 100%; max-width: 100%; margin-bottom: 20px; }
+.table > thead > tr > th, .table > tbody > tr > td, .table > tfoot > tr > th { padding: 8px; line-height: 1.42857143; vertical-align: top; border-top: 1px solid #ddd; }
+.table > thead > tr > th { vertical-align: bottom; border-bottom: 2px solid #ddd; }
+.table-condensed > thead > tr > th, .table-condensed > tbody > tr > td, .table-condensed > tfoot > tr > th { padding: 5px; }
+.table-bordered { border: 1px solid #ddd; }
+.table-bordered > thead > tr > th, .table-bordered > tbody > tr > td, .table-bordered > tfoot > tr > th { border: 1px solid #ddd; }
+.table-striped > tbody > tr:nth-of-type(odd) { background-color: #f9f9f9; }
+.thumbnail { display: block; padding: 4px; margin-bottom: 20px; line-height: 1.42857143; background-color: #fff; border: 1px solid #ddd; border-radius: 4px; }
+.thumbnail > img { display: block; max-width: 100%; height: auto; margin-right: auto; margin-left: auto; }
+.thumbnail .caption { padding: 9px; color: #333; }
+.btn { display: inline-block; padding: 6px 12px; margin-bottom: 0; font-size: 14px; font-weight: normal; line-height: 1.42857143; text-align: center; white-space: nowrap; vertical-align: middle; border: 1px solid transparent; border-radius: 4px; text-decoration: none; }
+.btn-default { color: #333; background-color: #fff; border-color: #ccc; }
+.btn-primary { color: #fff; background-color: #337ab7; border-color: #2e6da4; }
+.btn-danger { color: #fff; background-color: #d9534f; border-color: #d43f3a; }
+.btn-sm { padding: 5px 10px; font-size: 12px; line-height: 1.5; border-radius: 3px; }
+.list-group { padding-left: 0; margin-bottom: 20px; }
+.list-group-item { position: relative; display: block; padding: 10px 15px; margin-bottom: -1px; background-color: #fff; border: 1px solid #ddd; }
+.list-group-item:first-child { border-top-left-radius: 4px; border-top-right-radius: 4px; }
+.list-group-item:last-child { margin-bottom: 0; border-bottom-right-radius: 4px; border-bottom-left-radius: 4px; }
+.list-group-item > .badge { float: right; }
+.badge { display: inline-block; min-width: 10px; padding: 3px 7px; font-size: 12px; font-weight: bold; line-height: 1; color: #fff; text-align: center; white-space: nowrap; vertical-align: middle; background-color: #777; border-radius: 10px; }
+.progress { height: 20px; margin-bottom: 20px; overflow: hidden; background-color: #f5f5f5; border-radius: 4px; -webkit-box-shadow: inset 0 1px 2px rgba(0,0,0,.1); box-shadow: inset 0 1px 2px rgba(0,0,0,.1); }
+.progress-bar { float: left; width: 0; height: 100%; font-size: 12px; line-height: 20px; color: #fff; text-align: center; background-color: #337ab7; background-image: -webkit-linear-gradient(top, #337ab7 0%, #286090 100%); }

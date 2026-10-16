@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>tables-borders</title>
+<style>
+body { font-family: sans-serif; font-size: 12px; } h4 { margin: 10px 0 3px; } .t { border: 1px solid #333; } .t td { border: 1px solid #888; padding: 4px 10px; }
+</style>
+</head>
+<body>
+<h4>separate, border-spacing 4px</h4>
+<table class="t" style="border-collapse:separate;border-spacing:4px"><tr><td>a</td><td>b</td><td>c</td></tr><tr><td>d</td><td>e</td><td>f</td></tr></table>
+<h4>collapse, conflicting widths (cell 3px red wins over table 1px)</h4>
+<table class="t" style="border-collapse:collapse"><tr><td>a</td><td style="border:3px solid #c00">b</td><td>c</td></tr><tr><td style="border:2px dashed #00c">d</td><td>e</td><td style="border-style:double;border-width:4px">f</td></tr></table>
+<h4>border=1 cellpadding=6 cellspacing=0 attributes</h4>
+<table border="1" cellpadding="6" cellspacing="0"><tr><th>H1</th><th>H2</th></tr><tr><td>one</td><td>two</td></tr></table>
+<h4>border=3 cellspacing=5 (outset/inset)</h4>
+<table border="3" cellspacing="5"><tr><td>x</td><td>y</td></tr></table>
+<h4>rules=rows frame=hsides</h4>
+<table border="1" rules="rows" frame="hsides" cellpadding="4"><tr><td>r1c1</td><td>r1c2</td></tr><tr><td>r2c1</td><td>r2c2</td></tr></table>
+<h4>row and column backgrounds, collapse</h4>
+<table class="t" style="border-collapse:collapse"><colgroup><col style="background:#fee"><col style="background:#efe"><col></colgroup>
+<tr style="background:#eef"><td>row bg</td><td>row over col</td><td>c</td></tr><tr><td>col</td><td>col</td><td style="background:#ff8">cell</td></tr></table>
+<h4>empty-cells: hide (separate)</h4>
+<table class="t" style="empty-cells:hide;border-collapse:separate"><tr><td>a</td><td></td><td>c</td></tr></table>
+<h4>thick collapse borders with radius on table (ignored)</h4>
+<table class="t" style="border-collapse:collapse;border:6px solid #333;border-radius:10px"><tr><td style="border:6px solid #9c3">a</td><td>b</td></tr></table>
+</body></html>

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>media-print</title>
+<style>
+body { font-family: sans-serif; font-size: 14px; }
+.print { display: none; }
+.both { color: #c00; }
+@media print { .screen { display: none; } .print { display: block; } .both { color: #080; } body { font-family: serif; } }
+@media screen and (max-width: 600px) { .both:after { content: " (narrow screen)"; } }
+@media screen and (min-width: 601px) { .both:after { content: " (wide screen)"; } }
+</style>
+</head>
+<body>
+<p class="screen">Only on screen (hidden in print)</p>
+<p class="print">Only in print media</p>
+<p class="both">Colour depends on media: red for screen, green for print.</p>
+<p>The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+</body></html>

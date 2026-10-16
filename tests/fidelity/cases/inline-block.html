@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>inline-block</title>
+<style>
+body { font-family: sans-serif; font-size: 12px; } .row { border: 1px solid #999; margin: 8px 0; background: #fafafa; } .ib { display: inline-block; width: 90px; background: #cde; border: 1px solid #579; margin: 2px; } .badge { display: inline-block; padding: 2px 6px; font-size: 10px; font-weight: bold; color: #fff; background: #36c; border-radius: 9px; }
+</style>
+</head>
+<body>
+<div class="row"><div class="ib" style="height:40px">40</div><div class="ib" style="height:70px">70</div><div class="ib">auto with text wrapping inside</div><div class="ib" style="vertical-align:top;height:30px">top</div><div class="ib" style="vertical-align:middle;height:30px">middle</div><div class="ib" style="vertical-align:bottom;height:30px">bottom</div> text baseline</div>
+<div class="row"><div class="ib">whitespace</div> <div class="ib">between</div>   <div class="ib">boxes</div><div class="ib">none</div><div class="ib">here</div></div>
+<div class="row" style="font-size:0"><div class="ib" style="font-size:12px">font-size 0</div> <div class="ib" style="font-size:12px">parent</div></div>
+<div class="row"><span class="ib" style="width:30%">30%</span><span class="ib" style="width:30%">30%</span><span class="ib" style="width:30%">30%</span></div>
+<div class="row"><button>button</button> <input type="text" value="input"> <img src="../assets/bullet.png"> <span class="ib" style="padding:10px">padded</span> <span class="ib" style="overflow:hidden;height:20px">overflow hidden ib baseline</span></div>
+<p>Badges: <span class="badge">new</span> <span class="badge" style="background:#c33">3</span> <span class="badge" style="background:#393">ok</span> inline with text.</p>
+</body></html>

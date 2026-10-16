@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<script>
+function subst() {
+  var vars = {};
+  var q = document.location.search.substring(1).split('&');
+  for (var i in q) { var kv = q[i].split('=', 2); vars[kv[0]] = decodeURIComponent(kv[1]); }
+  document.getElementById('p').textContent = vars.page;
+  document.getElementById('t').textContent = vars.topage;
+}
+</script>
+<style>body { margin: 0; font-family: serif; font-size: 10px; text-align: center; color: #666; border-top: 1px solid #aaa; padding-top: 3px; }</style>
+</head><body onload="subst()">ACME Corp — confidential — <span id="p"></span> of <span id="t"></span></body></html>

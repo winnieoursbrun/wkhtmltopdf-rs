@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>borders-radius</title>
+<style>
+body { font-family: sans-serif; font-size: 12px; } .b { display: inline-block; width: 120px; height: 60px; margin: 6px; border: 3px solid #36c; background: #def; vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="b" style="border-radius:10px">radius 10</div>
+<div class="b" style="border-radius:30px">radius 30</div>
+<div class="b" style="border-radius:50%">50%</div>
+<div class="b" style="border-radius:20px/10px">20px/10px</div>
+<div class="b" style="border-radius:0 20px 0 20px">per corner</div>
+<div class="b" style="-webkit-border-radius:15px">-webkit-</div>
+<div class="b" style="-webkit-border-top-left-radius:25px;-webkit-border-bottom-right-radius:25px">-webkit- corner</div>
+<div class="b" style="border:6px dashed #c33;border-radius:15px">dashed r15</div>
+<div class="b" style="border:6px dotted #c33;border-radius:15px">dotted r15</div>
+<div class="b" style="border:6px double #333;border-radius:15px">double r15</div>
+<div class="b" style="border-width:2px 10px;border-radius:20px">uneven widths</div>
+<div class="b" style="border:0;background:#486;color:#fff;border-radius:12px">no border</div>
+<div class="b" style="border:4px solid #a50;background:url(../assets/tile.png);border-radius:20px">bg image clipped</div>
+<img src="../assets/photo.png" style="border-radius:16px;border:3px solid #333;vertical-align:top">
+<span style="background:#fd0;border-radius:8px;padding:2px 8px">inline pill</span>
+</body></html>

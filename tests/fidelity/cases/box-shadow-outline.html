@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>box-shadow-outline</title>
+<style>
+body { font-family: sans-serif; font-size: 12px; } .b { display: inline-block; width: 130px; height: 50px; margin: 14px; border: 1px solid #999; background: #fff; vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="b" style="box-shadow:4px 4px 0 #888">hard 4px</div>
+<div class="b" style="box-shadow:0 0 8px #333">blur 8</div>
+<div class="b" style="box-shadow:5px 5px 10px 2px rgba(0,0,0,.5)">blur+spread</div>
+<div class="b" style="box-shadow:inset 3px 3px 6px #555">inset</div>
+<div class="b" style="box-shadow:0 0 0 4px #c33, 0 0 0 8px #fc3">two spreads</div>
+<div class="b" style="-webkit-box-shadow:3px 3px 5px #036;border-radius:12px">-webkit- radius</div>
+<div class="b" style="outline:2px solid #c00">outline solid</div>
+<div class="b" style="outline:3px dashed #080;outline-offset:4px">dashed offset 4</div>
+<div class="b" style="outline:3px dotted #00c;outline-offset:-8px">dotted offset -8</div>
+<div class="b" style="outline:4px double #333;border-radius:10px">double + radius</div>
+<p>Inline outline: <a href="#x" style="outline:1px solid #c0c">a link with an outline that spans</a>.</p>
+</body></html>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>display-misc</title>
+<style>
+body { font-family: sans-serif; font-size: 12px; }
+</style>
+</head>
+<body>
+<p>display:none → [<span style="display:none">hidden</span>] visibility:hidden → [<span style="visibility:hidden">invisible</span>]</p>
+<p><span style="display:block;background:#eef">span as block</span><div style="display:inline;background:#fee">div inline</div> <div style="display:inline;background:#efe">div inline 2</div></p>
+<div style="display:list-item;margin-left:30px">div display:list-item</div>
+<div style="display:-webkit-box;-webkit-box-orient:horizontal;width:400px;border:1px solid #999"><div style="-webkit-box-flex:1;background:#fdd">box-flex 1</div><div style="-webkit-box-flex:2;background:#dfd">box-flex 2</div><div style="width:80px;background:#ddf">80px</div></div>
+<div style="display:flex;border:1px solid #999"><div style="background:#fee">flex (ignored</div><div style="background:#efe">in 2012)</div></div>
+<div style="display:table;border-spacing:6px;background:#eee"><div style="display:table-cell;background:#fff;padding:4px">table-cell</div><div style="display:table-cell;background:#fff;padding:4px;vertical-align:middle">middle</div></div>
+<div style="display:inline-table;border:1px solid #333"><div style="display:table-row"><div style="display:table-cell">inline-table</div></div></div> after inline-table
+<div style="-webkit-transform:rotate(-5deg);width:200px;margin:20px;background:#9cf;padding:6px">-webkit-transform rotate(-5deg)</div>
+<div style="transform:rotate(20deg);width:200px;background:#fc9;padding:6px">transform (unprefixed, ignored)</div>
+<div style="-webkit-transform:scale(1.5) translate(40px,0);width:120px;background:#c9f;margin:20px 0">scale+translate</div>
+<p style="column-count:2">column-count 2 (ignored): The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+</body></html>

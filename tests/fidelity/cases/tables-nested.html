@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>tables-nested</title>
+<style>
+body { font-family: sans-serif; font-size: 12px; } .o { border: 2px solid #333; border-collapse: collapse; } .o > tbody > tr > td { border: 1px solid #333; padding: 6px; vertical-align: top; } .i { border: 1px solid #c33; margin-top: 4px; } .i td { border: 1px solid #e99; padding: 2px 4px; }
+</style>
+</head>
+<body>
+<table class="o"><tr><td>outer a<table class="i"><tr><td>inner 1</td><td>inner 2</td></tr><tr><td colspan="2">inner span</td></tr></table></td>
+<td>outer b<table class="i" style="width:100%"><tr><td>100%</td></tr></table></td></tr></table>
+<div style="float:right;width:220px;margin-left:10px"><table class="o" style="width:100%"><tr><td>table in a right float</td></tr><tr><td>row 2</td></tr></table></div>
+<p>The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+<div style="display:table;width:100%;border:1px solid #999"><div style="display:table-row"><div style="display:table-cell;padding:6px;background:#eef;width:30%">CSS table cell 30%</div><div style="display:table-cell;padding:6px">CSS table cell auto, vertical-align middle by default? no: baseline</div></div></div>
+</body></html>

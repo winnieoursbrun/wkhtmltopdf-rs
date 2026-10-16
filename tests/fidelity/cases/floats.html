@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>floats</title>
+<style>
+body { font-family: serif; font-size: 13px; } .f { background: #fde3c0; border: 1px solid #c90; margin: 2px; }
+</style>
+</head>
+<body>
+<div class="f" style="float:left;width:120px;height:80px">float left 120x80</div>
+<p>The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days. The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+<div class="f" style="float:right;width:150px">float right, auto height, some text inside it</div>
+<p>The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+<p style="clear:both;background:#efe">clear both</p>
+<div class="f" style="float:left;width:100px">L1</div><div class="f" style="float:left;width:100px">L2</div><div class="f" style="float:right;width:100px">R1</div>
+<p>Text between three floats. Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<div style="clear:left"></div>
+<div style="overflow:hidden;border:1px solid #999;padding:4px"><div class="f" style="float:left;width:80px;height:50px">BFC</div>overflow hidden contains the float and does not wrap around it beyond its border.</div>
+<div style="border:1px solid #999;margin-top:6px"><div class="f" style="float:left;width:80px;height:60px">no BFC</div>Parent does not contain the float.</div>
+<p>Image floats: <img src="../assets/photo.png" style="float:right;margin:0 0 6px 10px">The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+<div style="clear:both"></div>
+<div class="f" style="float:left;width:45%">Two columns: left 45%. Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</div><div class="f" style="float:right;width:45%">right 45%. Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs. Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</div>
+<div style="clear:both;height:1px"></div>
+</body></html>

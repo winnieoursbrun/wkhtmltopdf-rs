@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>backgrounds-gradients</title>
+<style>
+body { font-family: sans-serif; font-size: 10px; } .b { display: inline-block; width: 200px; height: 80px; margin: 5px; border: 1px solid #888; vertical-align: top; } .b span { background: rgba(255,255,255,.8); } .btn { display: inline-block; padding: 6px 14px; color: #fff; border-radius: 4px; background: #36c; background: -webkit-gradient(linear, left top, left bottom, from(#58e), to(#25a)); border: 1px solid #148; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="b" style="background:#eee;background:-webkit-linear-gradient(top, #fff, #36c)"><span>-webkit-linear-gradient(top, #fff, #36c)</span></div>
+<div class="b" style="background:#eee;background:-webkit-linear-gradient(left, #c33, #fc3)"><span>-webkit-linear-gradient(left, #c33, #fc3)</span></div>
+<div class="b" style="background:#eee;background:-webkit-linear-gradient(45deg, #036, #6cf)"><span>-webkit-linear-gradient(45deg, #036, #6cf)</span></div>
+<div class="b" style="background:#eee;background:-webkit-linear-gradient(top, #fff 0%, #ddd 50%, #999 51%, #555 100%)"><span>-webkit-linear-gradient(top, #fff 0%, #ddd 50%, #999 51%, #555 100%)</span></div>
+<div class="b" style="background:#eee;background:-webkit-linear-gradient(left, rgba(255,0,0,0), rgba(255,0,0,1))"><span>-webkit-linear-gradient(left, rgba(255,0,0,0), rgba(255,0,0,1))</span></div>
+<div class="b" style="background:#eee;background:-webkit-gradient(linear, left top, left bottom, from(#8c8), to(#262))"><span>-webkit-gradient(linear, left top, left bottom, from(#8c8), to(#262))</span></div>
+<div class="b" style="background:#eee;background:-webkit-gradient(linear, 0 0, 100% 0, from(#fff), color-stop(0.5, #f80), to(#fff))"><span>-webkit-gradient(linear, 0 0, 100% 0, from(#fff), color-stop(0.5, #f80), to(#fff))</span></div>
+<div class="b" style="background:#eee;background:-webkit-gradient(radial, 50% 50%, 0, 50% 50%, 60, from(#ff0), to(#c00))"><span>-webkit-gradient(radial, 50% 50%, 0, 50% 50%, 60, from(#ff0), to(#c00))</span></div>
+<div class="b" style="background:#eee;background:-webkit-radial-gradient(center, circle, #fff, #36c)"><span>-webkit-radial-gradient(center, circle, #fff, #36c)</span></div>
+<div class="b" style="background:#eee;background:-webkit-radial-gradient(30% 30%, ellipse cover, #fff, #090)"><span>-webkit-radial-gradient(30% 30%, ellipse cover, #fff, #090)</span></div>
+<div class="b" style="background:#eee;background:-webkit-repeating-linear-gradient(left, #eee, #eee 10px, #ccc 10px, #ccc 20px)"><span>-webkit-repeating-linear-gradient(left, #eee, #eee 10px, #ccc 10px, #ccc 20px)</span></div>
+<div class="b" style="background:#eee;background:linear-gradient(to right, #c33, #33c)"><span>linear-gradient(to right, #c33, #33c) /* unprefixed: ignored by 2012 WebKit */</span></div>
+<a class="btn">Gradient button</a>
+</body></html>

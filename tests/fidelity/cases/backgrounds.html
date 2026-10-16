@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>backgrounds</title>
+<style>
+body { font-family: sans-serif; font-size: 11px; } .b { display: inline-block; width: 150px; height: 90px; margin: 5px; border: 1px solid #888; vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="b" style="background:url(../assets/tile.png)">repeat</div>
+<div class="b" style="background:url(../assets/tile.png) repeat-x">repeat-x</div>
+<div class="b" style="background:url(../assets/tile.png) repeat-y">repeat-y</div>
+<div class="b" style="background:url(../assets/photo.png) no-repeat center">no-repeat center</div>
+<div class="b" style="background:url(../assets/bullet.png) no-repeat right bottom #ffe">no-repeat right bottom</div>
+<div class="b" style="background:url(../assets/photo.png) no-repeat 20px 10px">position 20px 10px</div>
+<div class="b" style="background:url(../assets/photo.png) no-repeat 75% 25%">position 75% 25%</div>
+<div class="b" style="background:url(../assets/photo.png) repeat; background-size: 40px 20px">size 40px 20px</div>
+<div class="b" style="background:url(../assets/photo.png) no-repeat center; background-size: cover">size cover</div>
+<div class="b" style="background:url(../assets/photo.png) no-repeat center #333; background-size: contain">size contain</div>
+<div class="b" style="background:url(../assets/photo.png) no-repeat; -webkit-background-size: 50% auto">-webkit-background-size 50%</div>
+<div class="b" style="background:url(../assets/photo.jpg)">jpg</div>
+<div class="b" style="background:url(../assets/shapes.gif) no-repeat center #eee">gif</div>
+<div class="b" style="background:url(../assets/chart.svg) no-repeat center">svg</div>
+<div class="b" style="background:url(../assets/alpha.png) #f44">alpha png on red</div>
+<div class="b" style="background:url(../assets/bullet.png) no-repeat #eef; background-origin: content-box; padding: 15px">origin content-box</div>
+<div class="b" style="background:#9cf; background-clip: padding-box; border: 8px dashed rgba(0,0,0,.4)">clip padding-box</div>
+<div class="b" style="background:rgba(0,100,200,.3)">rgba color</div>
+</body></html>

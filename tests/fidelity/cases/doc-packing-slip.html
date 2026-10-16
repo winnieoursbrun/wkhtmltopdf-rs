@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Packing slip</title>
+<style>
+body { font-family: "Courier New", Courier, monospace; font-size: 12px; }
+.hd, .addr { width: 100%; } .r { text-align: right; } h1 { margin: 0; font-family: Arial, sans-serif; letter-spacing: 3px; } h4 { margin: 0 0 4px; text-transform: uppercase; }
+.addr td { vertical-align: top; padding: 10px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+.bc { text-align: center; font-size: 10px; } .barcode { height: 50px; } .barcode span { display: inline-block; height: 50px; background: #000; margin-right: 2px; }
+.items { width: 100%; border-collapse: collapse; margin-top: 14px; } .items th { border-bottom: 2px solid #000; text-align: left; } .items td { border-bottom: 1px dashed #666; padding: 6px 2px; }
+.cb { display: inline-block; width: 12px; height: 12px; border: 1px solid #000; }
+.note { margin: 14px 0; padding: 8px; border: 1px dashed #000; } .cut { margin: 24px 0 10px; color: #666; white-space: nowrap; overflow: hidden; }
+.ret { width: 100%; } .ret td { padding: 4px; } .ret .box { border-bottom: 1px solid #000; width: 80%; height: 22px; }
+</style>
+</head>
+<body>
+<table class="hd"><tr><td><img src="../assets/logo.png" height="30"></td><td class="r"><h1>PACKING SLIP</h1>Order 58213 · 2026-10-01</td></tr></table>
+<table class="addr"><tr><td><h4>From</h4>ACME Fulfilment<br>Zone Industrielle Nord<br>69000 Lyon</td><td><h4>To</h4>Jane Doe<br>4 Industrial Way<br>Springfield, IL 62701</td><td class="bc"><div class="barcode"><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span><span style="width:1px"></span><span style="width:4px"></span><span style="width:3px"></span><span style="width:2px"></span></div>1Z 999 AA1 01 2345 6784</td></tr></table>
+<table class="items"><tr><th>✓</th><th>Item</th><th>SKU</th><th>Ordered</th><th>Shipped</th></tr>
+<tr><td><span class="cb"></span></td><td>Industrial widget</td><td>SKU-1000</td><td>1</td><td>1</td></tr>
+<tr><td><span class="cb"></span></td><td>Bracket kit</td><td>SKU-1037</td><td>2</td><td>2</td></tr>
+<tr><td><span class="cb"></span></td><td>Filter cartridge</td><td>SKU-1074</td><td>3</td><td>3</td></tr>
+<tr><td><span class="cb"></span></td><td>Manual (printed)</td><td>SKU-1111</td><td>4</td><td>4</td></tr>
+<tr><td><span class="cb"></span></td><td>Spare screws</td><td>SKU-1148</td><td>5</td><td>5</td></tr>
+</table>
+<div class="note">Gift message: <i>Happy birthday! Enjoy the new widgets.</i></div>
+<div class="cut">✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -</div>
+<h3>Returns form</h3><table class="ret"><tr><td>Reason</td><td class="box"></td></tr><tr><td>Item(s)</td><td class="box"></td></tr><tr><td>Signature</td><td class="box"></td></tr></table>
+</body></html>

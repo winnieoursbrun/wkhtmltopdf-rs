@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>fonts-webfont</title>
+<style>
+@font-face { font-family: "BrandSerif"; src: url("../../../crates/wk-fonts/fonts/DejaVuSerif.ttf") format("truetype"); font-weight: normal; }
+@font-face { font-family: "BrandSerif"; src: url("../../../crates/wk-fonts/fonts/DejaVuSerif-Bold.ttf") format("truetype"); font-weight: bold; }
+@font-face { font-family: "CodeFace"; src: url("../../../crates/wk-fonts/fonts/DejaVuSansMono.ttf"); }
+@font-face { font-family: "Missing"; src: url("../../../crates/wk-fonts/fonts/NoSuchFont.ttf"); }
+@font-face { font-family: "DejaVu Sans"; src: url("../../../crates/wk-fonts/fonts/DejaVuSerif.ttf"); }
+body { font-size: 16px; }
+.a { font-family: "BrandSerif", sans-serif; }
+.b { font-family: "CodeFace", serif; }
+.c { font-family: "Missing", monospace; }
+.d { font-family: "DejaVu Sans"; }
+</style>
+</head>
+<body>
+<p class="a">@font-face "BrandSerif" (DejaVuSerif.ttf): Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<p class="a" style="font-weight:bold">@font-face "BrandSerif" bold (DejaVuSerif-Bold.ttf): Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<p class="b">@font-face "CodeFace" (DejaVuSansMono.ttf): Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<p class="c">@font-face with a missing file, fallback monospace: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<p class="d">@font-face family "DejaVu Sans" overridden by DejaVuSerif.ttf: Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<p class="a" style="font-style:italic">BrandSerif italic (synthesised): Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+</body></html>

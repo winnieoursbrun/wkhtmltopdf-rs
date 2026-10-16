@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>tables-cells</title>
+<style>
+body { font-family: sans-serif; font-size: 12px; } .t { border-collapse: collapse; margin: 8px 0; } .t td, .t th { border: 1px solid #666; padding: 3px 8px; } caption { font-style: italic; }
+</style>
+</head>
+<body>
+<table class="t"><caption>Caption on top</caption>
+<tr><th>top</th><th>middle</th><th>bottom</th><th>baseline</th><th>tall</th></tr>
+<tr><td style="vertical-align:top">top</td><td style="vertical-align:middle">middle</td><td style="vertical-align:bottom">bottom</td>
+<td style="vertical-align:baseline"><span style="font-size:20px">Base</span>line</td><td style="height:80px">80px tall</td></tr>
+<tr><td valign="top">valign=top</td><td valign="middle">valign=middle</td><td valign="bottom">valign=bottom</td><td>default</td><td style="height:40px">40</td></tr></table>
+<table class="t" style="caption-side:bottom"><caption>Caption at the bottom</caption><tr><th style="text-align:left">th left</th><th>th default (centred)</th><th style="text-align:right">th right</th></tr>
+<tr><td>a</td><td>b</td><td>c</td></tr></table>
+<table class="t"><thead><tr><th>thead</th><th>x</th></tr></thead><tfoot><tr><td>tfoot</td><td>y</td></tr></tfoot><tbody><tr><td>tbody 1</td><td>1</td></tr><tr><td>tbody 2</td><td>2</td></tr></tbody></table>
+<table class="t"><tr><td style="padding:0"><img src="../assets/photo.png" style="display:block"></td><td><img src="../assets/photo.png"></td><td style="width:60px;overflow:hidden">image in narrow cell: <img src="../assets/photo.png"></td></tr></table>
+</body></html>

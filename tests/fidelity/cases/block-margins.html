@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>block-margins</title>
+<style>
+body { font-family: sans-serif; font-size: 13px; } .p { background: #dde8f8; margin-bottom: 12px; } .c { background: #f8d8b0; }
+</style>
+</head>
+<body>
+<div class="p"><div class="c" style="margin:20px 0">A: margin 20px (collapses with B's 30px)</div><div class="c" style="margin:30px 0 10px">B: margin 30px 0 10px</div></div>
+<div class="p"><div class="c" style="margin-top:25px">Child margin-top 25px escapes the parent (no border/padding)</div></div>
+<div class="p" style="padding-top:1px"><div class="c" style="margin-top:25px">Parent has padding-top 1px: margin stays inside</div></div>
+<div class="p"><div style="margin:15px 0"></div><div class="c">After an empty div with margins 15px (collapse through)</div></div>
+<div class="p"><div class="c" style="margin-bottom:20px">margin-bottom 20px</div><div class="c" style="margin-top:-10px">margin-top -10px</div></div>
+<div class="p"><div class="c" style="width:200px;margin:0 auto">auto margins centred, 200px</div><div class="c" style="width:200px;margin-left:auto">margin-left auto</div></div>
+<div class="p" style="overflow:hidden"><div class="c" style="margin-top:20px">overflow hidden parent: no collapse</div></div>
+<div class="c" style="margin:10px 40px 10px 10%">percent margin-left 10%, right 40px</div>
+<p style="margin:0;background:#ffd">p margin 0</p><p style="background:#ffd">p default 1em margins</p><h2 style="background:#ffd">h2 default margins</h2><p style="background:#ffd">p</p>
+</body></html>

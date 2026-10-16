@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>block-box-sizing</title>
+<style>
+body { font-family: sans-serif; font-size: 13px; } .c { background: #e4f0d0; border: 2px solid #5a7; margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="c" style="width:300px">width 300px</div>
+<div class="c" style="width:300px;padding:10px 30px;border-width:5px">width 300 + padding 30 + border 5 (content-box)</div>
+<div class="c" style="width:300px;padding:10px 30px;border-width:5px;box-sizing:border-box">same, box-sizing border-box</div>
+<div class="c" style="width:300px;padding:10px 30px;border-width:5px;-webkit-box-sizing:border-box">same, -webkit-box-sizing</div>
+<div class="c" style="width:50%">width 50%</div>
+<div class="c" style="width:80%;max-width:400px">width 80%, max-width 400px</div>
+<div class="c" style="width:100px;min-width:250px">width 100, min-width 250</div>
+<div class="c" style="height:60px">height 60px</div>
+<div class="c" style="height:30px;min-height:50px">height 30, min-height 50</div>
+<div class="c" style="padding:5% 2%">padding 5% 2% (of containing width)</div>
+<div class="c" style="width:200px;height:40px;padding:6px">fixed height with long content that overflows the box because it does not fit within forty pixels</div>
+<div style="margin-top:40px" class="c">after overflow</div>
+</body></html>

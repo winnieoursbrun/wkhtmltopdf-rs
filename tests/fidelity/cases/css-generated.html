@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>css-generated</title>
+<style>
+body { font-family: serif; font-size: 13px; counter-reset: ch; }
+h2.c { counter-increment: ch; counter-reset: sec; } h2.c:before { content: "Chapter " counter(ch) ": "; }
+h3.c { counter-increment: sec; } h3.c:before { content: counter(ch) "." counter(sec, lower-roman) " "; color: #c33; }
+.ba:before { content: "\2192  "; color: #36c; } .ba:after { content: " [end]"; font-style: italic; }
+.fl:first-letter { font-size: 32px; float: left; color: #a33; line-height: 1; margin-right: 3px; } .fl:first-line { font-weight: bold; }
+.kids li:first-child { color: #c00; } .kids li:last-child { color: #00c; } .kids li:nth-child(2n) { background: #eee; }
+.ext:after { content: " (" attr(href) ")"; font-size: 10px; }
+</style>
+</head>
+<body>
+<h2 class="c">Counters</h2><h3 class="c">First</h3><h3 class="c">Second</h3><h2 class="c">Next chapter</h2><h3 class="c">Again</h3>
+<p class="q"><q>Quoted <q>nested</q> text</q></p>
+<p class="ba">Before and after</p>
+<p class="fl">First letter and first line styling on a paragraph that is long enough to wrap: The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+<ul class="kids"><li>first-child</li><li>second</li><li>third</li><li>last-child</li></ul>
+<p><a class="ext" href="http://example.com/">link with attr(href) after</a></p>
+</body></html>

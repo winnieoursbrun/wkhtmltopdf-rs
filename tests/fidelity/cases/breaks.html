@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>breaks</title>
+<style>
+body { font-family: serif; font-size: 14px; }
+</style>
+</head>
+<body>
+<h2>Page 1</h2><p>Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<div style="page-break-after:always;background:#eef">page-break-after: always</div>
+<h2>Page 2</h2><p>Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<h2 style="page-break-before:always">page-break-before: always (page 3)</h2><p>Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<div style="break-before:page;background:#fee">break-before: page (CSS3 name: ignored in 2012?)</div>
+<p>The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to confirm its open purchase orders before the end of the month. Meanwhile the warehouse reports that shipments to the northern region were delayed by roughly two days.</p>
+<table style="width:100%"><tr><td>row 1</td></tr><tr style="page-break-before:always"><td>row with page-break-before (ignored on rows?)</td></tr></table>
+<span style="page-break-before:always">inline span with a break (ignored)</span>
+<h2 style="page-break-before:left">page-break-before: left</h2><p>Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+<h2 style="page-break-before:right">page-break-before: right</h2><p>Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs.</p>
+</body></html>

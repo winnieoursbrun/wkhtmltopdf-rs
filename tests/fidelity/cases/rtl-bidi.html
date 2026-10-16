@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>rtl-bidi</title>
+<style>
+body { font-family: sans-serif; font-size: 15px; } .box { border: 1px solid #999; width: 300px; }
+</style>
+</head>
+<body>
+<p>Mixed bidi in an LTR paragraph: English then עברית בתוך שורה then English again, and العربية مع أرقام 123.</p>
+<p dir="rtl">פסקה מימין לשמאל עם מספרים 2026 ומילה באנגלית English באמצע.</p>
+<p dir="rtl" style="text-align:left">RTL paragraph aligned left: שלום עולם</p>
+<p dir="rtl">مرحبا بالعالم، هذه فقرة باللغة العربية لاختبار تشكيل الحروف والاتجاه من اليمين إلى اليسار.</p>
+<div dir="rtl" class="box"><ul><li>פריט ראשון</li><li>פריט שני</li></ul><ol><li>אחד</li><li>שניים</li></ol></div>
+<table dir="rtl" border="1" cellpadding="4"><tr><th>שם</th><th>כמות</th><th>מחיר</th></tr><tr><td>תפוחים</td><td>3</td><td>12.50</td></tr></table>
+<p><span dir="rtl">embedded rtl span: אבג</span> after; <bdo dir="rtl">bdo override abc</bdo>; <span style="unicode-bidi:bidi-override;direction:rtl">css override 123</span></p>
+</body></html>

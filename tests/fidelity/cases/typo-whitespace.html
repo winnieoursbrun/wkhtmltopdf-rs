@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>typo-whitespace</title>
+<style>
+body { font-family: sans-serif; font-size: 13px; } .b { width: 360px; border: 1px solid #aaa; margin: 4px 0; } pre { background: #f4f4f4; }
+</style>
+</head>
+<body>
+<div class="b" style="white-space:normal">normal:    several     spaces
+and a newline	and a tab.</div>
+<div class="b" style="white-space:nowrap">nowrap: The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to</div>
+<div class="b" style="white-space:pre">pre:    several     spaces
+  indented line
+	tab-indented line</div>
+<div class="b" style="white-space:pre-wrap">pre-wrap:    keeps   spaces and wraps The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. Several invoices remain unpaid, and the accounting team has asked every department to</div>
+<div class="b" style="white-space:pre-line">pre-line:    collapses   spaces
+but keeps
+newlines</div>
+<pre>&lt;pre&gt; element
+    def f(x):
+        return x * 2   # comment</pre>
+<div class="b">Long word: Supercalifragilisticexpialidocious_and_some_more_characters_without_any_break_at_all_xxxxxxxxxxxxxxxx</div>
+<div class="b" style="word-wrap:break-word">break-word: Supercalifragilisticexpialidocious_and_some_more_characters_without_any_break_at_all_xxxxxxxxxxxxxxxx</div>
+<div class="b">Line<br>breaks<br><br>double break, then&nbsp;&nbsp;&nbsp;three nbsp, soft&shy;hyphen&shy;ated word&shy;inside</div>
+</body></html>
