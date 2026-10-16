@@ -63,6 +63,23 @@ impl ElementCx<'_, '_> {
         // control prints like an enabled one.
         let rect = self.frame.border_box;
         let origin = rect.origin();
+
+        // wkhtmltopdf-rs: with `--enable-forms` (the frame sentinel as border colour, see
+        // wk-webkit's `ua_css`) QtWebKit 2.2 does not theme the control: a checkbox is a white
+        // box and a radio a white disc, each outlined by a 0.7px black line, with no mark (the
+        // state lives in the AcroForm field).
+        let current = self.style.clone_color();
+        let top = self.style.get_border().border_top_color.resolve_to_absolute(&current).as_srgb_color();
+        if is_qt_frame_sentinel(top) {
+            let shape = match type_attr {
+                Some("radio") => kurbo::Ellipse::from_rect(rect).to_path(0.05),
+                _ => rect.to_path(0.05),
+            };
+            scene.fill(Fill::NonZero, self.transform, Color::WHITE, None, &shape);
+            scene.stroke(&Stroke::new(0.7), self.transform, QT_BLACK, None, &shape);
+            return;
+        }
+
         match type_attr {
             Some("checkbox") => {
                 let u = rect.width().min(rect.height()) / 12.0;

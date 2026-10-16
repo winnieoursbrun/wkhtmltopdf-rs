@@ -319,7 +319,12 @@ pub(crate) fn ua_css(settings: &WebSettings) -> String {
         // `elm.setStyleProperty("color", "white")` on every input and
         // textarea: text fields keep the inner-text colour computed at
         // load, so only the theme-painted marks (check, radio dot) vanish.
-        css.push_str("input[type=checkbox], input[type=radio] { color: white !important; }\n");
+        // The controls are not themed either: plain outlined boxes and discs, drawn by
+        // blitz-paint for the frame sentinel border colour (no border width).
+        css.push_str(
+            "input[type=checkbox], input[type=radio] { color: white !important; \
+             border-color: rgba(1, 2, 4, 0) !important; }\n",
+        );
     }
     css
 }
