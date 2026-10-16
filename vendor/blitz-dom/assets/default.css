@@ -507,10 +507,10 @@ strong {
 i,
 cite,
 em,
-var,
-dfn {
+var {
     font-style: italic;
 }
+/* wkhtmltopdf-rs: QtWebKit 2.2 draws <dfn> upright (reference: typo-elements). */
 
 tt,
 code,

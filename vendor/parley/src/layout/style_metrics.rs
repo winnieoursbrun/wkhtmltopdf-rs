@@ -292,8 +292,10 @@ pub(crate) fn shift_from_parent(
     let shift = match align.shift {
         BaselineShift::Length(length) => length,
         // Constants as used by WebKit and Blink.
-        BaselineShift::Sub => -(parent.font_size / 5.),
-        BaselineShift::Super => parent.font_size / 3.,
+        // wkhtmltopdf-rs: WebKit 2012 (`InlineFlowBox::verticalPosition`) shifts by
+        // `fontSize / 5 + 1` and `fontSize / 3 + 1` of the parent's whole-pixel size.
+        BaselineShift::Sub => -((parent.font_size.round() as i32 / 5 + 1) as f32),
+        BaselineShift::Super => (parent.font_size.round() as i32 / 3 + 1) as f32,
         BaselineShift::Top | BaselineShift::Bottom => 0.,
     };
     alignment + shift
