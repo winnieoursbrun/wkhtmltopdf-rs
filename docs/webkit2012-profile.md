@@ -82,6 +82,7 @@ Implementation:
 | Tab character | drawn as a space, also in `pre` | blitz-dom `layout/construct.rs` |
 | Smart shrinking width | includes text overflowing its box (`nowrap`), unless the box clips | wk-webkit `page.rs` |
 | Counters and quotes in `content` | resolved in document order; default quotes `"` then `'` | blitz-dom `generated_content.rs` |
+| `attr()` | only in `content` (the attribute's value, empty if missing); a declaration using it elsewhere is dropped | stylo `specified/counters.rs`, blitz-dom `generated_content.rs`, wk-webkit `profile.rs` |
 | List markers | WebKit 2012 numbering systems; outside disc/circle/square painted as shapes (`(a*2/3+1)/2` px, `a*2/3+7` px before the content); text markers end `a*2/3/2` px before it | blitz-dom `layout/list.rs`, blitz-paint `render.rs` |
 | Lengths from `em`, `pt`, … | whole pixels, truncated (`roundForImpreciseConversion`) | stylo_taffy `convert.rs` |
 | Auto table layout | AutoTableLayout: columns get their min width, then the rest in proportion to their max widths; fixed and percent columns first; spanning cells widen the columns under them in proportion to their max widths (`calcEffectiveLogicalWidth`); `<col>` widths count | blitz-dom `layout/table_auto.rs` |

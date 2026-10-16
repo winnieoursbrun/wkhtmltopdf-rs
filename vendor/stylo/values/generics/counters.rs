@@ -305,6 +305,9 @@ pub enum GenericContentItem<I> {
     NoOpenQuote,
     /// `no-close-quote`.
     NoCloseQuote,
+    /// wkhtmltopdf-rs: `attr(name)`, the value of an attribute of the element.
+    #[css(function)]
+    Attr(crate::OwnedStr),
     /// `-moz-alt-content`.
     #[cfg(feature = "gecko")]
     MozAltContent,

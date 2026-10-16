@@ -752,7 +752,10 @@ impl ShorthandId {
 }
 
 /// The arbitrary substitution functions we support.
-pub const ARBITRARY_SUBSTITUTION_FUNCTIONS: &[&str] = &["var", "env", "attr"];
+///
+/// wkhtmltopdf-rs: not `attr()`, which WebKit 2012 only knew in `content` (parsed there as a
+/// content item, see `specified/counters.rs`); elsewhere it leaves the declaration invalid.
+pub const ARBITRARY_SUBSTITUTION_FUNCTIONS: &[&str] = &["var", "env"];
 
 fn parse_non_custom_property_declaration_value_into(
     declarations: &mut SourcePropertyDeclaration,

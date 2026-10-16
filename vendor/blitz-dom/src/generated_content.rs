@@ -51,7 +51,8 @@ impl Counters {
         }
     }
 
-    fn text(&mut self, style: &ComputedValues) -> Option<String> {
+    /// The text of a `content` value; `attr()` reads the attributes of `element`.
+    fn text(&mut self, style: &ComputedValues, element: &crate::Node) -> Option<String> {
         let Content::Items(items) = &style.get_counters().content else { return None };
         let quotes = &style.get_list().quotes;
         let mut text = String::new();
@@ -85,6 +86,14 @@ impl Counters {
                 }
                 ContentItem::NoOpenQuote => self.quote_depth += 1,
                 ContentItem::NoCloseQuote => self.quote_depth = (self.quote_depth - 1).max(0),
+                // A missing attribute generates the empty string.
+                ContentItem::Attr(name) => {
+                    if let NodeData::Element(e) = &element.data {
+                        if let Some(a) = e.attrs().iter().find(|a| *a.name.local == **name) {
+                            text.push_str(&a.value);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -155,14 +164,14 @@ impl BaseDocument {
                 let [after, before] = pseudo_styles(doc, child);
                 if let Some(before) = before {
                     counters.apply(&before, child);
-                    if let Some(text) = counters.text(&before) {
+                    if let Some(text) = counters.text(&before, &doc.nodes[child]) {
                         out.insert((child, 1), text);
                     }
                 }
                 visit(doc, child, counters, out);
                 if let Some(after) = after {
                     counters.apply(&after, child);
-                    if let Some(text) = counters.text(&after) {
+                    if let Some(text) = counters.text(&after, &doc.nodes[child]) {
                         out.insert((child, 0), text);
                     }
                 }

@@ -194,6 +194,11 @@ impl Parse for Content {
                             let style = Content::parse_counter_style(context, input);
                             Ok(generics::ContentItem::Counters(name, separator, style))
                         }),
+                        // wkhtmltopdf-rs: `attr(name)`, resolved at box construction.
+                        "attr" if alt_start.is_none() => input.parse_nested_block(|input| {
+                            let name = input.expect_ident()?.as_ref().to_ascii_lowercase();
+                            Ok(generics::ContentItem::Attr(name.into()))
+                        }),
                         _ => {
                             use style_traits::StyleParseErrorKind;
                             return Err(ParseError::custom(

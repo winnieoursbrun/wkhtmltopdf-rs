@@ -139,6 +139,18 @@ fn counters_and_quotes() {
     assert!(text.contains("\"x 'y'\""), "{text:?}");
 }
 
+/// `attr()` in `content` reads the element's attribute, a missing one being empty (reference:
+/// css-generated); elsewhere it leaves the declaration invalid, as in WebKit 534.
+#[test]
+fn attr_in_generated_content() {
+    let r = runs(
+        r#"<style>a:after { content: " (" attr(href) ")" } p:before { content: attr(data-none) "|" }
+        p { color: attr(data-c) }</style><p><a href="http://example.com/">link</a></p>"#,
+    );
+    let text: String = r.iter().map(|r| r.text.as_str()).collect();
+    assert!(text.contains("|link (http://example.com/)"), "{text:?}");
+}
+
 /// A tab is drawn as a space, also in preformatted text (reference: typo-whitespace).
 #[test]
 fn tab_is_a_space() {

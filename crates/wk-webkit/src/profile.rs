@@ -477,7 +477,7 @@ fn declaration(name: &str, value: &str) -> Vec<(String, String)> {
         return vec![];
     }
     let keep = |n: &str, v: String| -> Vec<(String, String)> {
-        match convert_value(&v) {
+        match convert_value(&v, n.eq_ignore_ascii_case("content")) {
             Some(v) => vec![(n.to_string(), v)],
             None => vec![],
         }
@@ -562,9 +562,13 @@ fn legacy_flexbox(prop: &str, value: &str) -> Vec<(String, String)> {
 // Values
 
 /// Tokens of `value` at nesting depth 0 and inside functions are checked;
-/// `None` drops the declaration (a value QtWebKit 2.2 could not parse).
-fn convert_value(value: &str) -> Option<String> {
+/// `None` drops the declaration (a value QtWebKit 2.2 could not parse). `attr()` is only
+/// kept in `content` (`in_content`), the one property WebKit 534 parsed it in.
+fn convert_value(value: &str, in_content: bool) -> Option<String> {
     let lower = value.to_ascii_lowercase();
+    if !in_content && contains_function(&lower, "attr(") {
+        return None;
+    }
     // Functions WebKit 534 did not have.
     for f in [
         "calc(",
@@ -574,7 +578,6 @@ fn convert_value(value: &str) -> Option<String> {
         "max(",
         "clamp(",
         "env(",
-        "attr(",
         "conic-gradient(",
         "image-set(",
         "-webkit-image-set(",
