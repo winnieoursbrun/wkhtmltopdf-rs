@@ -127,6 +127,8 @@ mod tests;
 
 pub use linebender_resource_handle::FontData;
 pub use parlance::BaseDirection;
+/// wkhtmltopdf-rs: text measured in device pixels (`--zoom` × `--dpi` / 96).
+pub use parley_engine::device_px;
 pub use parley_engine::break_overrides::{
     AsciiLineBreakTable, AsciiLineBreakTableBuilder, CHROMIUM_LINE_BREAK_OVERRIDE,
     LineBreakContext, LineBreakOverrideFn,

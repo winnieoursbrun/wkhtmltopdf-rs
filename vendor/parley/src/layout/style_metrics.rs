@@ -161,7 +161,7 @@ pub(crate) fn resolve_style_metrics<B: Brush>(
                 // Rounded once from the accumulated offset (not per level) so the total error
                 // stays within half a pixel.
                 metrics.baseline_offset = if quantize {
-                    metrics.exact_baseline_offset.round()
+                    parley_engine::device_px::round(metrics.exact_baseline_offset)
                 } else {
                     metrics.exact_baseline_offset
                 };
@@ -226,7 +226,7 @@ impl BoxMetrics {
     pub(crate) fn from_font(font: &FontMetrics, line_height: f32, quantize: bool) -> Self {
         let (ascent, descent) = if quantize {
             // wkhtmltopdf-rs: ceil like QtWebKit/FreeType (see style/mod.rs).
-            (font.ascent.ceil(), font.descent.ceil())
+            (parley_engine::device_px::ceil(font.ascent), parley_engine::device_px::ceil(font.descent))
         } else {
             (font.ascent, font.descent)
         };
@@ -235,7 +235,7 @@ impl BoxMetrics {
         // (`(lineHeight - fontMetrics.height()) / 2`), truncating towards zero: a 14px line of
         // 17px-high text has its baseline 1px (not 2px) above the font's ascent.
         let over = if quantize {
-            ascent + half_leading.trunc()
+            ascent + parley_engine::device_px::trunc(half_leading)
         } else {
             ascent + half_leading
         };
@@ -261,7 +261,7 @@ impl StyleMetrics {
         Self {
             ascent: box_metrics.ascent,
             descent: box_metrics.descent,
-            x_height: if quantize { x_height.round() } else { x_height },
+            x_height: if quantize { parley_engine::device_px::round(x_height) } else { x_height },
             over: box_metrics.over,
             under: box_metrics.under,
             baseline_offset: 0.,
@@ -294,11 +294,17 @@ pub(crate) fn shift_from_parent(
         // Constants as used by WebKit and Blink.
         // wkhtmltopdf-rs: WebKit 2012 (`InlineFlowBox::verticalPosition`) shifts by
         // `fontSize / 5 + 1` and `fontSize / 3 + 1` of the parent's whole-pixel size.
-        BaselineShift::Sub => -((parent.font_size.round() as i32 / 5 + 1) as f32),
-        BaselineShift::Super => (parent.font_size.round() as i32 / 3 + 1) as f32,
+        BaselineShift::Sub => -webkit_shift(parent.font_size, 5),
+        BaselineShift::Super => webkit_shift(parent.font_size, 3),
         BaselineShift::Top | BaselineShift::Bottom => 0.,
     };
     alignment + shift
+}
+
+/// wkhtmltopdf-rs: `fontSize / divisor + 1` of a whole-device-pixel font size, in CSS px.
+fn webkit_shift(font_size: f32, divisor: i32) -> f32 {
+    let zoom = parley_engine::device_px::device_zoom();
+    ((font_size * zoom).round() as i32 / divisor + 1) as f32 / zoom
 }
 
 /// Where an in-flow [`InlineBox`] sits relative to the baseline of the independent aligned
@@ -339,7 +345,7 @@ pub(crate) fn inline_box_placement(
     InlineBoxPlacement {
         aligned_subtree_root: parent.aligned_subtree_root,
         baseline_offset: if quantize {
-            baseline_offset.round()
+            parley_engine::device_px::round(baseline_offset)
         } else {
             baseline_offset
         },

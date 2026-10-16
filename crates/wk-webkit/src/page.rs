@@ -344,6 +344,14 @@ fn device_zoom(settings: &WebSettings) -> f32 {
     zoom * dpi as f32 / 96.0
 }
 
+/// Lay out the next pages in device pixels ([`device_zoom`]): lengths, font sizes and borders
+/// (blitz-dom, stylo-taffy) and text measurement (parley).
+fn set_device_zoom(settings: &WebSettings) {
+    let zoom = device_zoom(settings);
+    blitz_dom::set_device_zoom(zoom);
+    parley::device_px::set_device_zoom(zoom);
+}
+
 /// One resource request found in document order.
 struct Unit {
     url: Url,
@@ -372,7 +380,7 @@ impl WebPage {
         fetcher: &mut dyn Fetcher,
     ) -> WebPage {
         crate::profile::install();
-        blitz_dom::set_device_zoom(device_zoom(&settings));
+        set_device_zoom(&settings);
         style::properties::cascade::set_minimum_font_size(settings.minimum_font_size as f32);
         let (vw, vh) = settings.viewport.unwrap_or((0, 0));
         crate::profile::set_media_viewport(vw as f32, vh as f32);
@@ -655,7 +663,7 @@ impl WebPage {
         let mut page_h = vh * zoom;
         crate::timing("render start");
         self.undo_viewport_shifts();
-        blitz_dom::set_device_zoom(device_zoom(&self.settings));
+        set_device_zoom(&self.settings);
         self.qt_selects();
         self.qt_widgets();
         self.inline_edges();

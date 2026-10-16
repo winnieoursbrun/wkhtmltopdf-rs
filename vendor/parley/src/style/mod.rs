@@ -98,7 +98,8 @@ impl LineHeight {
             Self::FontSizeRelative(value) => value * font_size,
             Self::MetricsRelative(value) if quantize => {
                 // wkhtmltopdf-rs: QtWebKit/FreeType rounds ascent and descent up (ceil), not to nearest.
-                (metrics.ascent.ceil() + metrics.descent.ceil() + metrics.leading.round()) * value
+                (parley_engine::device_px::ceil(metrics.ascent) + parley_engine::device_px::ceil(metrics.descent) + parley_engine::device_px::round(metrics.leading))
+                    * value
             }
             Self::MetricsRelative(value) => {
                 (metrics.ascent + metrics.descent + metrics.leading) * value

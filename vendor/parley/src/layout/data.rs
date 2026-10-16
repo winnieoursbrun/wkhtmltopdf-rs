@@ -456,7 +456,7 @@ impl ContentWidthsMeasurer {
     #[inline(always)]
     fn end_word(&mut self) {
         if self.word_advance != 0.0 {
-            self.running_max_width += self.word_advance.round();
+            self.running_max_width += parley_engine::device_px::round(self.word_advance);
             self.word_advance = 0.0;
         }
     }
@@ -671,7 +671,7 @@ impl ContentWidthsMeasurer {
                 self.word_advance += unrounded;
             } else {
                 self.end_word();
-                self.running_max_width += unrounded.round();
+                self.running_max_width += parley_engine::device_px::round(unrounded);
             }
 
             // A cluster hangs if all of its characters hang. Its first character is checked via the

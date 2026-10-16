@@ -490,7 +490,7 @@ impl LineBoxMetrics {
     /// Add an inline box with `vertical-align: top | bottom`, which only constrains the line
     /// box's height.
     fn add_line_relative_inline_box(&mut self, align: VerticalAlign, height: f32, quantize: bool) {
-        let height = if quantize { height.round() } else { height };
+        let height = if quantize { parley_engine::device_px::round(height) } else { height };
         if height > 0. {
             self.has_content = true;
         }
@@ -1579,7 +1579,7 @@ impl<'a, B: Brush> BreakLines<'a, B> {
                 BaselineShift::Bottom => extents.under - line_box_extents.under,
                 _ => line_box_extents.over - extents.over,
             };
-            let offset = if quantize { offset.round() } else { offset };
+            let offset = if quantize { parley_engine::device_px::round(offset) } else { offset };
             offsets.push(AlignedSubtreeOffset {
                 root: subtree.root,
                 baseline_offset: offset,
@@ -1604,7 +1604,7 @@ impl<'a, B: Brush> BreakLines<'a, B> {
         }
 
         let top = if quantize {
-            self.state.line_y.round() as f32
+            parley_engine::device_px::round(self.state.line_y as f32)
         } else {
             self.state.line_y as f32
         };
@@ -1617,7 +1617,7 @@ impl<'a, B: Brush> BreakLines<'a, B> {
             // ```
             // (self.state.line_y as f32 + self.state.line.box_metrics.line_height()).round()
             // ```
-            (line.metrics.baseline + line_box_extents.under).round()
+            parley_engine::device_px::round(line.metrics.baseline + line_box_extents.under)
         } else {
             line.metrics.baseline + line_box_extents.under
         };

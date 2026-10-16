@@ -236,18 +236,18 @@ pub(crate) fn text_box_correction(
             if c.whitespace() == Whitespace::None {
                 // A break opportunity (after `-`) ends a word too.
                 if c.is_soft_wrap_opportunity_before() {
-                    width += word.round();
+                    width += parley_engine::device_px::round(word);
                     word = 0.0;
                 }
                 word += unrounded;
             } else {
-                width += word.round() + unrounded.round();
+                width += parley_engine::device_px::round(word) + parley_engine::device_px::round(unrounded);
                 word = 0.0;
             }
         }
-        width + word.round()
+        width + parley_engine::device_px::round(word)
     } else {
-        g.iter().map(|c| c.advance - c.paint_delta).sum::<f32>().round()
+        parley_engine::device_px::round(g.iter().map(|c| c.advance - c.paint_delta).sum::<f32>())
     };
     laid_out - target
 }

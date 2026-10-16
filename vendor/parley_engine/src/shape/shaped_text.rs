@@ -10,7 +10,7 @@ use parlance::{BidiLevel, NormalizedCoord};
 use skrifa::MetadataProvider;
 
 use crate::{
-    CharInfo, FontInstance, Glyph,
+    CharInfo, FontInstance, Glyph, device_px,
     itemize::{Segment, TextRange},
 };
 
@@ -572,9 +572,10 @@ fn process_shaped_clusters<'a>(
             advance: match nominal(glyph_info.glyph_id) {
                 Some(n) => {
                     let kern = (glyph_pos.x_advance as f32 - n) * scale_factor;
-                    (n * scale_factor * 64.).floor() / 64. + (kern + 0.5).floor()
+                    device_px::floor_26_6(n * scale_factor)
+                        + device_px::floor(kern + 0.5 / device_px::device_zoom())
                 }
-                None => ((glyph_pos.x_advance as f32) * scale_factor * 64.).floor() / 64.,
+                None => device_px::floor_26_6((glyph_pos.x_advance as f32) * scale_factor),
             },
         };
         if cluster.glyphs == 0 && glyph.x == 0. && glyph.y == 0. {
@@ -625,12 +626,12 @@ fn round_words_like_qtwebkit(clusters: &mut [ShapedCluster], characters: &[Chara
     ) {
         match (last_space, last_word) {
             (Some(s), Some(w)) => {
-                let word_px = word.round();
+                let word_px = device_px::round(word);
                 adjust(&mut clusters[w], word_px - word);
-                adjust(&mut clusters[s], (spaces + word).round() - word_px - spaces);
+                adjust(&mut clusters[s], device_px::round(spaces + word) - word_px - spaces);
             }
-            (None, Some(w)) => adjust(&mut clusters[w], word.round() - word),
-            (Some(s), None) => adjust(&mut clusters[s], spaces.round() - spaces),
+            (None, Some(w)) => adjust(&mut clusters[w], device_px::round(word) - word),
+            (Some(s), None) => adjust(&mut clusters[s], device_px::round(spaces) - spaces),
             (None, None) => {}
         }
     }
