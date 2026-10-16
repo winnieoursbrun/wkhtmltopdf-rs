@@ -90,9 +90,45 @@ pub fn length_percentage(val: &stylo::LengthPercentage) -> taffy::LengthPercenta
             // SAFETY: calc is a valid value for LengthPercentage
             unsafe { taffy::LengthPercentage::from_raw(val) }
         }
-        stylo::UnpackedLengthPercentage::Length(len) => length(webkit_int(len.px())),
+        stylo::UnpackedLengthPercentage::Length(len) => length(webkit_int_zoomed(len.px())),
         stylo::UnpackedLengthPercentage::Percentage(percentage) => percent(percentage.0),
     }
+}
+
+/// wkhtmltopdf-rs: device pixels per CSS px of the page being laid out: QtWebKit 2.2 sets
+/// the frame's zoom factor to `--zoom` × `--dpi` / 96 and lays out in whole device pixels,
+/// so lengths, font sizes and border widths are rounded at that scale. 1 by default.
+static DEVICE_ZOOM: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// Set the device zoom ([`device_zoom`]) for the next layouts.
+pub fn set_device_zoom(zoom: f32) {
+    let zoom = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
+    DEVICE_ZOOM.store(zoom.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Device pixels per CSS px: `--zoom` × `--dpi` / 96 ([`set_device_zoom`]).
+#[inline]
+pub fn device_zoom() -> f32 {
+    f32::from_bits(DEVICE_ZOOM.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// `px` CSS pixels rounded like [`webkit_int`] in device pixels, back in CSS pixels.
+#[inline]
+pub fn webkit_int_zoomed(px: f32) -> f32 {
+    let z = device_zoom();
+    if z == 1.0 { webkit_int(px) } else { webkit_int(px * z) / z }
+}
+
+/// A border width as QtWebKit 2.2 zooms it: whole device pixels, truncated, but at least
+/// one for a non-zero width (a 1px border stays visible below zoom 1).
+#[inline]
+pub fn webkit_border_width(px: f32) -> f32 {
+    let z = device_zoom();
+    if z == 1.0 || px <= 0.0 {
+        return px;
+    }
+    let d = px * z;
+    (if d < 1.0 { 1.0 } else { (d + 1e-3).floor() }) / z
 }
 
 /// wkhtmltopdf-rs: QtWebKit 2.2 lays out in whole pixels. A length computed
@@ -202,7 +238,7 @@ pub fn border(
     if style.none_or_hidden() {
         return taffy::style_helpers::zero();
     }
-    taffy::style_helpers::length(width.0.to_f32_px())
+    taffy::style_helpers::length(webkit_border_width(width.0.to_f32_px()))
 }
 
 #[inline]

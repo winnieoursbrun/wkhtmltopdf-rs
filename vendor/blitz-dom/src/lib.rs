@@ -107,6 +107,8 @@ pub use markup5ever::{
 pub use mutator::DocumentMutator;
 pub use node::{Attribute, DocumentData, ElementData, Node, NodeData, TextNodeData};
 pub use parley::FontContext;
+/// wkhtmltopdf-rs: rounding in device pixels (`--zoom` × `--dpi` / 96).
+pub use stylo_taffy::convert::{device_zoom, set_device_zoom, webkit_border_width};
 pub use scrolling::{ScrollBehavior, ScrollLogicalPosition};
 pub use tree::NodeTree;
 

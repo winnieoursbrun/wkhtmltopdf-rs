@@ -52,6 +52,10 @@ pub struct WebSettings {
     pub user_style_sheet: Option<String>,
     /// `--zoom`.
     pub zoom: f32,
+    /// `--dpi` (the printer resolution): QtWebKit zooms the frame by `dpi / 96` on top of
+    /// `--zoom` and lays out in those device pixels; the page scale does not change, the
+    /// rounding of lengths, font sizes and borders does.
+    pub dpi: i32,
     /// Smart shrinking (`--enable/disable-smart-shrinking`).
     pub smart_shrinking: bool,
     /// `--viewport-size`: what media queries see (0×0 when unset).
@@ -89,6 +93,7 @@ impl Default for WebSettings {
             default_encoding: String::new(),
             user_style_sheet: None,
             zoom: 1.0,
+            dpi: 96,
             smart_shrinking: true,
             viewport: None,
             javascript_delay: 200,
@@ -324,6 +329,13 @@ fn print_viewport(settings: &WebSettings, printable_w_pt: f32, printable_h_pt: f
     ((base_w * min_shrink).round().max(1.0), (base_h * min_shrink).round().max(1.0))
 }
 
+/// Device pixels per CSS px: `--zoom` × `--dpi` / 96 (QtWebKit's frame zoom factor).
+fn device_zoom(settings: &WebSettings) -> f32 {
+    let zoom = if settings.zoom > 0.0 { settings.zoom } else { 1.0 };
+    let dpi = if settings.dpi > 0 { settings.dpi } else { 96 };
+    zoom * dpi as f32 / 96.0
+}
+
 /// One resource request found in document order.
 struct Unit {
     url: Url,
@@ -352,6 +364,7 @@ impl WebPage {
         fetcher: &mut dyn Fetcher,
     ) -> WebPage {
         crate::profile::install();
+        blitz_dom::set_device_zoom(device_zoom(&settings));
         style::properties::cascade::set_minimum_font_size(settings.minimum_font_size as f32);
         let (vw, vh) = settings.viewport.unwrap_or((0, 0));
         crate::profile::set_media_viewport(vw as f32, vh as f32);
@@ -629,6 +642,7 @@ impl WebPage {
         let base_w = printable_w_pt / 0.75 / zoom;
         crate::timing("render start");
         self.undo_viewport_shifts();
+        blitz_dom::set_device_zoom(device_zoom(&self.settings));
         self.qt_selects();
         self.qt_widgets();
         self.inline_edges();

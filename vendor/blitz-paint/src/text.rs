@@ -89,18 +89,25 @@ pub(crate) fn draw_inline_backgrounds<'a>(
                           metrics: Option<(f64, f64, f64)>| {
             let mut chain = Vec::new();
             let mut cur = Some(id);
+            // Up to the inline root, or to the first box that is not inline (the root of an
+            // anonymous block is not the parent of its inline content).
             while let Some(c) = cur {
                 if c == inline_root_id {
                     break;
                 }
                 let Some(node) = doc.get_node(c) else { break };
                 if node.is_element() {
+                    let inline = node.primary_styles().is_some_and(|s| {
+                        let d = s.get_box().display;
+                        d.outside() == style::values::specified::box_::DisplayOutside::Inline
+                            && d.inside() == style::values::specified::box_::DisplayInside::Flow
+                    });
+                    if !inline {
+                        break;
+                    }
                     chain.push(c);
                 }
                 cur = node.parent;
-            }
-            if cur != Some(inline_root_id) {
-                return;
             }
             let depth = chain.len();
             for (k, &c) in chain.iter().enumerate() {
@@ -201,7 +208,7 @@ pub(crate) fn draw_inline_backgrounds<'a>(
             let border = styles.get_border();
             let side = |w: &style::values::computed::BorderSideWidth,
                         st: style::values::specified::border::BorderStyle| {
-                if st.none_or_hidden() { 0.0 } else { w.0.to_f64_px() }
+                if st.none_or_hidden() { 0.0 } else { f64::from(blitz_dom::webkit_border_width(w.0.to_f32_px())) }
             };
             let (bt, bb) = (
                 side(&border.border_top_width, border.border_top_style),

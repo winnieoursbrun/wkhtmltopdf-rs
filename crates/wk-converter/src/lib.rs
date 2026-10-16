@@ -194,6 +194,7 @@ fn web_settings(
     kind: PageKind,
     viewport: Option<(u32, u32)>,
     print_area: Option<(f32, f32)>,
+    dpi: i32,
 ) -> WebSettings {
     let main = kind.is_main_loader();
     WebSettings {
@@ -206,6 +207,7 @@ fn web_settings(
         default_encoding: o.web.default_encoding.clone(),
         user_style_sheet: user_css,
         zoom: o.load.zoom_factor,
+        dpi,
         smart_shrinking: o.web.enable_intelligent_shrinking,
         produce_forms: o.produce_forms,
         javascript_delay: o.load.jsdelay.max(0) as u32,
@@ -406,6 +408,7 @@ impl Converter<'_, '_> {
                     kind,
                     viewport_size(&self.g.viewport_size),
                     self.print_area,
+                    self.g.dpi,
                 );
                 let fonts = self.fonts.clone();
                 let mut f =
@@ -429,6 +432,7 @@ impl Converter<'_, '_> {
                 kind,
                 viewport_size(&self.g.viewport_size),
                 self.print_area,
+                self.g.dpi,
             );
             let page = {
                 let fonts = self.fonts.clone();

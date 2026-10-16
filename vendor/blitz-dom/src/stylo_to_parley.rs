@@ -418,6 +418,9 @@ pub(crate) fn style(
 
     // Convert font size and line height
     let font_size = font_styles.font_size.used_size.0.px();
+    // wkhtmltopdf-rs: sizes are rounded in device pixels (`--zoom` × `--dpi` / 96).
+    let zoom = stylo_taffy::convert::device_zoom();
+    let rounded_size = (font_size * zoom).round() / zoom;
     let line_height = match font_styles.line_height {
         stylo::LineHeight::Normal => parley::LineHeight::NORMAL,
         // wkhtmltopdf-rs: QtWebKit 2.2 resolves a number against the font
@@ -425,7 +428,7 @@ pub(crate) fn style(
         // (`RenderStyle::computedLineHeight` on an integer `fontSize()`), so
         // `line-height: 1.4` on 11pt (14.67px) text is 21px, not 20.53px.
         stylo::LineHeight::Number(num) => {
-            parley::LineHeight::Absolute((num.0 * font_size.round()).trunc())
+            parley::LineHeight::Absolute((num.0 * (font_size * zoom).round()).trunc() / zoom)
         }
         // wkhtmltopdf-rs: lengths and percentages are whole pixels, truncated (`1.3em` on
         // 13px text is 16px, `150%` is 13 * 150 / 100 = 19px).
@@ -529,7 +532,7 @@ pub(crate) fn style(
         // size rounded to whole pixels (`FontDescription::computedPixelSize`),
         // so 11pt (14.67px) text is set at 15px. Lengths in `em` keep using the
         // unrounded size, as in WebKit.
-        font_size: font_size.round(),
+        font_size: rounded_size,
         font_width,
         font_style,
         font_weight,
