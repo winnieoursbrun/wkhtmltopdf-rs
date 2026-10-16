@@ -65,6 +65,10 @@ Implementation:
 | Glyph advances | linear (unhinted) advances in 26.6 fixed point, truncated | parley_engine `shaped_text.rs` |
 | Kerning, ligatures | none in measurement (the simple text path adds advances) | blitz-dom `stylo_to_parley.rs` |
 | Word widths | the line breaker measures "spaces + word" segments, each a whole number of pixels (`QFontMetrics::width`) | parley_engine `shaped_text.rs` |
+| Painted glyph positions | the unrounded advances from the text box's laid-out start (the segment rounding only moves the following boxes) | parley_engine `ShapedCluster::paint_delta`, `atom.rs` |
+| Alignment and justification | free space from the line's text box widths, each the rounded sum of its unrounded advances | parley `alignment.rs` |
+| `letter-spacing`, `word-spacing` | integers, truncated (`computeLength<int>`): 0.5px is 0, 0.2em on 14px is 2px | blitz-dom `stylo_to_parley.rs` |
+| Unknown family with no generic fallback (`Arial`) | the default face, with the run's own weight and style | parley `shape/mod.rs` (last-resort font per attributes) |
 | `line-height: <number>` | `trunc(number × rounded font size)` | blitz-dom `stylo_to_parley.rs` |
 | `line-height: normal` | ascent and descent each rounded up | parley (P2a) |
 | Lengths from `em`, `pt`, … | whole pixels, truncated (`roundForImpreciseConversion`) | stylo_taffy `convert.rs` |

@@ -169,6 +169,11 @@ pub struct ShapedCluster {
 
     /// Advance width for this cluster
     pub advance: f32,
+
+    /// wkhtmltopdf-rs: the part of [`Self::advance`] added to make a measured word segment a
+    /// whole number of pixels (`round_words_like_qtwebkit`). It counts for layout, not for
+    /// painting: QtWebKit draws a text box's glyphs at their unrounded advances.
+    pub paint_delta: f32,
 }
 
 impl ShapedCluster {

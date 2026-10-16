@@ -148,7 +148,9 @@ impl<'a> ShapedSlice<'a> {
                     id: shaped_cluster.glyph_offset,
                     x: 0.,
                     y: 0.,
-                    advance: shaped_cluster.advance,
+                    // wkhtmltopdf-rs: the painted advance, without the whole-pixel rounding
+                    // of the measured word (see `ShapedCluster::paint_delta`).
+                    advance: shaped_cluster.advance - shaped_cluster.paint_delta,
                 }),
                 stored: [].iter(),
             }

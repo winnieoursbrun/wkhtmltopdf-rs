@@ -75,8 +75,42 @@ pub(crate) fn align<B: Brush>(
 
     let is_rtl = layout.base_level.is_rtl();
 
+    // wkhtmltopdf-rs: QtWebKit 2.2 aligns and justifies a line with the widths of its text
+    // boxes, each the rounded sum of its glyphs' unrounded advances (`QFontMetrics::width` of
+    // the box's text), not with the sum of the rounded word segments the line breaker measured
+    // (see `ShapedCluster::paint_delta`). The difference per line, laid-out minus box widths:
+    let box_corrections: alloc::vec::Vec<f32> = layout
+        .lines
+        .iter()
+        .map(|line| {
+            let clusters = layout.shaped_text.shaped_clusters();
+            let mut correction = 0.0;
+            for item in &layout.line_items[line.item_range.clone()] {
+                if item.kind != super::data::LayoutItemKind::TextRun {
+                    continue;
+                }
+                let range = item.shaped_cluster_range.start as usize..item.shaped_cluster_range.end as usize;
+                let Some(item_clusters) = clusters.get(range) else { continue };
+                // Trailing whitespace hangs: it is not part of the aligned width.
+                let end = item_clusters
+                    .iter()
+                    .rposition(|c| c.whitespace() == parley_engine::shape::Whitespace::None)
+                    .map_or(0, |i| i + 1);
+                let (mut laid_out, mut delta) = (0.0f32, 0.0f32);
+                for c in &item_clusters[..end] {
+                    laid_out += c.advance;
+                    delta += c.paint_delta;
+                }
+                if delta != 0.0 {
+                    correction += laid_out - (laid_out - delta).round();
+                }
+            }
+            correction
+        })
+        .collect();
+
     // Apply alignment to line items
-    for line in &mut layout.lines {
+    for (line, box_correction) in layout.lines.iter_mut().zip(box_corrections) {
         line.justification.amount_per_opportunity = 0.;
 
         let indent = line.metrics.indent;
@@ -93,6 +127,7 @@ pub(crate) fn align<B: Brush>(
         // Compute free space.
         let line_width = line.metrics.inline_max_coord - line.metrics.inline_min_coord;
         let free_space = line_width - indent - line.metrics.advance + line.metrics.hanging_advance;
+        let free_space = if free_space > 0.0 { free_space + box_correction } else { free_space };
 
         if !options.align_when_overflowing && free_space <= 0.0 {
             if is_rtl {

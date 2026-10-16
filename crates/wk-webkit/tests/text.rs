@@ -60,3 +60,21 @@ fn unknown_family_after_bold_run_is_regular() {
     assert!(bold.iter().all(|r| r.face == "DejaVuSans-Bold.ttf"), "{r:?}");
     assert!(regular.iter().all(|r| r.face == "DejaVuSans.ttf"), "{r:?}");
 }
+
+/// Glyphs are painted at their unrounded (26.6 truncated) advances from the start of the text
+/// box, although the line breaker measured each "spaces + word" segment as whole pixels: in
+/// DejaVu Sans 14px, `k` is 8.09375px and the space 4.4375px, so the second word starts at
+/// 20.625px (not at round(16.1875) + 4.4375 = 20.4375px).
+#[test]
+fn glyphs_are_painted_at_unrounded_advances() {
+    let r = runs(r#"<p style="font: 14px sans-serif">kk kk</p>"#);
+    let run = r.iter().find(|r| r.text.starts_with("kk")).expect("run");
+    let x0 = run.xs[0];
+    let xs: Vec<f32> = run.xs.iter().map(|x| x - x0).collect();
+    let k = 8.09375f32;
+    let expected = [0.0, k, 2.0 * k, 2.0 * k + 4.4375, 3.0 * k + 4.4375];
+    assert_eq!(xs.len(), expected.len(), "{xs:?}");
+    for (got, want) in xs.iter().zip(expected) {
+        assert!((got - want).abs() < 0.01, "{xs:?} != {expected:?}");
+    }
+}
