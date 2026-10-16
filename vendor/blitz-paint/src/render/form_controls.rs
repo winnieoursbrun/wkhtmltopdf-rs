@@ -23,6 +23,14 @@ fn is_qt_bevel_sentinel(c: Color) -> bool {
     (c.r, c.g, c.b, c.a) == (1, 2, 3, 0)
 }
 
+/// The border colour the user-agent style sheet gives text fields, text areas and list
+/// boxes (`rgba(1, 2, 4, 0)`): their 1px border is drawn as Qt's frame
+/// ([`ElementCx::draw_qt_button_bevel`]).
+fn is_qt_frame_sentinel(c: Color) -> bool {
+    let c = c.to_rgba8();
+    (c.r, c.g, c.b, c.a) == (1, 2, 4, 0)
+}
+
 impl ElementCx<'_, '_> {
     /// Fill `rect` given in units of `unit` css px from `origin`.
     fn fill_units(&self, scene: &mut impl PaintScene, origin: Point, unit: f64, color: Color, r: Rect) {
@@ -168,11 +176,18 @@ impl ElementCx<'_, '_> {
     /// 1px, as QWindowsStyle prints it (measured on the 0.12.6 binary).
     pub(super) fn draw_qt_button_bevel(&self, scene: &mut impl PaintScene) {
         let border = self.style.get_border();
-        if self.node.final_layout().border.top < 2.0 {
+        if self.node.final_layout().border.top < 1.0 {
             return;
         }
         let current = self.style.clone_color();
         let top = border.border_top_color.resolve_to_absolute(&current).as_srgb_color();
+        if is_qt_frame_sentinel(top) {
+            // A text field's frame as QtWebKit 2.2 prints it: a black line 0.7px wide on the
+            // border box's edge (measured on the 0.12.6 binary).
+            let r = self.frame.border_box;
+            scene.stroke(&Stroke::new(0.7), self.transform, QT_BLACK, None, &r);
+            return;
+        }
         if !is_qt_bevel_sentinel(top) {
             return;
         }

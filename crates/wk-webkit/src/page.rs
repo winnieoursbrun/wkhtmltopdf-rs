@@ -267,7 +267,8 @@ fn tag(node: &Node) -> &str {
 /// Form controls as QtWebKit 2.2 draws them with Qt's default style
 /// (measured on the 0.12.6 binary, tests/parts/forms and tests/fidelity/forms-*): text
 /// fields and textareas inherit the font, have a 1 px black frame on white and a 1 px
-/// side inset, their text #545454 when disabled and a placeholder in #a9a9a9; the input
+/// side inset (the frame a 0.7px line on the border box edge, drawn by blitz-paint in place
+/// of the `rgba(1, 2, 4, 0)` border), their text #545454 when disabled and a placeholder in #a9a9a9; the input
 /// types QtWebKit 2.2 had no widget for (color, date and time) are text fields;
 /// checkboxes are 13 px and radios 12 px; push buttons use the default sans-serif face on
 /// Qt's button grey, inside a 2px raised bevel (drawn by blitz-paint in place of the
@@ -278,7 +279,7 @@ input:not([type]), input[type=text], input[type=password], input[type=search], i
 input[type=url], input[type=tel], input[type=number], input[type=color], input[type=date], \
 input[type=datetime], input[type=datetime-local], input[type=month], input[type=week], \
 input[type=time], textarea { font: inherit; color: black; \
-border: 1px solid black; padding: 0 1px; margin: 2px; background-color: white; line-height: normal; }
+border: 1px solid rgba(1, 2, 4, 0); padding: 0 1px; margin: 2px; background-color: white; line-height: normal; }
 textarea { padding: 0; }
 input[placeholder]:not([placeholder=\"\"]):not([value]), input[placeholder]:not([placeholder=\"\"])[value=\"\"] { color: #a9a9a9; }
 input[type=number] { margin-right: 5px; }
@@ -883,7 +884,8 @@ impl WebPage {
                 // A list box has a plain 1px black frame. QtWebKit puts its baseline 7px above
                 // its bottom margin edge (RenderListBox's baselineAdjustment): the last row's
                 // baseline with 13px text. Here the box has no baseline (it sits on it).
-                outer_style.push_str("overflow:hidden;vertical-align:-7px;border:1px solid black;");
+                outer_style
+                    .push_str("overflow:hidden;vertical-align:-7px;border:1px solid rgba(1, 2, 4, 0);");
             }
             let mut kept = Vec::new();
             for a in s.attrs {
