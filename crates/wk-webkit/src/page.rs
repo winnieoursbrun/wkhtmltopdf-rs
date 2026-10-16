@@ -272,7 +272,7 @@ fn tag(node: &Node) -> &str {
 /// side inset (the frame a 0.7px line on the border box edge, drawn by blitz-paint in place
 /// of the `rgba(1, 2, 4, 0)` border), their text #545454 when disabled and a placeholder in #a9a9a9; the input
 /// types QtWebKit 2.2 had no widget for (color, date and time) are text fields;
-/// checkboxes are 13 px and radios 12 px; push buttons use the default sans-serif face on
+/// checkboxes are 13 px and radios 12 px, both with 3 px margins; push buttons use the default sans-serif face on
 /// Qt's button grey, inside a 2px raised bevel (drawn by blitz-paint in place of the
 /// `rgba(1, 2, 3, 0)` border), with #808080 text when disabled. Text field and textarea
 /// widths come from `size`/`cols` (blitz-dom layout).
@@ -289,7 +289,7 @@ input:disabled:not([type=checkbox]):not([type=radio]):not([type=submit]):not([ty
 textarea:disabled { color: #545454; }
 input[type=checkbox], input[type=radio] { width: 13px; height: 13px; border: none; padding: 0; \
 margin: 3px; color: black; }
-input[type=radio] { width: 12px; height: 12px; margin: 3px 3px 0; }
+input[type=radio] { width: 12px; height: 12px; margin: 3px; }
 input[type=submit], input[type=reset], input[type=button], button { font: inherit; \
 font-family: sans-serif; color: black; background-color: #d4d0c8; border: 2px solid rgba(1, 2, 3, 0); \
 border-radius: 0; padding: 4px; margin: 2px; }
@@ -814,7 +814,8 @@ impl WebPage {
     /// `<select>` as QtWebKit 2.2 paints it with Qt's default (Windows) style, measured on the
     /// 0.12.6 binary: a combo box is a 2px sunken frame (#6a6864 and black above and left,
     /// white and #d4d0c8 below and right) around a white field holding the selected option
-    /// (2px left padding, as wide as the widest option plus 4px) and a 16px raised button
+    /// (17px high, the widest option with 2px of padding on the left and 22px on the right,
+    /// measured with tests/fidelity probes) and a 16px raised button
     /// with a 7px black arrow; a list box (`multiple` or `size` > 1) shows its options one per
     /// line, the selected ones in white on navy, beside a 16px scroll bar, at least 4 rows.
     /// blitz-dom has no select layout: each one is rebuilt here as nested spans (the hidden
@@ -957,7 +958,7 @@ impl WebPage {
                 children.push(button(&mut m, "top:0;right:0;bottom:0;", true, true));
                 let style = format!(
                     "display:block;position:relative;overflow:hidden;background-color:white;\
-                     padding:1px 20px 1px 2px;{SUNKEN_IN}"
+                     padding:0 22px 0 2px;{SUNKEN_IN}"
                 );
                 el(&mut m, style, &children)
             };
