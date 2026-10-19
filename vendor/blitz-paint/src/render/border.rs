@@ -51,21 +51,6 @@ fn grooved_edge_colors(color: Color, edge: Edge, ridge: bool) -> (Color, Color) 
     (outer, inner)
 }
 
-/// The `(dash, gap)` lengths of a dashed border, as multiples of the border
-/// thickness.
-///
-/// Matches Chrome: borders that are at least 3px use a 2:1 dash-to-gap ratio,
-/// while thinner borders use longer dashes and gaps (3:2) so they still read as
-/// dashes rather than dots or a solid line. `thickness` and `scale` are in device
-/// pixels; the 3px threshold is applied in CSS pixels.
-fn dashed_ratios(thickness: f64, scale: f64) -> (f64, f64) {
-    if thickness >= 3.0 * scale {
-        (2.0, 1.0)
-    } else {
-        (3.0, 2.0)
-    }
-}
-
 /// Return `count` points spaced `spacing` apart (by arc length) along `path`,
 /// starting at its beginning. Used to place dots along a rounded border.
 fn sample_points_along_path(path: &BezPath, spacing: f64, count: usize) -> Vec<Point> {
@@ -424,89 +409,44 @@ fn qt_dashed_side(
 
 impl ElementCx<'_, '_> {
 
-    /// Draw a single `dashed` border edge.
-    ///
-    /// The dashes are produced by stroking the centre line of the border with a
-    /// dash pattern (butt caps give them flat, square ends). Everything is clipped
-    /// to the edge's region (the same trapezoid used by the solid path) so corners
-    /// are mitred, adjacent edges of different colors don't overlap, and any
-    /// border-radius is respected.
+    /// A `dashed` edge of a box with rounded corners as QtWebKit 2.2 paints it
+    /// (`RenderBoxModelObject::drawBoxSideFromPath`): the whole outer border path, from the
+    /// end of the top-left corner clockwise, is stroked `2.2 * thickness` wide (half of it
+    /// falls outside the box and is clipped off, with the inside of the padding box), dashed
+    /// `3 * thickness` with gaps as long, widened when an odd, fractional number of dashes
+    /// would fit, and the pattern starting with a gap. Qt squares the dashes' ends, which
+    /// lengthens each dash by the stroke's half-width on both sides (so that a `dotted`
+    /// rounded border, dashed by its thickness, prints solid).
     fn draw_dashed_border_edge(&self, scene: &mut impl PaintScene, edge: Edge, color: Color) {
         let thickness = self.edge_width(edge);
         if thickness <= 0.0 {
             return;
         }
-
-        let (dash_ratio, gap_ratio) = dashed_ratios(thickness, self.scale);
-
-        // Work out the centre line to stroke and the dash/gap lengths along it.
-        let (centerline, dash, gap) = if self.frame.has_border_radius() {
-            // Rounded corners: stroke the rounded centre line running through the
-            // whole perimeter. Every edge uses the same centre line and pattern, so
-            // dashes stay continuous and aligned as they wrap around each corner.
-            // Dash and gap keep their ratio, sized so a whole number of periods fit
-            // exactly around the perimeter (kurbo merges the dash across the seam).
-            let mut centerline = self.frame.border_slice(0.0, 0.5).padding_box_path();
-            centerline.close_path();
-            let perimeter = centerline.perimeter(0.1);
-            if perimeter <= 0.0 {
-                return;
+        let path = qt_rounded_border_path(self.frame.border_box, &self.frame.border_radii);
+        let length = path.perimeter(0.05);
+        let dash = 3.0 * thickness;
+        if length <= 0.0 || dash <= 0.0 {
+            return;
+        }
+        let mut gap = dash;
+        let count = length / dash;
+        let width = thickness * 2.2;
+        let mut stroke = Stroke::new(width).with_caps(Cap::Butt);
+        if count >= 4.0 {
+            let odd = (count as i64) % 2 == 1;
+            let fractional = count.fract() != 0.0;
+            if odd && fractional {
+                gap += dash / (count / 2.0);
             }
-            let period0 = (dash_ratio + gap_ratio) * thickness;
-            let count = (perimeter / period0).round().max(1.0);
-            let period = perimeter / count;
-            let dash = period * dash_ratio / (dash_ratio + gap_ratio);
-            (centerline, dash, period - dash)
-        } else {
-            // Square corners: stroke a straight line through the middle of the edge,
-            // corner to corner. Dash and gap keep their ratio but are scaled so the
-            // edge both starts and ends with a dash (covering the corners).
-            let bb = self.frame.border_box;
-            let half = thickness / 2.0;
-            let (start, end, length) = match edge {
-                Edge::Top => (
-                    Point::new(bb.x0, bb.y0 + half),
-                    Point::new(bb.x1, bb.y0 + half),
-                    bb.width(),
-                ),
-                Edge::Bottom => (
-                    Point::new(bb.x0, bb.y1 - half),
-                    Point::new(bb.x1, bb.y1 - half),
-                    bb.width(),
-                ),
-                Edge::Left => (
-                    Point::new(bb.x0 + half, bb.y0),
-                    Point::new(bb.x0 + half, bb.y1),
-                    bb.height(),
-                ),
-                Edge::Right => (
-                    Point::new(bb.x1 - half, bb.y0),
-                    Point::new(bb.x1 - half, bb.y1),
-                    bb.height(),
-                ),
-            };
-            if length <= 0.0 {
-                return;
+            // The square caps, as longer butt-ended dashes (none left: a solid line).
+            let cap = width / 2.0;
+            if gap > 2.0 * cap {
+                stroke = stroke.with_dashes(dash + cap, [dash + 2.0 * cap, gap - 2.0 * cap]);
             }
-            let dash0 = dash_ratio * thickness;
-            let gap0 = gap_ratio * thickness;
-            // `count` dashes with `count - 1` gaps between them.
-            let count = ((length + gap0) / (dash0 + gap0)).round().max(1.0);
-            let r = dash_ratio / gap_ratio;
-            let gap = length / (count * r + count - 1.0);
-
-            let mut line = BezPath::new();
-            line.move_to(start);
-            line.line_to(end);
-            (line, r * gap, gap)
-        };
-
-        let stroke = Stroke::new(thickness)
-            .with_caps(Cap::Butt)
-            .with_dashes(0.0, [dash, gap]);
+        }
         let clip = self.frame.border_edge_shape(edge);
         scene.push_clip_layer(Fill::NonZero, self.transform, &clip);
-        scene.stroke(&stroke, self.transform, color, None, &centerline);
+        scene.stroke(&stroke, self.transform, color, None, &path);
         scene.pop_layer();
     }
 
@@ -711,4 +651,31 @@ impl ElementCx<'_, '_> {
             }
         }
     }
+}
+
+/// WebKit's path of a rounded border box (`Path::addRoundedRect`): from the end of the
+/// top-left corner along the top edge, clockwise.
+fn qt_rounded_border_path(bb: Rect, radii: &crate::kurbo_css::NonUniformRoundedRectRadii) -> BezPath {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    let mut p = BezPath::new();
+    let corner = |p: &mut BezPath, center: Point, r: Vec2, start: f64| {
+        if r.x > 0.0 && r.y > 0.0 {
+            let arc = kurbo::Arc::new(center, r, start, FRAC_PI_2, 0.0);
+            for el in arc.append_iter(0.05) {
+                p.push(el);
+            }
+        }
+    };
+    let (tl, tr, br, bl) = (radii.top_left, radii.top_right, radii.bottom_right, radii.bottom_left);
+    p.move_to((bb.x0 + tl.x, bb.y0));
+    p.line_to((bb.x1 - tr.x, bb.y0));
+    corner(&mut p, Point::new(bb.x1 - tr.x, bb.y0 + tr.y), tr, -FRAC_PI_2);
+    p.line_to((bb.x1, bb.y1 - br.y));
+    corner(&mut p, Point::new(bb.x1 - br.x, bb.y1 - br.y), br, 0.0);
+    p.line_to((bb.x0 + bl.x, bb.y1));
+    corner(&mut p, Point::new(bb.x0 + bl.x, bb.y1 - bl.y), bl, FRAC_PI_2);
+    p.line_to((bb.x0, bb.y0 + tl.y));
+    corner(&mut p, Point::new(bb.x0 + tl.x, bb.y0 + tl.y), tl, PI);
+    p.close_path();
+    p
 }
