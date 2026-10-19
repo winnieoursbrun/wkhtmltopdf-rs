@@ -15,7 +15,7 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 
 ### Fixed
 
-Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.940.
+Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.985.
 
 - Pagination: page-top margins are truncated like QtWebKit, the CSS3 `break-*` names are ignored,
   fixed and absolute boxes are placed against the document span, pages are clipped horizontally
@@ -35,6 +35,19 @@ Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.940.
   outlines, Qt dash patterns, inset/outset/groove/ridge colours, blurred shadows, repeated
   backgrounds as tiling patterns, `unicode-bidi` embeddings and overrides, right-to-left list
   markers, `visibility: hidden` inline text.
+- Zoom and DPI: QPrinter's whole-pixel page rectangle, text and box geometry rounded in device
+  pixels, image natural sizes and table column widths in device pixels.
+- Text: line breaks around punctuation as QtWebKit (`2026-10-01`, `/`, `?`), `::first-letter`,
+  `::first-line`, `attr()` in `content`, soft hyphens, `list-style-image`, inside markers,
+  bold `@font-face` metrics, `nowrap` overflow, inline-table baselines.
+- Tables: a cell's height is a minimum, `min-`/`max-` sizes ignored on tables, middle-aligned
+  content rounded down, cell line content kept on the baseline, collapsed dotted and dashed
+  borders drawn like QtWebKit, auto column shares in WebKit's arithmetic order.
+- Pagination: boxes run down to the page bottom when the content after them is pushed to the
+  next page (background and side borders).
+- Floats next to collapsing margins, replaced and percentage sizes truncated to device pixels,
+  unthemed `--enable-forms` widgets, `repeat-x`/`repeat-y` anchoring, broken image icons.
+- SVG text is drawn with the engine's fonts (it was missing on hosts without system fonts).
 
 ## [0.1.0-rc.1] - 2026-10-16
 

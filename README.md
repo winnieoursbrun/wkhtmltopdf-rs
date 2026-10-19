@@ -92,8 +92,8 @@ equivalent pages. Every number below is produced by tests in this repository.
 | L2 | Outline, links, named destinations, TOC entries, header/footer text (`tests/parts`) | **22 / 22** |
 | L3 | Visual similarity, mean per-page SSIM at 96 dpi (22 benchmark cases) | **0.96** (22 cases ≥ 0.85) |
 | L2 | Fidelity corpus (75 feature-focused cases, 104 pages): same page count and page size | **75 / 75 (100 %)** |
-| L2 | Fidelity corpus: extracted text, word-level similarity (mean per page) | **99.0 %** |
-| L3 | Fidelity corpus: mean per-page SSIM at 96 dpi | **0.940** (57 pages ≥ 0.99, 79 ≥ 0.95, 19 < 0.90) |
+| L2 | Fidelity corpus: extracted text, word-level similarity (mean per page) | **99.1 %** |
+| L3 | Fidelity corpus: mean per-page SSIM at 96 dpi | **0.985** (66 pages ≥ 0.99, 98 ≥ 0.95, 1 < 0.90) |
 
 How to read L3: the port uses a different layout engine than QtWebKit 2.2, so pixel identity is a
 non-goal. Glyphs are rasterised and antialiased differently and words can sit half a pixel apart,
@@ -104,7 +104,7 @@ The fidelity corpus (`tests/fidelity/`) isolates one feature per page (tables, p
 forms, zoom, bidi…) and compares it with PDFs rendered by the real 0.12.6 binary; the per-case
 scoreboard, worst cases first, is [`tests/fidelity/REPORT.md`](tests/fidelity/REPORT.md).
 
-Test suite: 213 tests (`cargo test --workspace`), run on Linux, macOS and Windows in CI, plus a
+Test suite: 219 tests (`cargo test --workspace`), run on Linux, macOS and Windows in CI, plus a
 parity job that replays the fixtures captured from the original binary.
 
 ## Install
