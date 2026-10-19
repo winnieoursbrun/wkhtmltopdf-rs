@@ -837,7 +837,7 @@ impl Replayer<'_, '_, '_> {
         let mut s: &str = if use_ranges { &text.text } else { &fallback };
         let qt_text;
         if use_ranges && text.text.chars().any(|c| c == '\u{ad}' || is_arabic_letter(c)) {
-            qt_text = qt_glyph_text(&fe, &c.font_data, &text.text, &mut glyphs, &c.glyphs);
+            qt_text = qt_glyph_text(fe, &c.font_data, &text.text, &mut glyphs, &c.glyphs);
             s = &qt_text;
         }
         surface.set_stroke(None);
