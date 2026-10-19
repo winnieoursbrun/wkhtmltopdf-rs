@@ -114,6 +114,13 @@ impl ElementCx<'_, '_> {
         if self.node.collapsed_border.get().is_some() {
             return;
         }
+        // Nor does the table itself (`RenderTable::paintBoxDecorations` paints its border only
+        // when borders are separate): the outer halves of the cells' borders take its place.
+        if let SpecialElementData::TableRoot(table) = &self.element.special_data
+            && table.border_collapse == BorderCollapse::Collapse
+        {
+            return;
+        }
         let style = &*self.style;
         let border = style.get_border();
         let current_color = style.clone_color();
