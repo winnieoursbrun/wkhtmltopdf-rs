@@ -33,13 +33,13 @@ cover-toc                   2 0.98
 cover-toc                   3 0.98
 cover-toc                   4 0.98
 cover-toc                   5 0.98
-css-generated               1 0.91
+css-generated               1 0.98
 display-misc                1 0.97
 doc-bootstrap               1 0.97
 doc-certificate             1 0.97
 doc-invoice                 1 0.80
 doc-letter                  1 0.98
-doc-packing-slip            1 0.91
+doc-packing-slip            1 0.94
 doc-report                  1 0.98
 doc-report                  2 0.98
 doc-report                  3 0.98
@@ -85,7 +85,7 @@ page-custom                 1 0.98
 page-legal                  1 0.97
 position-fixed              1 0.98
 positioning                 1 0.97
-rtl-bidi                    1 0.95
+rtl-bidi                    1 0.96
 tables-borders              1 0.98
 tables-cells                1 0.96
 tables-layout               1 0.98
@@ -112,5 +112,5 @@ typo-whitespace             1 0.96
 wide-content                1 0.98
 wide-content-nosmart        1 0.98
 zoom-075                    1 0.95
-zoom-150                    1 0.95
-zoom-150-nosmart            1 0.96
+zoom-150                    1 0.97
+zoom-150-nosmart            1 0.98
