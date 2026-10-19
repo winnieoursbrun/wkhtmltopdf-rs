@@ -58,6 +58,8 @@ impl Default for Col {
 struct SpanCell {
     first: usize,
     span: usize,
+    /// The row the cell starts in.
+    row: u16,
     min: i32,
     max: i32,
     width: Option<CellWidth>,
@@ -75,8 +77,10 @@ fn calc_effective_widths(cols: &mut [Col], spans: &mut [SpanCell], spacing: i32)
     }
     let n = cols.len();
     let mut max_width = 0i32;
-    // insertSpanCell keeps them sorted by span, in document order among equals.
-    spans.sort_by_key(|s| s.span);
+    // `insertSpanCell` keeps them sorted by span, each new cell going before those of the same
+    // span: `fullRecalc` inserts them column by column, top to bottom, so among equal spans the
+    // last column comes first, and in a column the bottom cell.
+    spans.sort_by_key(|s| (s.span, std::cmp::Reverse(s.first), std::cmp::Reverse(s.row)));
     for cell in spans.iter() {
         let mut cell_width = cell.width;
         let first = cell.first;
@@ -270,6 +274,10 @@ pub(crate) fn auto_layout(
     }
     let gap = ctx.style.gap.width.into_raw().value();
     let share = if ctx.border_collapse == BorderCollapse::Collapse { gap } else { 0.0 };
+    // QtWebKit runs the algorithm in whole device pixels (`--zoom` × `--dpi` / 96): every
+    // width below is in device px, the column widths are converted back at the end.
+    let z = stylo_taffy::convert::device_zoom();
+    let share_d = (share * z).round();
 
     // Column minimum/maximum widths from the cells (AutoTableLayout::recalcColumn).
     let mut cols = vec![Col::default(); n];
@@ -278,8 +286,8 @@ pub(crate) fn auto_layout(
         match *width {
             Some(CellWidth::Fixed(v)) if v > 0.0 => {
                 col.kind = Kind::Fixed;
-                col.width = v;
-                col.max = v as i32;
+                col.width = v * z;
+                col.max = (v * z) as i32;
             }
             Some(CellWidth::Percent(p)) if p > 0.0 => {
                 col.kind = Kind::Percent;
@@ -290,13 +298,13 @@ pub(crate) fn auto_layout(
     }
     let mut spanning = Vec::new();
     for (index, cell) in ctx.cells.iter().enumerate() {
-        let min = measure(w, index, AvailableSpace::MinContent).ceil();
-        let max = measure(w, index, AvailableSpace::MaxContent).ceil().max(min);
-        let (min, mut max) = (min as i32 + share as i32, max as i32 + share as i32);
+        let min = (measure(w, index, AvailableSpace::MinContent) * z).ceil();
+        let max = (measure(w, index, AvailableSpace::MaxContent) * z).ceil().max(min);
+        let (min, mut max) = (min as i32 + share_d as i32, max as i32 + share_d as i32);
         // A fixed width is the cell's maximum width, unless its content is wider
         // (`RenderBlock::computePreferredLogicalWidths` for table cells).
         if let Some(CellWidth::Fixed(v)) = cell.spec_width {
-            max = min.max((v + share) as i32);
+            max = min.max((v * z + share_d) as i32);
         }
         // `cellHasContent`: a child box, a border or a padding.
         let has_content = !w.doc.nodes[cell.node_id].children.is_empty() || {
@@ -317,6 +325,7 @@ pub(crate) fn auto_layout(
             spanning.push(SpanCell {
                 first,
                 span: (cell.colspan as usize).min(n - first),
+                row: cell.row,
                 min,
                 max,
                 width: cell.spec_width,
@@ -328,7 +337,7 @@ pub(crate) fn auto_layout(
         col.max = col.max.max(max);
         match cell.spec_width {
             Some(CellWidth::Fixed(v)) if col.kind != Kind::Percent => {
-                let v = v + share;
+                let v = v * z + share_d;
                 if col.kind != Kind::Fixed || v > col.width || (v == col.width && max_contributor) {
                     col.kind = Kind::Fixed;
                     col.width = v;
@@ -346,7 +355,7 @@ pub(crate) fn auto_layout(
     for col in &mut cols {
         col.max = col.max.max(col.min);
     }
-    let spacing = if ctx.border_collapse == BorderCollapse::Collapse { 0 } else { gap as i32 };
+    let spacing = if ctx.border_collapse == BorderCollapse::Collapse { 0 } else { (gap * z).round() as i32 };
     let span_max = calc_effective_widths(&mut cols, &mut spanning, spacing);
     // Table width (RenderTable::computeLogicalWidth).
     let parent_w = inputs.parent_size.width;
@@ -374,8 +383,8 @@ pub(crate) fn auto_layout(
     }
     sum_max = sum_max.max(span_max);
     // The table is at least as wide as its caption's minimum width.
-    let pref_min = (sum_min as f32 + outside).max(super::table::caption_min_width(w.doc, &ctx));
-    let pref_max = sum_max as f32 + outside;
+    let pref_min = (sum_min as f32 / z + outside).max(super::table::caption_min_width(w.doc, &ctx));
+    let pref_max = sum_max as f32 / z + outside;
     let spec = ctx.style.size.width.into_raw();
     let width = if let Some(known) = inputs.known_dimensions.width {
         known
@@ -393,7 +402,7 @@ pub(crate) fn auto_layout(
     };
 
     // AutoTableLayout::layout.
-    let table_w = (width - outside).floor() as i32;
+    let table_w = ((width - outside) * z + 1e-3).floor() as i32;
     let mut available = table_w;
     let mut widths: Vec<i32> = cols.iter().map(|c| c.min).collect();
     available -= sum_min;
@@ -521,11 +530,12 @@ pub(crate) fn auto_layout(
         }
     }
 
+    let widths: Vec<f32> = widths.iter().map(|&c| c as f32 / z).collect();
     let mut style = ctx.style.clone();
     style.grid_template_columns = widths
         .iter()
         .map(|&c| {
-            let track: TrackSizingFunction = style_helpers::length((c as f32 - share).max(0.0));
+            let track: TrackSizingFunction = style_helpers::length((c - share).max(0.0));
             track.into()
         })
         .collect();
@@ -669,7 +679,7 @@ fn fixed_layout(ctx: &super::table::TableContext, inputs: &LayoutInput) -> Optio
 fn rowspan_row_heights(
     w: &mut TableTreeWrapper,
     ctx: &super::table::TableContext,
-    widths: &[i32],
+    widths: &[f32],
     gap: f32,
     share: f32,
 ) -> Option<Vec<f32>> {
@@ -686,7 +696,7 @@ fn rowspan_row_heights(
             continue;
         }
         let cell_w: f32 =
-            widths[first..last].iter().map(|&c| c as f32 - share).sum::<f32>() + gap * (last - first - 1) as f32;
+            widths[first..last].iter().map(|&c| c - share).sum::<f32>() + gap * (last - first - 1) as f32;
         let input = LayoutInput {
             run_mode: RunMode::ComputeSize,
             sizing_mode: SizingMode::InherentSize,
