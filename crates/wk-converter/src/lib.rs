@@ -1204,6 +1204,7 @@ fn first_slice(r: &RenderedPage) -> PageSlice {
         y1: 1.0,
         thead: None,
         tfoot: None,
+        fill_to: None,
     })
 }
 

@@ -1025,11 +1025,44 @@ fn draw_band<'d>(
             r.replay(surface, commands, b0, b1);
             surface.pop();
         }
+        if (b0, b1) == (p.y0, p.y1)
+            && let Some(to) = p.fill_to
+        {
+            draw_pushed_fills(surface, page, b1, to, (cx0, cx1), opts.grayscale);
+        }
         surface.pop();
         dy += b1 - b0;
     }
     surface.pop();
     !r.refused
+}
+
+/// The boxes that run on below content pushed to the next page at `y1` (document px): each box
+/// across `y1` gets its background and solid side borders down to `to`, the page bottom, as
+/// QtWebKit's pagination strut makes it grow there ([`PageSlice::fill_to`]).
+fn draw_pushed_fills(surface: &mut Surface, page: &RenderedPage, y1: f32, to: f32, (cx0, cx1): (f32, f32), gray: bool) {
+    let Some(clip) = rect_path(cx0, y1, cx1, to) else { return };
+    surface.push_clip_path(&clip, &FillRule::NonZero);
+    surface.set_stroke(None);
+    let mut fill_rect = |x0: f32, x1: f32, color: peniko::Color| {
+        let Some(fill) = paint_fill(&Paint::Solid(color), None, 1.0, peniko::Fill::NonZero, gray) else { return };
+        if let Some(path) = rect_path(x0, y1, x1, to) {
+            surface.set_fill(Some(fill));
+            surface.draw_path(&path);
+        }
+    };
+    for f in page.geometry.fills.iter().filter(|f| f.top < y1 - 0.5 && f.bottom > y1 + 0.5) {
+        if let Some(bg) = f.background {
+            fill_rect(f.x0, f.x1, bg);
+        }
+        if let Some((w, c)) = f.left {
+            fill_rect(f.x0, f.x0 + w, c);
+        }
+        if let Some((w, c)) = f.right {
+            fill_rect(f.x1 - w, f.x1, c);
+        }
+    }
+    surface.pop();
 }
 
 /// Draw everything of `p` on its page's surface. Returns `false` when drawing a draft that

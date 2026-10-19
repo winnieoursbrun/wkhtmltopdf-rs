@@ -123,6 +123,22 @@ pub struct TableInfo {
     pub tfoot: Option<(f32, f32)>,
 }
 
+/// The background and side borders of a box, in document px: what QtWebKit shows of a box
+/// below content its paginated layout pushed to the next page (the box grows by the pagination
+/// strut, so it runs down to the page bottom).
+#[derive(Debug, Clone)]
+pub struct BoxFill {
+    pub top: f32,
+    pub bottom: f32,
+    /// Border box left and right edges.
+    pub x0: f32,
+    pub x1: f32,
+    pub background: Option<peniko::Color>,
+    /// Solid left and right borders: width and colour.
+    pub left: Option<(f32, peniko::Color)>,
+    pub right: Option<(f32, peniko::Color)>,
+}
+
 /// Where the document may, must and must not be cut (document px).
 #[derive(Debug, Default, Clone)]
 pub struct Geometry {
@@ -149,6 +165,8 @@ pub struct Geometry {
     /// What moves an unforced break up when it straddles the page bottom: the
     /// content area of each line, the unbreakable boxes.
     pub straddlers: Vec<(f32, f32)>,
+    /// In-flow boxes with a background or solid side borders, outermost first.
+    pub fills: Vec<BoxFill>,
 }
 
 /// An `<a href>` hit area, in document px.
@@ -1844,6 +1862,37 @@ fn collect_cell_edges(doc: &BaseDocument, node: &Node, out: &mut Vec<(f32, f32)>
     }
 }
 
+/// The [`BoxFill`] of `node`, when it has a background colour or solid side borders. A table
+/// with collapsing borders paints no border of its own.
+fn box_fill(
+    node: &Node,
+    styles: &style::properties::ComputedValues,
+    top: f32,
+    bottom: f32,
+) -> Option<BoxFill> {
+    use style::values::specified::BorderStyle;
+    let current = styles.clone_color();
+    let srgb = |c: &style::color::AbsoluteColor| {
+        peniko::Color::new(*c.to_color_space(style::color::ColorSpace::Srgb).raw_components())
+    };
+    let bg = srgb(&styles.get_background().background_color.resolve_to_absolute(&current));
+    let background = (bg.components[3] > 0.0).then_some(bg);
+    let collapsed = tag(node) == "table"
+        && styles.get_inherited_table().border_collapse
+            == style::computed_values::border_collapse::T::Collapse;
+    let border = styles.get_border();
+    let side = |w: f32, st: BorderStyle, c: &style::values::computed::Color| {
+        (!collapsed && st == BorderStyle::Solid && w > 0.0).then(|| (w, srgb(&c.resolve_to_absolute(&current))))
+    };
+    let left = side(border.border_left_width.0.to_f32_px(), border.border_left_style, &border.border_left_color);
+    let right = side(border.border_right_width.0.to_f32_px(), border.border_right_style, &border.border_right_color);
+    if background.is_none() && left.is_none() && right.is_none() {
+        return None;
+    }
+    let x0 = node.absolute_position(0.0, 0.0).x;
+    Some(BoxFill { top, bottom, x0, x1: x0 + node.final_layout().size.width, background, left, right })
+}
+
 /// Collect the pagination data of a laid-out document.
 pub fn collect_geometry(doc: &BaseDocument) -> Geometry {
     let mut g = Geometry::default();
@@ -1935,6 +1984,11 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry, mut oof: bool) {
             }
             if b.display.is_none() {
                 return;
+            }
+            if !oof && bottom > top && !matches!(t.as_str(), "td" | "th" | "tr" | "thead" | "tbody" | "tfoot") {
+                if let Some(fill) = box_fill(node, &styles, top, bottom) {
+                    g.fills.push(fill);
+                }
             }
         }
         g.candidates.push(top);

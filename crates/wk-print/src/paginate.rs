@@ -29,6 +29,11 @@ pub struct PageSlice {
     pub thead: Option<(f32, f32)>,
     /// Footer group drawn below the band (document px range).
     pub tfoot: Option<(f32, f32)>,
+    /// When content was pushed to the next page (a forced break, a line, row or replaced
+    /// element across the bottom): the page bottom in document px. QtWebKit's paginated
+    /// layout pushes that content down with a strut, so the boxes around it run on to the
+    /// page bottom ([`wk_webkit::BoxFill`]).
+    pub fill_to: Option<f32>,
 }
 
 impl PageSlice {
@@ -144,11 +149,13 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
                 continue;
             }
         }
+        let crossed = forced.is_none() && limit < g.doc_height && crosses(g, y, limit);
+        let pushed = forced.is_some() || crossed;
         let end = if let Some(f) = forced {
             f
         } else if limit >= g.doc_height {
             g.doc_height
-        } else if crosses(g, y, limit) {
+        } else if crossed {
             // QtWebKit's `bestTruncatedAt`: the page ends at the top of what straddles it.
             g.candidates
                 .iter()
@@ -163,7 +170,8 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
         };
         // The footer is only repeated when the table really continues.
         let tfoot = tfoot.filter(|_| g.tables.iter().any(|t| t.tfoot == tfoot && t.bottom > end + 0.5));
-        pages.push(PageSlice { y0: y, y1: end, thead, tfoot });
+        let fill_to = (pushed && tfoot.is_none() && end < limit - 0.5).then_some(limit);
+        pages.push(PageSlice { y0: y, y1: end, thead, tfoot, fill_to });
         // Repeat the header group when the break falls inside a table body.
         thead = g
             .tables
@@ -198,7 +206,7 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
         }
     }
     if pages.is_empty() {
-        pages.push(PageSlice { y0: 0.0, y1: page_h, thead: None, tfoot: None });
+        pages.push(PageSlice { y0: 0.0, y1: page_h, thead: None, tfoot: None, fill_to: None });
     }
     if std::env::var_os("WKHTMLTOPDF_DEBUG_PAGES").is_some() {
         eprintln!("paginate: page_h={page_h} doc_h={}", g.doc_height);
@@ -288,6 +296,23 @@ mod tests {
         g.candidates.sort_by(f32::total_cmp);
         let p = paginate(&g, 1000.0);
         assert_eq!(p[1].y0, 40.0);
+    }
+
+    #[test]
+    fn pushed_content_fills_to_the_page_bottom() {
+        // A forced break and a line pushed across the bottom leave the page short: its boxes
+        // run on to the page bottom. A full page or the last one does not.
+        let mut g = Geometry { doc_height: 300.0, ..Default::default() };
+        paragraph(&mut g, 0.0, 15);
+        g.forced.push(40.0);
+        let p = paginate(&g, 110.0);
+        assert_eq!((p[0].y1, p[0].fill_to), (40.0, Some(110.0)));
+        assert_eq!((p[1].y0, p[1].y1, p[1].fill_to), (40.0, 141.0, Some(150.0)));
+        assert_eq!(p.last().unwrap().fill_to, None);
+        let mut g = Geometry { doc_height: 300.0, ..Default::default() };
+        paragraph(&mut g, 0.0, 5);
+        paragraph(&mut g, 120.0, 5);
+        assert_eq!(paginate(&g, 110.0)[0].fill_to, None);
     }
 
     #[test]
