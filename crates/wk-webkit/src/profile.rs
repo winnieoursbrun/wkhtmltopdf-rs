@@ -907,8 +907,47 @@ fn old_webkit_gradient(args: &str) -> Option<String> {
         let dir = if to.is_empty() { "to bottom".to_string() } else { format!("to {}", to.join(" ")) };
         Some(format!("linear-gradient({dir}, {list})"))
     } else {
-        Some(format!("radial-gradient(circle, {list})"))
+        // `radial, <p0>, <r0>, <p1>, <r1>`: QtWebKit 2.2 draws a QRadialGradient centred on
+        // the end point with the end radius (focal point: the start point, not kept here),
+        // the stops squeezed into `[r0 / r1, 1]` (GradientQt.cpp).
+        let r0 = parts.get(2)?.trim().parse::<f32>().ok()?;
+        let r1 = parts.get(4)?.trim().parse::<f32>().ok()?;
+        let (center, r0, r1, stops) = if r1 >= r0 {
+            (parts.get(3)?, r0, r1, stops)
+        } else {
+            let reversed = stops.iter().rev().map(|(p, c)| (1.0 - p, c.clone())).collect();
+            (parts.get(1)?, r1, r0, reversed)
+        };
+        if r1 <= 0.0 {
+            return None;
+        }
+        let inner = r0 / r1;
+        let list = stops
+            .iter()
+            .map(|(p, c)| format!("{c} {}%", (inner + p * (1.0 - inner)) * 100.0))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(format!("radial-gradient(circle {r1}px at {}, {list})", css_point(center)))
     }
+}
+
+/// A `-webkit-gradient()` point (`left top`, `50% 0`, `0 100`) as a CSS position: plain
+/// numbers are pixels.
+fn css_point(p: &str) -> String {
+    let coord = |t: Option<&str>| -> String {
+        match t.map(|t| t.to_ascii_lowercase()) {
+            Some(t) if t == "left" || t == "top" => "0%".into(),
+            Some(t) if t == "right" || t == "bottom" => "100%".into(),
+            Some(t) if t == "center" => "50%".into(),
+            Some(t) if t.ends_with('%') => t,
+            Some(t) => t.parse::<f32>().map(|v| format!("{v}px")).unwrap_or_else(|_| "50%".into()),
+            None => "50%".into(),
+        }
+    };
+    let mut w = p.split_whitespace();
+    let x = coord(w.next());
+    let y = coord(w.next());
+    format!("{x} {y}")
 }
 
 #[cfg(test)]
@@ -988,6 +1027,10 @@ mod tests {
         assert_eq!(
             sheet("a{background:-webkit-radial-gradient(center, circle, red, blue)}"),
             "a{background:radial-gradient(circle at center, red, blue)}"
+        );
+        assert_eq!(
+            sheet("a{background:-webkit-gradient(radial, 50% 50%, 15, 30 center, 60, from(#ff0), to(#c00))}"),
+            "a{background:radial-gradient(circle 60px at 30px 50%, #ff0 25%, #c00 100%)}"
         );
     }
 

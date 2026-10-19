@@ -233,6 +233,10 @@ fn radial_gradient(
             )),
         },
     };
+    // wkhtmltopdf-rs: QtWebKit 2.2 draws an elliptical gradient as a circle of its horizontal
+    // radius: the ellipse's aspect ratio is a gradient-space transform, which the Qt port
+    // does not apply (measured on the 0.12.6 binary, tests/fidelity/backgrounds-gradients).
+    let gradient_scale = gradient_scale.map(|s| Vec2::new(s.x, s.x));
 
     let gradient_transform = {
         // If the gradient has no valid scale, we don't need to calculate the color stops
