@@ -528,71 +528,89 @@ fn ellipsis_glyph(font: &peniko::FontData, size: f32) -> Option<(u32, f64)> {
     char_glyph(font, size, '\u{2026}')
 }
 
-/// wkhtmltopdf-rs: QtWebKit 2.2 measures text with its simple path (no ligatures, see blitz-dom
-/// `stylo_to_parley::font_features`) but paints a justified line, whose spaces it expands,
-/// through Qt's complex path, where HarfBuzz forms the f-ligatures (`ﬀ ﬁ ﬂ ﬃ ﬄ`): the glyphs
-/// of such a sequence (one glyph per character) become the font's ligature glyph, drawn at the
-/// first one's place, and the run's next glyphs move by the ligature's advance minus theirs.
-fn justified_ligatures(
+/// wkhtmltopdf-rs: QtWebKit 2.2 measures text with its simple path (no kerning nor ligatures,
+/// see blitz-dom `stylo_to_parley::font_features`) but paints a justified line, whose spaces it
+/// expands, through Qt's complex path: HarfBuzz shapes the text box with its default features
+/// (kerning, the f-ligatures), Qt places the glyphs one after the other from the box's start
+/// and adds the expansion after each space. The line was laid out with the simple widths, so
+/// its end moves by what kerning and ligatures took off.
+///
+/// `glyphs` (one per glyph of `rt`, left to right) are replaced by the run's text shaped so,
+/// from the first one's place, `expansion` added after each space; `rt` gets the new glyphs'
+/// text ranges. Returns false (and changes nothing) when the run is not a simple left-to-right
+/// run of the text.
+fn justified_shaping(
     font: &peniko::FontData,
     font_size: f32,
     glyphs: &mut Vec<anyrender::Glyph>,
-    advances: &[f32],
     rt: &mut crate::run_text::RunText,
-) {
-    const LIGATURES: [(&str, char); 5] =
-        [("ffi", '\u{FB03}'), ("ffl", '\u{FB04}'), ("ff", '\u{FB00}'), ("fi", '\u{FB01}'), ("fl", '\u{FB02}')];
-    if glyphs.len() != rt.glyph_ranges.len() || glyphs.len() != advances.len() || !rt.text.contains('f') {
-        return;
+    expansion: f32,
+) -> bool {
+    use skrifa::MetadataProvider;
+    let (Some(first), Some(last)) = (rt.glyph_ranges.first(), rt.glyph_ranges.last()) else {
+        return false;
+    };
+    if glyphs.len() != rt.glyph_ranges.len()
+        || rt.glyph_ranges.windows(2).any(|w| w[1].start < w[0].start)
+        || first.start >= last.end
+    {
+        return false;
     }
-    // The character of each glyph, when it stands for exactly one.
-    let one_char: Vec<Option<char>> = rt
-        .glyph_ranges
-        .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            let shared = (i > 0 && rt.glyph_ranges[i - 1] == *r) || rt.glyph_ranges.get(i + 1) == Some(r);
-            let t = rt.text.get(r.clone())?;
-            let mut chars = t.chars();
-            let c = chars.next()?;
-            (!shared && chars.next().is_none()).then_some(c)
-        })
-        .collect();
-    let mut out_glyphs = Vec::with_capacity(glyphs.len());
-    let mut out_ranges = Vec::with_capacity(glyphs.len());
-    let mut shift = 0.0f32;
-    let mut i = 0;
-    while i < glyphs.len() {
-        let found = LIGATURES.iter().find_map(|&(seq, lig)| {
-            let n = seq.len();
-            let matches = i + n <= glyphs.len()
-                && seq.chars().enumerate().all(|(k, c)| one_char[i + k] == Some(c))
-                // Consecutive characters of the text.
-                && (1..n).all(|k| rt.glyph_ranges[i + k].start == rt.glyph_ranges[i + k - 1].end);
-            if !matches {
-                return None;
+    let span = first.start..last.end;
+    let Some(text) = rt.text.get(span.clone()) else { return false };
+    let Ok(font_ref) = harfrust::FontRef::from_index(font.data.as_ref(), font.index) else {
+        return false;
+    };
+    let Ok(skrifa_font) = skrifa::FontRef::from_index(font.data.as_ref(), font.index) else {
+        return false;
+    };
+    let data = harfrust::ShaperData::new(&font_ref);
+    let shaper = data.shaper(&font_ref).build();
+    let mut buffer = harfrust::UnicodeBuffer::new();
+    for (offset, ch) in text.char_indices() {
+        buffer.add(ch, offset as u32);
+    }
+    buffer.set_direction(harfrust::Direction::LeftToRight);
+    buffer.guess_segment_properties();
+    let shaped = shaper.shape(buffer, harfrust::ShapeOptions::new().point_size(Some(font_size)));
+    let infos = shaped.glyph_infos();
+    let positions = shaped.glyph_positions();
+    let upem = skrifa::raw::TableProvider::head(&skrifa_font).map(|h| h.units_per_em()).unwrap_or(1000) as f32;
+    let scale = font_size / upem;
+    let metrics = skrifa_font.glyph_metrics(skrifa::instance::Size::unscaled(), skrifa::instance::LocationRef::default());
+    // Cluster starts, in order, to give each glyph the text up to the next cluster.
+    let mut starts: Vec<u32> = infos.iter().map(|i| i.cluster).collect();
+    starts.sort_unstable();
+    starts.dedup();
+    let (x0, y) = (glyphs[0].x, glyphs[0].y);
+    let mut x = x0;
+    let mut out_glyphs = Vec::with_capacity(infos.len());
+    let mut out_ranges = Vec::with_capacity(infos.len());
+    for (info, pos) in infos.iter().zip(positions) {
+        let start = info.cluster as usize;
+        let end = starts
+            .iter()
+            .find(|&&c| c as usize > start)
+            .map_or(text.len(), |&c| c as usize);
+        out_glyphs.push(anyrender::Glyph { id: info.glyph_id, x, y });
+        out_ranges.push(span.start + start..span.start + end);
+        // The advance as parley_engine makes it (whole-pixel kerning, 26.6 advances).
+        let advance = match metrics.advance_width(skrifa::GlyphId::new(info.glyph_id)) {
+            Some(n) => {
+                let kern = (pos.x_advance as f32 - n) * scale;
+                parley::device_px::floor_26_6(n * scale)
+                    + parley::device_px::floor(kern + 0.5 / parley::device_px::device_zoom())
             }
-            let (gid, adv) = char_glyph(font, font_size, lig)?;
-            Some((n, gid, parley::device_px::floor_26_6(adv as f32)))
-        });
-        match found {
-            Some((n, gid, adv)) => {
-                let g = glyphs[i];
-                out_glyphs.push(anyrender::Glyph { id: gid, x: g.x + shift, y: g.y });
-                out_ranges.push(rt.glyph_ranges[i].start..rt.glyph_ranges[i + n - 1].end);
-                shift += adv - advances[i..i + n].iter().sum::<f32>();
-                i += n;
-            }
-            None => {
-                let g = glyphs[i];
-                out_glyphs.push(anyrender::Glyph { id: g.id, x: g.x + shift, y: g.y });
-                out_ranges.push(rt.glyph_ranges[i].clone());
-                i += 1;
-            }
+            None => parley::device_px::floor_26_6(pos.x_advance as f32 * scale),
+        };
+        x += advance;
+        if text[start..end].starts_with(' ') {
+            x += expansion;
         }
     }
     *glyphs = out_glyphs;
     rt.glyph_ranges = out_ranges;
+    true
 }
 
 /// wkhtmltopdf-rs: the glyph id and advance of `c` in `font` at `size`.
@@ -1099,18 +1117,20 @@ pub(crate) fn stroke_text<'a>(
                     .filter(|(i, g)| shown(*i) && keep(g.x, g.advance))
                     .map(|(_, g)| anyrender::Glyph { id: g.id as _, x: g.x, y: g.y })
                     .collect();
-                if line.is_justified() {
-                    let advances: Vec<f32> = glyph_run
-                        .positioned_glyphs()
-                        .enumerate()
-                        .filter(|(i, g)| shown(*i) && keep(g.x, g.advance))
-                        .map(|(_, g)| g.advance)
-                        .collect();
-                    let ligatures_on = doc.get_node(style.brush.id).and_then(|n| n.primary_styles()).is_some_and(|s| {
-                        s.get_font().font_variant_ligatures == style::values::specified::font::FontVariantLigatures::NORMAL
+                // wkhtmltopdf-rs: a justified line is painted shaped (see `justified_shaping`),
+                // unless the text's features or spacing already shaped it so.
+                if line.is_justified() && !run.is_rtl() && cut.is_none() && hidden.iter().all(|h| !h) {
+                    use style::Zero as _;
+                    let plain = doc.get_node(style.brush.id).and_then(|n| n.primary_styles()).is_some_and(|s| {
+                        let f = s.get_font();
+                        let t = s.get_inherited_text();
+                        f.font_variant_ligatures == style::values::specified::font::FontVariantLigatures::NORMAL
+                            && f.font_feature_settings.0.is_empty()
+                            && t.letter_spacing.0.is_zero()
+                            && t.word_spacing.is_zero()
                     });
-                    if ligatures_on && let Some(rt) = run_text.as_mut() {
-                        justified_ligatures(font, font_size, &mut glyphs, &advances, rt);
+                    if plain && let Some(rt) = run_text.as_mut() {
+                        justified_shaping(font, font_size, &mut glyphs, rt, line.justification_amount());
                     }
                 }
                 // wkhtmltopdf-rs: `text-shadow` (QtWebKit 2.2 paints it): the glyphs

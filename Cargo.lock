@@ -257,6 +257,7 @@ dependencies = [
  "bytemuck",
  "color",
  "euclid 0.22.14",
+ "harfrust",
  "kurbo",
  "parley",
  "peniko",

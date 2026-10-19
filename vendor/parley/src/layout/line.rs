@@ -38,6 +38,11 @@ impl<'a, B: Brush> Line<'a, B> {
         self.data.justification.amount_per_opportunity > 0.0
     }
 
+    /// wkhtmltopdf-rs: the space added after each justification opportunity (a space).
+    pub fn justification_amount(&self) -> f32 {
+        self.data.justification.amount_per_opportunity
+    }
+
     pub fn break_reason(&self) -> BreakReason {
         self.data.break_reason
     }
