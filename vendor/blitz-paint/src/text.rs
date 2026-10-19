@@ -1012,7 +1012,11 @@ pub(crate) fn stroke_text<'a>(
                 }
             }
         }
-        let keep = |x: f32, advance: f32| cut.is_none_or(|c| (x + advance) as f64 <= c + 0.01);
+        // wkhtmltopdf-rs: QtWebKit 2.2 truncates before the first character that starts at or
+        // past the ellipsis' place (`Font::offsetForPositionForSimpleText` without partial
+        // glyphs breaks once `delta + charWidth <= 0`): a character straddling it is kept and
+        // the ellipsis after it overflows the box (clipped by its `overflow`).
+        let keep = |x: f32, _advance: f32| cut.is_none_or(|c| (x as f64) < c - 0.01);
         // wkhtmltopdf-rs: the last painted run of the line (font, size, color, node, baseline,
         // end x), where the hyphen of a soft hyphen the line breaks at is drawn.
         let mut last_run: Option<(peniko::FontData, f32, Color, NodeId, f32, f32)> = None;
