@@ -4,6 +4,7 @@ mod box_shadow;
 mod clip_path;
 mod form_controls;
 mod mask;
+mod qt_scrollbar;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -559,8 +560,14 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                         cx.stroke_devtools(scene);
 
                         // TODO: allow layers with opacity to be unclipped (overflow: visible)
+                        // wkhtmltopdf-rs: QtWebKit's scroll bars take their room from the
+                        // padding box, which clips the content without it.
+                        let scrollbar_clip;
                         let clip = if is_text_input {
                             &cx.frame.content_box_path()
+                        } else if node.qt_scrollbars.get() != 0 {
+                            scrollbar_clip = cx.qt_scrollport_path();
+                            &scrollbar_clip
                         } else {
                             &cx.frame.padding_box_path()
                         };
@@ -605,6 +612,8 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                                 cx.draw_table_borders(scene);
                             },
                         );
+
+                        cx.draw_qt_scrollbars(scene);
 
                         // Overlay scrollbars, drawn unscrolled above the
                         // clipped content.

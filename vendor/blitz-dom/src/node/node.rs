@@ -48,6 +48,14 @@ pub enum DisplayOuter {
     None,
 }
 
+/// wkhtmltopdf-rs: [`Node::qt_scrollbars`] bit of a vertical scroll bar (right of the box).
+pub const QT_SCROLLBAR_VERTICAL: u8 = 1;
+/// wkhtmltopdf-rs: [`Node::qt_scrollbars`] bit of a horizontal scroll bar (bottom of the box).
+pub const QT_SCROLLBAR_HORIZONTAL: u8 = 2;
+/// wkhtmltopdf-rs: the thickness of a QtWebKit 2.2 scroll bar (QWindowsStyle's
+/// `PM_ScrollBarExtent`), in CSS px.
+pub const QT_SCROLLBAR_EXTENT: f32 = 16.0;
+
 bitflags! {
     #[derive(Clone, Copy, PartialEq)]
     pub struct NodeFlags: u32 {
@@ -126,6 +134,11 @@ pub struct Node {
     /// border widths (top, right, bottom, left): WebKit's halves of the collapsed
     /// borders (`layout/table.rs`).
     pub collapsed_border: Cell<Option<[f32; 4]>>,
+    /// wkhtmltopdf-rs: the scroll bars QtWebKit gives this box (`overflow: scroll`, or
+    /// `overflow: auto` with overflowing content), decided by layout
+    /// (`LayoutPassState::layout_with_qt_scrollbars`): [`QT_SCROLLBAR_VERTICAL`] and
+    /// [`QT_SCROLLBAR_HORIZONTAL`]. Each takes 16px from the padding box.
+    pub qt_scrollbars: Cell<u8>,
 
     /// Node type (Element, TextNode, etc) specific data.
     ///
@@ -423,6 +436,7 @@ impl Node {
 
             flags: NodeFlags::empty(),
             collapsed_border: Cell::new(None),
+            qt_scrollbars: Cell::new(0),
             data,
         }
     }
@@ -1150,6 +1164,13 @@ impl Node {
         #[cfg(not(feature = "writing-mode"))]
         let mut style = stylo_taffy::TaffyStyloStyle::new(styles, flags);
         style.border_override = self.collapsed_border.get();
+        let bars = self.qt_scrollbars.get();
+        if bars & QT_SCROLLBAR_VERTICAL != 0 {
+            style.flags |= stylo_taffy::StyleFlags::SCROLLBAR_VERTICAL;
+        }
+        if bars & QT_SCROLLBAR_HORIZONTAL != 0 {
+            style.flags |= stylo_taffy::StyleFlags::SCROLLBAR_HORIZONTAL;
+        }
         style
     }
 

@@ -11,6 +11,7 @@ use std::cell::Ref;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use style::Atom;
+use style::computed_values::overflow_x::T as StyloOverflow;
 use style::values::computed::CSSPixelLength;
 use style::values::computed::length_percentage::CalcLengthPercentage;
 use stylo_taffy::TaffyStyloStyle;
@@ -174,6 +175,134 @@ impl LayoutPassState<'_> {
     /// boxes for which it is the containing block. Must be called inside the layout
     /// cache wrapper so that cache hits do not re-run the out-of-flow pass.
     fn compute_child_layout_internal(
+        &mut self,
+        node_id: NodeId,
+        inputs: taffy::tree::LayoutInput,
+        block_ctx: Option<&mut BlockContext<'_>>,
+    ) -> taffy::tree::LayoutOutput {
+        match self.qt_scrollbar_axes(dom_node_id(node_id)) {
+            Some(axes) => self.layout_with_qt_scrollbars(node_id, inputs, block_ctx, axes),
+            None => self.compute_child_layout_unbarred(node_id, inputs, block_ctx),
+        }
+    }
+
+    /// wkhtmltopdf-rs: whether `node_id` can have QtWebKit scroll bars, with its
+    /// `(overflow-x, overflow-y)`: a box that scrolls on some axis, other than the root and a
+    /// `<body>` whose overflow goes to the viewport (wkhtmltopdf turns the frame's scroll bars
+    /// off), tables, replaced elements and form controls, in a horizontal writing mode.
+    fn qt_scrollbar_axes(&self, dom_id: crate::NodeId) -> Option<(StyloOverflow, StyloOverflow)> {
+        let node = self.nodes.get(dom_id)?;
+        let el = match &node.data {
+            NodeData::Element(el) => el,
+            _ => return None,
+        };
+        let style = node.primary_styles()?;
+        let scrolls = |o: StyloOverflow| matches!(o, StyloOverflow::Scroll | StyloOverflow::Auto);
+        let box_style = style.get_box();
+        let axes = (box_style.overflow_x, box_style.overflow_y);
+        if !scrolls(axes.0) && !scrolls(axes.1) {
+            return None;
+        }
+        if !style.writing_mode.is_horizontal()
+            || node.flags.is_table_root()
+            || is_replaced_element(&el.name.local)
+            || matches!(
+                el.name.local,
+                local_name!("html")
+                    | local_name!("input")
+                    | local_name!("textarea")
+                    | local_name!("select")
+                    | local_name!("button")
+            )
+        {
+            return None;
+        }
+        if el.name.local == local_name!("body") {
+            // The body's overflow goes to the viewport when the root's is `visible`.
+            let root_visible = node
+                .parent
+                .and_then(|p| self.nodes.get(p))
+                .and_then(|p| p.primary_styles())
+                .is_none_or(|s| s.get_box().overflow_x == StyloOverflow::Visible);
+            if root_visible {
+                return None;
+            }
+        }
+        Some(axes)
+    }
+
+    /// wkhtmltopdf-rs: lay out a box that scrolls the way QtWebKit 2.2 does
+    /// (`RenderLayer::updateScrollInfoAfterLayout`): `overflow: scroll` always has its scroll
+    /// bar; an `overflow: auto` axis gets one when the content overflows the box after a
+    /// layout without it, and the box is laid out again (scroll bars are only added on that
+    /// relayout, never removed). The vertical bar's need is judged with a newly added
+    /// horizontal bar's height already taken from the box. The decision is kept on the node
+    /// ([`Node::qt_scrollbars`]) for the style getters and for painting.
+    fn layout_with_qt_scrollbars(
+        &mut self,
+        node_id: NodeId,
+        inputs: taffy::tree::LayoutInput,
+        mut block_ctx: Option<&mut BlockContext<'_>>,
+        (overflow_x, overflow_y): (StyloOverflow, StyloOverflow),
+    ) -> taffy::tree::LayoutOutput {
+        use crate::node::{QT_SCROLLBAR_EXTENT, QT_SCROLLBAR_HORIZONTAL, QT_SCROLLBAR_VERTICAL};
+        let dom_id = dom_node_id(node_id);
+        let mut bars = 0;
+        if overflow_x == StyloOverflow::Scroll {
+            bars |= QT_SCROLLBAR_HORIZONTAL;
+        }
+        if overflow_y == StyloOverflow::Scroll {
+            bars |= QT_SCROLLBAR_VERTICAL;
+        }
+        let auto_x = overflow_x == StyloOverflow::Auto;
+        let auto_y = overflow_y == StyloOverflow::Auto;
+        if inputs.run_mode != RunMode::PerformLayout || !(auto_x || auto_y) {
+            if inputs.run_mode == RunMode::PerformLayout {
+                self.nodes[dom_id].qt_scrollbars.set(bars);
+            }
+            return self.compute_child_layout_unbarred(node_id, inputs, block_ctx);
+        }
+        self.nodes[dom_id].qt_scrollbars.set(bars);
+        let mut output = self.compute_child_layout_unbarred(
+            node_id,
+            inputs,
+            block_ctx.as_mut().map(|b| &mut **b),
+        );
+        let border = self.nodes[dom_id]
+            .layout_style()
+            .border()
+            .resolve_or_zero(inputs.parent_size.width, resolve_calc_value);
+        for _ in 0..2 {
+            let extent = |bar: u8| if bars & bar != 0 { QT_SCROLLBAR_EXTENT } else { 0.0 };
+            let overflow = output.scrollable_overflow_rect;
+            let mut needed = bars;
+            let client_width = output.size.width - border.left - border.right
+                - extent(QT_SCROLLBAR_VERTICAL);
+            if auto_x && overflow.right > client_width + 0.01 {
+                needed |= QT_SCROLLBAR_HORIZONTAL;
+            }
+            let client_height = output.size.height
+                - border.top
+                - border.bottom
+                - if needed & QT_SCROLLBAR_HORIZONTAL != 0 { QT_SCROLLBAR_EXTENT } else { 0.0 };
+            if auto_y && overflow.bottom > client_height.max(0.0) + 0.01 {
+                needed |= QT_SCROLLBAR_VERTICAL;
+            }
+            if needed == bars {
+                break;
+            }
+            bars = needed;
+            self.nodes[dom_id].qt_scrollbars.set(bars);
+            output = self.compute_child_layout_unbarred(
+                node_id,
+                inputs,
+                block_ctx.as_mut().map(|b| &mut **b),
+            );
+        }
+        output
+    }
+
+    fn compute_child_layout_unbarred(
         &mut self,
         node_id: NodeId,
         inputs: taffy::tree::LayoutInput,

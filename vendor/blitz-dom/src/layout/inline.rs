@@ -566,7 +566,8 @@ impl LayoutPassState<'_> {
             indent_options,
         );
 
-        let pbw = container_pb.horizontal_components().sum() * scale;
+        // wkhtmltopdf-rs: a vertical scroll bar's gutter narrows the lines too.
+        let pbw = content_box_inset.horizontal_components().sum() * scale;
         let width = known_dimensions
             .width
             .map(|w| (w * scale) - pbw)
@@ -699,7 +700,7 @@ impl LayoutPassState<'_> {
         let outer_block_ctx = block_ctx;
         #[cfg(feature = "floats")]
         let mut block_ctx =
-            outer_block_ctx.sub_context(container_pb.top, [container_pb.left, container_pb.right]);
+            outer_block_ctx.sub_context(container_pb.top, [content_box_inset.left, content_box_inset.right]);
         // block_ctx.apply_content_box_inset([container_pb.left, container_pb.right]);
 
         #[cfg(feature = "floats")]

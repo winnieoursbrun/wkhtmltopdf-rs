@@ -33,6 +33,12 @@ bitflags! {
         const IS_BUTTON = 1 << 3;
         /// Whether the node is a button-type input whose label always uses block layout
         const IS_BUTTON_INPUT = 1 << 4;
+        /// wkhtmltopdf-rs: the box has a vertical scroll bar, which takes width from its
+        /// padding box (`overflow-y: scroll`, or `auto` with overflowing content)
+        const SCROLLBAR_VERTICAL = 1 << 5;
+        /// wkhtmltopdf-rs: the box has a horizontal scroll bar, which takes height from its
+        /// padding box
+        const SCROLLBAR_HORIZONTAL = 1 << 6;
     }
 }
 
@@ -225,16 +231,32 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
     #[inline]
     fn overflow(&self) -> taffy::Point<taffy::Overflow> {
         let box_styles = self.style.get_box();
+        // wkhtmltopdf-rs: Taffy reserves a scroll bar gutter for `Overflow::Scroll` only, so a
+        // scrolling axis maps to `Scroll` when the box has the scroll bar that the axis needs
+        // (decided by blitz-dom's layout, QtWebKit's `RenderLayer::updateScrollInfoAfterLayout`)
+        // and to `Hidden` otherwise (a scroll container all the same). Taffy's `overflow.x`
+        // reserves the horizontal scroll bar's height, `overflow.y` the vertical one's width.
+        let scrolling = |o: stylo::Overflow, bar: StyleFlags| match o {
+            stylo::Overflow::Scroll | stylo::Overflow::Auto => {
+                if self.flags.contains(bar) {
+                    taffy::Overflow::Scroll
+                } else {
+                    taffy::Overflow::Hidden
+                }
+            }
+            o => convert::overflow(o),
+        };
         let overflow = taffy::Point {
-            x: convert::overflow(box_styles.overflow_x),
-            y: convert::overflow(box_styles.overflow_y),
+            x: scrolling(box_styles.overflow_x, StyleFlags::SCROLLBAR_HORIZONTAL),
+            y: scrolling(box_styles.overflow_y, StyleFlags::SCROLLBAR_VERTICAL),
         };
         self.layout_wm().logical_point(overflow)
     }
 
     #[inline]
     fn scrollbar_width(&self) -> f32 {
-        0.0
+        // wkhtmltopdf-rs: QWindowsStyle's `PM_ScrollBarExtent` (see `overflow`).
+        16.0
     }
 
     #[inline]
