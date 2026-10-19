@@ -81,6 +81,13 @@ fn inline_box_inputs(
     inputs
 }
 
+/// wkhtmltopdf-rs: `x` (layout units, `scale` per CSS px) rounded up to whole device pixels
+/// (see `parley::device_px`), past a float error of 1e-3 device px.
+fn device_ceil(x: f32, scale: f32) -> f32 {
+    let zoom = parley::device_px::device_zoom();
+    (x / scale * zoom - 1e-3).ceil() / zoom * scale
+}
+
 impl LayoutPassState<'_> {
     pub(crate) fn compute_inline_layout(
         &mut self,
@@ -675,10 +682,11 @@ impl LayoutPassState<'_> {
                         .min(max_content_width + float_width)
                         .max(min_content_width),
                 };
-                // wkhtmltopdf-rs: the widths are sums of whole device pixels made fractional by
-                // the zoom (43 px at `--zoom 0.75` came back as 43.000002); round them up past
-                // that error only.
-                let computed_width = (computed_width - 1e-3).ceil();
+                // wkhtmltopdf-rs: QtWebKit lays out in device pixels (CSS pixels times the
+                // zoom): the widths are sums of whole device pixels, made fractional by the
+                // zoom (43 px at `--zoom 0.75` came back as 57.333336 / 0.75 = 43.000002).
+                // Round them up to whole device pixels, past that error only.
+                let computed_width = device_ceil(computed_width, scale);
 
                 let style_width = node_size.width.map(|w| w * scale);
                 let min_width = node_min_size.width.map(|w| w * scale);
@@ -760,7 +768,7 @@ impl LayoutPassState<'_> {
                 .inline_layout_data = Some(inline_layout);
 
             let measured_size = inputs.known_dimensions.unwrap_or(taffy::Size {
-                width: (width - 1e-3).ceil() / scale,
+                width: device_ceil(width, scale) / scale,
                 // Height is ignored if RequestedAxis if Horizontal
                 height: 0.0,
             });
