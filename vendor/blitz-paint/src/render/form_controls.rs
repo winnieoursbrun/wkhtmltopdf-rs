@@ -60,33 +60,18 @@ impl ElementCx<'_, '_> {
     }
 
     /// The groove of a Qt scroll bar as QWindowsStyle prints it: black under a white
-    /// `Qt::Dense4Pattern`, a checkerboard of 2px squares (the 0.12.6 binary writes it as an
-    /// 8x8 tiling pattern of dashed lines over a black fill). The squares start 1px off the
-    /// box's corner, the first white one in the second column: the phase that best matches
-    /// the reference once rasterised.
+    /// `Qt::Dense4Pattern` ([`super::qt_scrollbar::dense4`]), whose phase starts at the scroll
+    /// bar's corner, a whole number of tiles (its 16px button) above the groove.
     pub(super) fn draw_qt_scroll_track(&self, scene: &mut impl PaintScene) {
         let bg = self.style.get_background().background_color.resolve_to_absolute(&self.style.clone_color());
         if !is_qt_track_sentinel(bg.as_srgb_color()) {
             return;
         }
+        let s = self.scale;
         let r = self.frame.border_box;
-        scene.fill(Fill::NonZero, self.transform, QT_BLACK, None, &r);
-        let mut squares = BezPath::new();
-        let (w, h) = (r.width(), r.height());
-        let mut j: u32 = 0;
-        while f64::from(2 * j) - 1.0 < h {
-            let mut i = (j + 1) % 2;
-            while f64::from(2 * i) - 1.0 < w {
-                let x0 = (f64::from(2 * i) - 1.0).max(0.0);
-                let y0 = (f64::from(2 * j) - 1.0).max(0.0);
-                let x1 = (f64::from(2 * i) + 1.0).min(w);
-                let y1 = (f64::from(2 * j) + 1.0).min(h);
-                squares.extend(Rect::new(r.x0 + x0, r.y0 + y0, r.x0 + x1, r.y0 + y1).path_elements(0.1));
-                i += 2;
-            }
-            j += 1;
-        }
-        scene.fill(Fill::NonZero, self.transform, Color::WHITE, None, &squares);
+        let t = self.transform * Affine::scale(s) * Affine::translate((r.x0 / s, r.y0 / s));
+        let rect = Rect::new(0.0, 0.0, r.width() / s, r.height() / s);
+        super::qt_scrollbar::dense4(scene, t, t, rect, QT_BLACK, false);
     }
 
     /// Fill `rect` given in units of `unit` css px from `origin`.

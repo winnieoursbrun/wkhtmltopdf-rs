@@ -863,17 +863,25 @@ impl Replayer<'_, '_, '_> {
                             // PDF engine writes a pattern brush (QtWebKit's Image::drawPattern).
                             let mut builder = surface.stream_builder();
                             let mut tile = builder.surface();
-                            tile.draw_image(kimg, size);
+                            let pixel_tile = draw_pixel_tile(&mut tile, img, self.gray);
+                            if !pixel_tile {
+                                tile.draw_image(kimg, size);
+                            }
                             tile.finish();
                             let stream = builder.finish();
                             let pattern = krilla::paint::Pattern {
                                 stream,
-                                transform: tf(page_anchored_pattern(
-                                    c.transform,
-                                    c.brush_transform.unwrap_or(Affine::IDENTITY),
-                                    (iw, ih),
-                                    y0d,
-                                )),
+                                // A pixel tile is a Qt style's brush, which keeps its origin.
+                                transform: tf(if pixel_tile {
+                                    c.brush_transform.unwrap_or(Affine::IDENTITY)
+                                } else {
+                                    page_anchored_pattern(
+                                        c.transform,
+                                        c.brush_transform.unwrap_or(Affine::IDENTITY),
+                                        (iw, ih),
+                                        y0d,
+                                    )
+                                }),
                                 width: size.width(),
                                 height: size.height(),
                             };
@@ -1434,4 +1442,45 @@ fn page_anchored_pattern(transform: Affine, brush: Affine, (iw, ih): (f64, f64),
     }
     let anchored = Affine::new([a, b, c, d, e.rem_euclid(px), page_top + (f - page_top).rem_euclid(py)]);
     transform.inverse() * anchored
+}
+
+/// Draw a small pixel-art tile (an image brush with `ImageQuality::Low`, at most 16x16, such
+/// as the `Qt::Dense4Pattern` of a scroll bar groove) as one rectangle per pixel: Qt's PDF
+/// engine writes its dense brush patterns as vector tiles, which rasterisers antialias
+/// rather than sample. Returns whether the tile was drawn.
+fn draw_pixel_tile(surface: &mut Surface, img: &peniko::ImageBrush, gray: bool) -> bool {
+    let (w, h) = (img.image.width as usize, img.image.height as usize);
+    if img.sampler.quality != peniko::ImageQuality::Low
+        || w * h > 256
+        || img.image.format != peniko::ImageFormat::Rgba8
+        || img.image.alpha_type != peniko::ImageAlphaType::Alpha
+    {
+        return false;
+    }
+    let data = img.image.data.data();
+    if data.len() < w * h * 4 {
+        return false;
+    }
+    let mut by_color: BTreeMap<[u8; 4], BezPath> = BTreeMap::new();
+    for y in 0..h {
+        for x in 0..w {
+            let px: [u8; 4] = data[(y * w + x) * 4..][..4].try_into().unwrap_or([0; 4]);
+            if px[3] == 0 {
+                continue;
+            }
+            let r = kurbo::Rect::new(x as f64, y as f64, x as f64 + 1.0, y as f64 + 1.0);
+            by_color.entry(px).or_default().extend(r.path_elements(0.1));
+        }
+    }
+    for (px, path) in by_color {
+        let color = Color::from_rgba8(px[0], px[1], px[2], px[3]);
+        let Some(fill) = paint_fill(&Paint::Solid(color), None, 1.0, peniko::Fill::NonZero, gray) else {
+            continue;
+        };
+        let Some(p) = path_from_elements(path.elements().iter().copied()) else { continue };
+        surface.set_fill(Some(fill));
+        surface.set_stroke(None);
+        surface.draw_path(&p);
+    }
+    true
 }

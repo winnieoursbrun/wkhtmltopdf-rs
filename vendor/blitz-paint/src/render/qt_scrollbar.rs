@@ -135,7 +135,7 @@ fn draw_bar(scene: &mut impl PaintScene, t: Affine, len: f64, visible: f64, tota
         return;
     }
     if !enabled {
-        dense4(scene, t, Rect::new(track0, 0.0, track1, ext), BLACK, vertical);
+        dense4(scene, t, page, Rect::new(track0, 0.0, track1, ext), BLACK, vertical);
         return;
     }
     // QCommonStyle's `SC_ScrollBarSlider` with WebKit's page step (`RenderLayer`:
@@ -145,7 +145,7 @@ fn draw_bar(scene: &mut impl PaintScene, t: Affine, len: f64, visible: f64, tota
     let thumb = ((page_step * maxlen) / (range + page_step)).max(MIN_THUMB).min(maxlen);
     let thumb1 = track0 + thumb as f64;
     if thumb1 < track1 {
-        dense4(scene, t, Rect::new(thumb1, 0.0, track1, ext), BUTTON_FACE, vertical);
+        dense4(scene, t, page, Rect::new(thumb1, 0.0, track1, ext), BUTTON_FACE, vertical);
     }
     bevel(scene, t, track0, thumb as f64);
 }
@@ -198,31 +198,43 @@ fn draw_arrow(scene: &mut impl PaintScene, t: Affine, rows: &[&str; 8]) {
 
 /// A scroll bar groove: `background` under white `Qt::Dense4Pattern`, a checkerboard of
 /// 2px squares centred on the even coordinates of the bar, white where the coordinates'
-/// halves add up to an even number (the 0.12.6 binary writes it as an 8x8 tiling pattern
-/// anchored at the bar's corner). `rect` is in (along, across) coordinates.
-fn dense4(scene: &mut impl PaintScene, t: Affine, rect: Rect, background: Color, vertical: bool) {
+/// halves add up to an even number. The 0.12.6 binary writes it as an 8x8 tiling pattern
+/// anchored at the bar's corner; it is drawn here as a repeated 8x8 image (which the PDF
+/// writer turns into a tiling pattern of the same size). `rect` is in (along, across)
+/// coordinates, `t` maps them to the page, `page` maps the bar's page axes.
+pub(super) fn dense4(scene: &mut impl PaintScene, t: Affine, page: Affine, rect: Rect, background: Color, vertical: bool) {
     scene.fill(Fill::NonZero, t, background, None, &rect);
-    let mut squares = BezPath::new();
-    let first = |v: f64| ((v + 1.0) / 2.0).floor() as i64;
-    let last = |v: f64| ((v + 1.0) / 2.0).ceil() as i64;
-    for i in first(rect.x0)..last(rect.x1) {
-        for j in first(rect.y0)..last(rect.y1) {
-            // The parity is that of the page axes, which a vertical bar swaps.
-            let (px, py) = if vertical { (j, i) } else { (i, j) };
-            if (px + py) % 2 != 0 {
-                continue;
-            }
-            let cell = Rect::new(
-                (2 * i - 1) as f64,
-                (2 * j - 1) as f64,
-                (2 * i + 1) as f64,
-                (2 * j + 1) as f64,
-            )
-            .intersect(rect);
-            if cell.area() > 0.0 {
-                squares.extend(cell.path_elements(0.1));
+    let page_rect = if vertical { Rect::new(rect.y0, rect.x0, rect.y1, rect.x1) } else { rect };
+    scene.fill(Fill::NonZero, page, dense4_tile(), None, &page_rect);
+}
+
+/// The 8x8 tile of [`dense4`]: white squares on transparency.
+fn dense4_tile() -> peniko::ImageBrushRef<'static> {
+    static TILE: std::sync::OnceLock<peniko::ImageBrush> = std::sync::OnceLock::new();
+    TILE.get_or_init(|| {
+        let cell = |v: usize| (v + 1) / 2;
+        let mut data = Vec::with_capacity(8 * 8 * 4);
+        for y in 0..8 {
+            for x in 0..8 {
+                let white = (cell(x) + cell(y)) % 2 == 0;
+                data.extend_from_slice(if white { &[255, 255, 255, 255] } else { &[0, 0, 0, 0] });
             }
         }
-    }
-    scene.fill(Fill::NonZero, t, Color::WHITE, None, &squares);
+        peniko::ImageBrush {
+            image: peniko::ImageData {
+                data: peniko::Blob::new(std::sync::Arc::new(data)),
+                format: peniko::ImageFormat::Rgba8,
+                width: 8,
+                height: 8,
+                alpha_type: peniko::ImageAlphaType::Alpha,
+            },
+            sampler: peniko::ImageSampler {
+                x_extend: peniko::Extend::Repeat,
+                y_extend: peniko::Extend::Repeat,
+                quality: peniko::ImageQuality::Low,
+                alpha: 1.0,
+            },
+        }
+    })
+    .as_ref()
 }
