@@ -54,7 +54,7 @@ doc-report-toc              6 0.98
 doc-resume                  1 0.98
 doc-statement               1 0.97
 doc-statement               2 0.98
-dpi-300                     1 0.96
+dpi-300                     1 0.97
 floats                      1 0.97
 fonts-unicode               1 0.96
 fonts-webfont               1 0.98
@@ -72,7 +72,7 @@ images-none                 1 0.98
 images-sizing               1 0.96
 inline-block                1 0.96
 lists-nested                1 0.98
-lists-types                 1 0.97
+lists-types                 1 0.98
 margins-mixed               1 0.98
 margins-zero                1 0.96
 media-print                 1 0.98
@@ -111,6 +111,6 @@ typo-weights                1 0.98
 typo-whitespace             1 0.96
 wide-content                1 0.98
 wide-content-nosmart        1 0.98
-zoom-075                    1 0.95
+zoom-075                    1 0.97
 zoom-150                    1 0.97
 zoom-150-nosmart            1 0.98
