@@ -272,19 +272,25 @@ fn is_arabic_presentation_form(c: char) -> bool {
     matches!(c, '\u{FB50}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}')
 }
 
-/// The text of an Arabic run as Qt 4.8 writes it: Qt's ToUnicode maps each glyph back through
-/// the font's cmap (the lowest code point of the glyph), so a contextual form or a lam-alef
-/// ligature, which the font maps from a presentation form only, reads as that form (`ﻣ`,
-/// `ﻻ`), an isolated letter as the letter itself. Each glyph that stands alone for a cluster of
-/// Arabic letters and is mapped from a presentation form takes that form as its text; the
-/// other glyphs keep theirs. `glyphs` get their ranges in the returned text.
-fn arabic_presentation_text(
+/// The text of a run as Qt 4.8 writes it, where it differs from the source text:
+/// - Qt's ToUnicode maps each glyph back through the font's cmap (the lowest code point of the
+///   glyph), so an Arabic contextual form or a lam-alef ligature, which the font maps from a
+///   presentation form only, reads as that form (`ﻣ`, `ﻻ`), an isolated letter as the letter
+///   itself. Each glyph that stands alone for a cluster of Arabic letters and is mapped from a
+///   presentation form takes that form as its text;
+/// - WebKit draws a soft hyphen as a zero width space (`Font::treatAsZeroWidthSpace`): its
+///   glyph becomes the font's U+200B, with that text (it was the space glyph, read as a space
+///   that split the word).
+///
+/// The other glyphs keep their text. `glyphs` get their ranges in the returned text.
+fn qt_glyph_text(
     fe: &FontEntry,
     fd: &peniko::FontData,
     text: &str,
     glyphs: &mut [KrillaGlyph],
     source: &[anyrender::Glyph],
 ) -> String {
+    let zwsp = text.contains('\u{ad}').then(|| glyph_of(fd, '\u{200b}')).flatten();
     let ranges: Vec<std::ops::Range<usize>> = glyphs.iter().map(|g| g.text_range.clone()).collect();
     let mut out = String::with_capacity(text.len());
     let mut last: Option<std::ops::Range<usize>> = None;
@@ -303,14 +309,25 @@ fn arabic_presentation_text(
             .flatten()
             .filter(|&c| is_arabic_presentation_form(c));
         let start = out.len();
-        match form {
-            Some(c) => out.push(c),
-            None => out.push_str(src_text),
+        match (form, zwsp) {
+            (Some(c), _) => out.push(c),
+            (None, Some(z)) if alone && src_text == "\u{ad}" => {
+                g.glyph_id = GlyphId::new(z);
+                out.push('\u{200b}');
+            }
+            (None, _) => out.push_str(src_text),
         }
         g.text_range = start..out.len();
         last = Some(g.text_range.clone());
     }
     out
+}
+
+/// The glyph `c` maps to in the face `fd`, if any.
+fn glyph_of(fd: &peniko::FontData, c: char) -> Option<u32> {
+    use skrifa::MetadataProvider;
+    let f = skrifa::FontRef::from_index(fd.data.data(), fd.index).ok()?;
+    f.charmap().map(c).map(|g| g.to_u32())
 }
 
 /// The faces of the display lists, by blob id and index.
@@ -818,10 +835,10 @@ impl Replayer<'_, '_, '_> {
             ));
         }
         let mut s: &str = if use_ranges { &text.text } else { &fallback };
-        let arabic_text;
-        if use_ranges && text.text.chars().any(is_arabic_letter) {
-            arabic_text = arabic_presentation_text(&fe, &c.font_data, &text.text, &mut glyphs, &c.glyphs);
-            s = &arabic_text;
+        let qt_text;
+        if use_ranges && text.text.chars().any(|c| c == '\u{ad}' || is_arabic_letter(c)) {
+            qt_text = qt_glyph_text(&fe, &c.font_data, &text.text, &mut glyphs, &c.glyphs);
+            s = &qt_text;
         }
         surface.set_stroke(None);
         surface.set_fill(Some(fill));
