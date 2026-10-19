@@ -227,10 +227,13 @@ impl LayoutPassState<'_> {
         StyleFlags::empty()
     }
 
-    /// wkhtmltopdf-rs: `::first-line`. The first line's text takes the pseudo-element's font,
-    /// which can move the line's end: the block is laid out, its text built again with that
-    /// font up to the first line's end, and laid out again (from the same floats) until the
-    /// end stays (at most twice more).
+    /// wkhtmltopdf-rs: `::first-line`. QtWebKit measures the first line with the
+    /// pseudo-element's style (`RenderBlock::layoutInlineChildren` with `firstLine`), so the
+    /// line's end is where the text breaks when all of it has that style. The block is laid out
+    /// with its whole text in the first-line style to find that end, then its text is built again
+    /// with that style up to the end only and laid out once more, the first line being made to
+    /// break at the same place (`Layout::set_first_line_break`) even when the text after it,
+    /// in the block's own style, would fit.
     fn compute_inline_layout_inner(
         &mut self,
         node_id: NodeId,
@@ -245,47 +248,48 @@ impl LayoutPassState<'_> {
             return self.compute_inline_layout_pass(node_id, inputs, block_ctx);
         }
         let snapshot = block_ctx.snapshot();
-        let mut output = self.compute_inline_layout_pass(node_id, inputs, block_ctx);
-        for _ in 0..2 {
-            let Some(layout) = self.nodes[node_id].element_data().and_then(|e| e.inline_layout_data.as_deref())
-            else {
-                break;
-            };
-            let end = layout.layout.lines().next().map(|l| l.text_range().end);
-            if end.is_none() || end == layout.first_line_end {
-                break;
-            }
-            // Build the text again with the first line's font up to `end`.
-            let mut text_layout = self.nodes[node_id]
-                .data
-                .downcast_element_mut()
-                .unwrap()
-                .take_inline_layout()
-                .unwrap();
+        self.rebuild_first_line_text(node_id, Some(usize::MAX));
+        let output = self.compute_inline_layout_pass(node_id, inputs, block_ctx);
+        let Some(layout) = self.nodes[node_id].element_data().and_then(|e| e.inline_layout_data.as_deref())
+        else {
+            return output;
+        };
+        let Some(end) = layout.layout.lines().next().map(|l| l.text_range().end) else {
+            return output;
+        };
+        if end >= layout.text.len() {
+            return output;
+        }
+        self.rebuild_first_line_text(node_id, Some(end));
+        block_ctx.restore(snapshot);
+        // The measurement of the previous pass is not that of this text.
+        self.inline_measure_memo = None;
+        self.compute_inline_layout_pass(node_id, inputs, block_ctx)
+    }
+
+    /// wkhtmltopdf-rs: build the text of inline root `node_id` again, with its `::first-line`
+    /// style up to `end` (see `compute_inline_layout_inner`), unless it already is.
+    fn rebuild_first_line_text(&mut self, node_id: NodeId, end: Option<usize>) {
+        let Some(mut text_layout) = self.nodes[node_id].data.downcast_element_mut().unwrap().take_inline_layout()
+        else {
+            return;
+        };
+        if text_layout.first_line_end != end {
             text_layout.first_line_end = end;
             text_layout.content_widths = None;
-            {
-                let scale = self.viewport.scale();
-                let doc = &mut *self.doc;
-                let mut font_ctx = doc.font_ctx.lock().unwrap();
-                super::construct::build_inline_layout_into(
-                    &doc.nodes,
-                    &mut doc.layout_ctx,
-                    &mut font_ctx,
-                    &mut text_layout,
-                    scale,
-                    node_id,
-                );
-            }
-            self.nodes[node_id]
-                .data
-                .downcast_element_mut()
-                .unwrap()
-                .inline_layout_data = Some(text_layout);
-            block_ctx.restore(snapshot.clone());
-            output = self.compute_inline_layout_pass(node_id, inputs, block_ctx);
+            let scale = self.viewport.scale();
+            let doc = &mut *self.doc;
+            let mut font_ctx = doc.font_ctx.lock().unwrap();
+            super::construct::build_inline_layout_into(
+                &doc.nodes,
+                &mut doc.layout_ctx,
+                &mut font_ctx,
+                &mut text_layout,
+                scale,
+                node_id,
+            );
         }
-        output
+        self.nodes[node_id].data.downcast_element_mut().unwrap().inline_layout_data = Some(text_layout);
     }
 
     fn compute_inline_layout_pass(
@@ -782,6 +786,10 @@ impl LayoutPassState<'_> {
         inline_layout
             .layout
             .set_text_indent(resolved_text_indent * scale + marker_indent, indent_options);
+        // wkhtmltopdf-rs: the first line ends where it does in the `::first-line` style (see
+        // `compute_inline_layout_inner`).
+        let first_line_break = inline_layout.first_line_end.filter(|&end| end != usize::MAX);
+        inline_layout.layout.set_first_line_break(first_line_break);
 
         #[cfg(not(feature = "floats"))]
         {

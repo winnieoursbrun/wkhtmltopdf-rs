@@ -1169,6 +1169,18 @@ impl<'a, B: Brush> BreakLines<'a, B> {
                             // We don't record boundaries when the advance is 0. As we do not want overflowing content to cause extra consecutive
                             // line breaks. We should accept the overflowing fragment in that scenario.
                             if self.state.line.x != 0.0 {
+                                // wkhtmltopdf-rs: the first line ends here (`::first-line`).
+                                if self.lines.lines.is_empty()
+                                    && self.layout.data.first_line_break.is_some_and(|end| {
+                                        first_character.text_byte_start as usize >= end
+                                    })
+                                {
+                                    return self.start_new_line(
+                                        BreakReason::Regular,
+                                        max_advance,
+                                        line_indent,
+                                    );
+                                }
                                 self.state.mark_line_break_opportunity();
                                 // break_opportunity = true;
                             }

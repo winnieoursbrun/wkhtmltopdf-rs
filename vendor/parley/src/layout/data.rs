@@ -239,6 +239,9 @@ pub(crate) struct LayoutData<B: Brush> {
     pub(crate) indent_amount: f32,
     /// Options controlling text-indent behavior (each-line, hanging).
     pub(crate) indent_options: IndentOptions,
+    /// wkhtmltopdf-rs: the text offset at which the first line breaks, if any (see
+    /// [`Layout::set_first_line_break`](super::Layout::set_first_line_break)).
+    pub(crate) first_line_break: Option<usize>,
 }
 
 impl<B: Brush> Default for LayoutData<B> {
@@ -264,6 +267,7 @@ impl<B: Brush> Default for LayoutData<B> {
             layout_max_advance: 0.0,
             indent_amount: 0.0,
             indent_options: IndentOptions::default(),
+            first_line_break: None,
         }
     }
 }
@@ -280,6 +284,7 @@ impl<B: Brush> LayoutData<B> {
         self.layout_max_advance = 0.0;
         self.indent_amount = 0.0;
         self.indent_options = IndentOptions::default();
+        self.first_line_break = None;
         self.styles.clear();
         self.style_metrics.clear();
         self.inline_boxes.clear();

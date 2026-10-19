@@ -213,6 +213,13 @@ impl<B: Brush> Layout<B> {
         self.data.indent_options = options;
     }
 
+    /// wkhtmltopdf-rs: make the first line break at the first wrap opportunity at or after text
+    /// offset `offset`, even when more text would fit (`::first-line`, whose end is found with
+    /// all the text in the pseudo-element's style). `None` lifts it.
+    pub fn set_first_line_break(&mut self, offset: Option<usize>) {
+        self.data.first_line_break = offset;
+    }
+
     /// Returns line breaker to compute lines for the layout.
     pub fn break_lines(&mut self) -> BreakLines<'_, B> {
         BreakLines::new(self)

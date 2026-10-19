@@ -1232,21 +1232,29 @@ pub(crate) fn first_line_properties(
 
 /// wkhtmltopdf-rs: push `text`, the part of it before the end of the first line with the
 /// `::first-line` properties. The text is pushed word by word (with the white space after
-/// each), as the first line ends at a break opportunity.
+/// each), as the first line ends at a break opportunity, all in one style span: QtWebKit
+/// measures (and rounds, see parley's `round_words_like_qtwebkit`) the words of a text node
+/// together, a span per word made each space a segment of its own.
 fn push_first_line_text(
     builder: &mut TreeBuilder<TextBrush>,
     text: &str,
     first_line: &mut Option<FirstLine<'_>>,
 ) {
     let mut rest = text;
-    while let Some(fl) = first_line.as_ref() {
-        if rest.is_empty() {
-            return;
-        }
+    let Some(fl) = first_line.as_ref() else {
+        builder.push_text(rest);
+        return;
+    };
+    let mut in_span = false;
+    while !rest.is_empty() {
         let at = builder.text().len() + usize::from(builder.has_pending_whitespace());
         if at >= fl.end {
             *first_line = None;
             break;
+        }
+        if !in_span {
+            builder.push_style_modification_span(fl.props);
+            in_span = true;
         }
         // One word and the white space after it.
         let word_end = rest
@@ -1258,10 +1266,11 @@ fn push_first_line_text(
             .find(|&(_, c)| !c.is_whitespace())
             .map_or(rest.len(), |(i, _)| word_end + i);
         let (chunk, tail) = rest.split_at(chunk_end.max(1).min(rest.len()));
-        builder.push_style_modification_span(fl.props);
         builder.push_text(chunk);
-        builder.pop_style_span();
         rest = tail;
+    }
+    if in_span {
+        builder.pop_style_span();
     }
     builder.push_text(rest);
 }
