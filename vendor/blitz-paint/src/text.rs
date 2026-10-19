@@ -564,7 +564,24 @@ fn justified_shaping(
     let Ok(skrifa_font) = skrifa::FontRef::from_index(font.data.as_ref(), font.index) else {
         return false;
     };
-    let data = harfrust::ShaperData::new(&font_ref);
+    thread_local! {
+        /// The shaper data of the last fonts, by blob id and index.
+        static SHAPER_DATA: std::cell::RefCell<Vec<((u64, u32), std::rc::Rc<harfrust::ShaperData>)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+    let key = (font.data.id(), font.index);
+    let data = SHAPER_DATA.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some((_, data)) = cache.iter().find(|(k, _)| *k == key) {
+            return data.clone();
+        }
+        let data = std::rc::Rc::new(harfrust::ShaperData::new(&font_ref));
+        if cache.len() >= 8 {
+            cache.remove(0);
+        }
+        cache.push((key, data.clone()));
+        data
+    });
     let shaper = data.shaper(&font_ref).build();
     let mut buffer = harfrust::UnicodeBuffer::new();
     for (offset, ch) in text.char_indices() {
