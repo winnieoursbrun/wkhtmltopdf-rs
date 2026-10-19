@@ -1008,8 +1008,28 @@ pub(crate) fn stroke_text<'a>(
                 let normalized_coords: &[i16] = bytemuck::cast_slice(run.normalized_coords());
                 // wkhtmltopdf-rs: a relatively positioned inline element moves its text.
                 let transform = transform.pre_translate(relative_inline_offset(doc, style.brush.id, inline_root_id, scale));
+                // wkhtmltopdf-rs: publish the run's source text before the glyphs are drawn.
+                if let Some(rt) = run_text {
+                    crate::run_text::set(rt);
+                }
+                if cut.is_some() {
+                    let kept = glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).count();
+                    if let Some(end) =
+                        glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).map(|g| g.x + g.advance).last()
+                    {
+                        ellipsis_x = ellipsis_x.max(end as f64);
+                    }
+                    if let Some(mut rt) = crate::run_text::take() {
+                        rt.glyph_ranges.truncate(kept);
+                        crate::run_text::set(rt);
+                    }
+                }
+                // The run's text, as drawn (`cut` keeps the shown glyphs only).
+                let run_text = crate::run_text::take();
                 // wkhtmltopdf-rs: `text-shadow` (QtWebKit 2.2 paints it): the glyphs
-                // again under the text, offset, in the shadow colour (no blur).
+                // again under the text, offset, in the shadow colour (no blur). Qt draws a
+                // shadow without blur as text (it is extracted with the text), a blurred one
+                // as an image.
                 if let Some(node_styles) = doc.get_node(style.brush.id).and_then(|n| n.primary_styles()) {
                     let current = node_styles.clone_color();
                     for shadow in node_styles.get_inherited_text().text_shadow.0.iter().rev() {
@@ -1021,6 +1041,11 @@ pub(crate) fn stroke_text<'a>(
                             shadow.horizontal.px() as f64 * scale,
                             shadow.vertical.px() as f64 * scale,
                         ));
+                        if shadow.blur.px() == 0.0 {
+                            if let Some(rt) = &run_text {
+                                crate::run_text::set(rt.clone());
+                            }
+                        }
                         scene.draw_glyphs(
                             font,
                             font_size,
@@ -1040,21 +1065,8 @@ pub(crate) fn stroke_text<'a>(
                         );
                     }
                 }
-                // wkhtmltopdf-rs: publish the run's source text before the glyphs are drawn.
                 if let Some(rt) = run_text {
                     crate::run_text::set(rt);
-                }
-                if cut.is_some() {
-                    let kept = glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).count();
-                    if let Some(end) =
-                        glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).map(|g| g.x + g.advance).last()
-                    {
-                        ellipsis_x = ellipsis_x.max(end as f64);
-                    }
-                    if let Some(mut rt) = crate::run_text::take() {
-                        rt.glyph_ranges.truncate(kept);
-                        crate::run_text::set(rt);
-                    }
                 }
                 last_run = Some((
                     font.clone(),
