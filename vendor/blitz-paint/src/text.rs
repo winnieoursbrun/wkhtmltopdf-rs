@@ -528,6 +528,73 @@ fn ellipsis_glyph(font: &peniko::FontData, size: f32) -> Option<(u32, f64)> {
     char_glyph(font, size, '\u{2026}')
 }
 
+/// wkhtmltopdf-rs: QtWebKit 2.2 measures text with its simple path (no ligatures, see blitz-dom
+/// `stylo_to_parley::font_features`) but paints a justified line, whose spaces it expands,
+/// through Qt's complex path, where HarfBuzz forms the f-ligatures (`ﬀ ﬁ ﬂ ﬃ ﬄ`): the glyphs
+/// of such a sequence (one glyph per character) become the font's ligature glyph, drawn at the
+/// first one's place, and the run's next glyphs move by the ligature's advance minus theirs.
+fn justified_ligatures(
+    font: &peniko::FontData,
+    font_size: f32,
+    glyphs: &mut Vec<anyrender::Glyph>,
+    advances: &[f32],
+    rt: &mut crate::run_text::RunText,
+) {
+    const LIGATURES: [(&str, char); 5] =
+        [("ffi", '\u{FB03}'), ("ffl", '\u{FB04}'), ("ff", '\u{FB00}'), ("fi", '\u{FB01}'), ("fl", '\u{FB02}')];
+    if glyphs.len() != rt.glyph_ranges.len() || glyphs.len() != advances.len() || !rt.text.contains('f') {
+        return;
+    }
+    // The character of each glyph, when it stands for exactly one.
+    let one_char: Vec<Option<char>> = rt
+        .glyph_ranges
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let shared = (i > 0 && rt.glyph_ranges[i - 1] == *r) || rt.glyph_ranges.get(i + 1) == Some(r);
+            let t = rt.text.get(r.clone())?;
+            let mut chars = t.chars();
+            let c = chars.next()?;
+            (!shared && chars.next().is_none()).then_some(c)
+        })
+        .collect();
+    let mut out_glyphs = Vec::with_capacity(glyphs.len());
+    let mut out_ranges = Vec::with_capacity(glyphs.len());
+    let mut shift = 0.0f32;
+    let mut i = 0;
+    while i < glyphs.len() {
+        let found = LIGATURES.iter().find_map(|&(seq, lig)| {
+            let n = seq.len();
+            let matches = i + n <= glyphs.len()
+                && seq.chars().enumerate().all(|(k, c)| one_char[i + k] == Some(c))
+                // Consecutive characters of the text.
+                && (1..n).all(|k| rt.glyph_ranges[i + k].start == rt.glyph_ranges[i + k - 1].end);
+            if !matches {
+                return None;
+            }
+            let (gid, adv) = char_glyph(font, font_size, lig)?;
+            Some((n, gid, parley::device_px::floor_26_6(adv as f32)))
+        });
+        match found {
+            Some((n, gid, adv)) => {
+                let g = glyphs[i];
+                out_glyphs.push(anyrender::Glyph { id: gid, x: g.x + shift, y: g.y });
+                out_ranges.push(rt.glyph_ranges[i].start..rt.glyph_ranges[i + n - 1].end);
+                shift += adv - advances[i..i + n].iter().sum::<f32>();
+                i += n;
+            }
+            None => {
+                let g = glyphs[i];
+                out_glyphs.push(anyrender::Glyph { id: g.id, x: g.x + shift, y: g.y });
+                out_ranges.push(rt.glyph_ranges[i].clone());
+                i += 1;
+            }
+        }
+    }
+    *glyphs = out_glyphs;
+    rt.glyph_ranges = out_ranges;
+}
+
 /// wkhtmltopdf-rs: the glyph id and advance of `c` in `font` at `size`.
 fn char_glyph(font: &peniko::FontData, size: f32, c: char) -> Option<(u32, f64)> {
     use skrifa::MetadataProvider;
@@ -1025,7 +1092,27 @@ pub(crate) fn stroke_text<'a>(
                     }
                 }
                 // The run's text, as drawn (`cut` keeps the shown glyphs only).
-                let run_text = crate::run_text::take();
+                let mut run_text = crate::run_text::take();
+                let mut glyphs: Vec<anyrender::Glyph> = glyph_run
+                    .positioned_glyphs()
+                    .enumerate()
+                    .filter(|(i, g)| shown(*i) && keep(g.x, g.advance))
+                    .map(|(_, g)| anyrender::Glyph { id: g.id as _, x: g.x, y: g.y })
+                    .collect();
+                if line.is_justified() {
+                    let advances: Vec<f32> = glyph_run
+                        .positioned_glyphs()
+                        .enumerate()
+                        .filter(|(i, g)| shown(*i) && keep(g.x, g.advance))
+                        .map(|(_, g)| g.advance)
+                        .collect();
+                    let ligatures_on = doc.get_node(style.brush.id).and_then(|n| n.primary_styles()).is_some_and(|s| {
+                        s.get_font().font_variant_ligatures == style::values::specified::font::FontVariantLigatures::NORMAL
+                    });
+                    if ligatures_on && let Some(rt) = run_text.as_mut() {
+                        justified_ligatures(font, font_size, &mut glyphs, &advances, rt);
+                    }
+                }
                 // wkhtmltopdf-rs: `text-shadow` (QtWebKit 2.2 paints it): the glyphs
                 // again under the text, offset, in the shadow colour (no blur). Qt draws a
                 // shadow without blur as text (it is extracted with the text), a blurred one
@@ -1057,11 +1144,7 @@ pub(crate) fn stroke_text<'a>(
                             1.0,
                             offset,
                             glyph_xform,
-                            glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).map(|glyph| anyrender::Glyph {
-                                id: glyph.id as _,
-                                x: glyph.x,
-                                y: glyph.y,
-                            }),
+                            glyphs.iter().copied(),
                         );
                     }
                 }
@@ -1087,11 +1170,7 @@ pub(crate) fn stroke_text<'a>(
                     1.0, // alpha
                     transform,
                     glyph_xform,
-                    glyph_run.positioned_glyphs().enumerate().filter(|(i, g)| shown(*i) && keep(g.x, g.advance)).map(|(_, g)| g).map(|glyph| anyrender::Glyph {
-                        id: glyph.id as _,
-                        x: glyph.x,
-                        y: glyph.y,
-                    }),
+                    glyphs.iter().copied(),
                 );
 
                 // Accumulate this run's contribution to each decorating box on its ancestor

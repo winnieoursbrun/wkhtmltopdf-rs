@@ -33,6 +33,11 @@ impl<'a, B: Brush> Line<'a, B> {
         self.data.box_correction
     }
 
+    /// wkhtmltopdf-rs: whether `text-align: justify` stretched the line's spaces.
+    pub fn is_justified(&self) -> bool {
+        self.data.justification.amount_per_opportunity > 0.0
+    }
+
     pub fn break_reason(&self) -> BreakReason {
         self.data.break_reason
     }
