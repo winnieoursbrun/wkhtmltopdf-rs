@@ -262,6 +262,57 @@ impl FontEntry {
     }
 }
 
+/// An Arabic letter (Arabic and Arabic Supplement blocks).
+fn is_arabic_letter(c: char) -> bool {
+    matches!(c, '\u{0620}'..='\u{064A}' | '\u{066E}'..='\u{06D3}' | '\u{0750}'..='\u{077F}')
+}
+
+/// An Arabic presentation form (Presentation Forms-A and -B).
+fn is_arabic_presentation_form(c: char) -> bool {
+    matches!(c, '\u{FB50}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}')
+}
+
+/// The text of an Arabic run as Qt 4.8 writes it: Qt's ToUnicode maps each glyph back through
+/// the font's cmap (the lowest code point of the glyph), so a contextual form or a lam-alef
+/// ligature, which the font maps from a presentation form only, reads as that form (`ﻣ`,
+/// `ﻻ`), an isolated letter as the letter itself. Each glyph that stands alone for a cluster of
+/// Arabic letters and is mapped from a presentation form takes that form as its text; the
+/// other glyphs keep theirs. `glyphs` get their ranges in the returned text.
+fn arabic_presentation_text(
+    fe: &FontEntry,
+    fd: &peniko::FontData,
+    text: &str,
+    glyphs: &mut [KrillaGlyph],
+    source: &[anyrender::Glyph],
+) -> String {
+    let ranges: Vec<std::ops::Range<usize>> = glyphs.iter().map(|g| g.text_range.clone()).collect();
+    let mut out = String::with_capacity(text.len());
+    let mut last: Option<std::ops::Range<usize>> = None;
+    for (i, g) in glyphs.iter_mut().enumerate() {
+        let range = &ranges[i];
+        if i > 0 && ranges[i - 1] == *range {
+            if let Some(dst) = &last {
+                g.text_range = dst.clone();
+            }
+            continue;
+        }
+        let alone = ranges.get(i + 1) != Some(range);
+        let src_text = text.get(range.clone()).unwrap_or("");
+        let form = (alone && !src_text.is_empty() && src_text.chars().all(is_arabic_letter))
+            .then(|| fe.char_of(fd, source[i].id))
+            .flatten()
+            .filter(|&c| is_arabic_presentation_form(c));
+        let start = out.len();
+        match form {
+            Some(c) => out.push(c),
+            None => out.push_str(src_text),
+        }
+        g.text_range = start..out.len();
+        last = Some(g.text_range.clone());
+    }
+    out
+}
+
 /// The faces of the display lists, by blob id and index.
 type FontMap = HashMap<(u64, u32), Option<Arc<FontEntry>>>;
 /// Faces of text items by (address of the data, index), with the data they point to.
@@ -766,7 +817,12 @@ impl Replayer<'_, '_, '_> {
                 None,
             ));
         }
-        let s: &str = if use_ranges { &text.text } else { &fallback };
+        let mut s: &str = if use_ranges { &text.text } else { &fallback };
+        let arabic_text;
+        if use_ranges && text.text.chars().any(is_arabic_letter) {
+            arabic_text = arabic_presentation_text(&fe, &c.font_data, &text.text, &mut glyphs, &c.glyphs);
+            s = &arabic_text;
+        }
         surface.set_stroke(None);
         surface.set_fill(Some(fill));
         let c6 = t.as_coeffs();
