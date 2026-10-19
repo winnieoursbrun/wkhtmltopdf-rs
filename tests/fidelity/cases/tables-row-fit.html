@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>tables-row-fit</title>
+<style>
+/* QtWebKit's row pagination (RenderTableSection::layoutRows): the page is 1140 px high. In the
+   first table the row R10 ends exactly at the bottom of page 1, which pushes the rows after
+   it 100 px further down (below the repeated header); in the second, the cut falls in the
+   border spacing below a row, which moves that row to the next page. */
+body { margin: 0; font-family: sans-serif; font-size: 12px; }
+table { border-spacing: 0; margin-bottom: 79px; }
+td, th { padding: 0 8px; border-bottom: 1px solid #999; vertical-align: top; }
+th { background: #dde; height: 29px; }
+td { height: 99px; }
+.spaced { border-spacing: 0 4px; }
+.spaced td { height: 100px; border: 0; background: #eef; }
+</style>
+</head>
+<body>
+<div style="height: 10px"></div>
+<table><thead><tr><th>Head</th><th>Second column</th></tr></thead><tbody>
+<tr><td>R0</td><td>Row zero</td></tr>
+<tr><td>R1</td><td>Row one</td></tr>
+<tr><td>R2</td><td>Row two</td></tr>
+<tr><td>R3</td><td>Row three</td></tr>
+<tr><td>R4</td><td>Row four</td></tr>
+<tr><td>R5</td><td>Row five</td></tr>
+<tr><td>R6</td><td>Row six</td></tr>
+<tr><td>R7</td><td>Row seven</td></tr>
+<tr><td>R8</td><td>Row eight</td></tr>
+<tr><td>R9</td><td>Row nine</td></tr>
+<tr><td>R10</td><td>Row ten, ending at the page bottom</td></tr>
+<tr><td>R11</td><td>Row eleven</td></tr>
+<tr><td>R12</td><td>Row twelve</td></tr>
+</tbody></table>
+<table class="spaced"><tbody>
+<tr><td>S0</td><td>Spaced zero</td></tr>
+<tr><td>S1</td><td>Spaced one</td></tr>
+<tr><td>S2</td><td>Spaced two</td></tr>
+<tr><td>S3</td><td>Spaced three</td></tr>
+<tr><td>S4</td><td>Spaced four</td></tr>
+<tr><td>S5</td><td>Spaced five</td></tr>
+<tr><td>S6</td><td>Spaced six</td></tr>
+<tr><td>S7</td><td>Spaced seven</td></tr>
+<tr><td>S8</td><td>Spaced eight</td></tr>
+<tr><td>S9</td><td>Spaced nine</td></tr>
+<tr><td>S10</td><td>Spaced ten</td></tr>
+</tbody></table>
+</body></html>

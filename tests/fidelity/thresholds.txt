@@ -37,7 +37,7 @@ css-generated               1 0.98
 display-misc                1 0.97
 doc-bootstrap               1 0.97
 doc-certificate             1 0.97
-doc-invoice                 1 0.80
+doc-invoice                 1 0.98
 doc-letter                  1 0.98
 doc-packing-slip            1 0.94
 doc-report                  1 0.98
@@ -93,6 +93,9 @@ tables-long                 1 0.98
 tables-long                 2 0.98
 tables-long                 3 0.98
 tables-nested               1 0.98
+tables-row-fit              1 0.98
+tables-row-fit              2 0.98
+tables-row-fit              3 0.98
 tables-spans                1 0.98
 toc                         1 0.95
 toc                         2 0.98
