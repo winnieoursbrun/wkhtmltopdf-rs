@@ -132,7 +132,9 @@ Deliberate:
 
 Not yet matched:
 
-- QtWebKit's pagination of tall table rows (one page of `tests/corpus/statement` differs).
+- Table rows at page boundaries: struts from the stale screen layout are modelled for cell lines
+  only (not images or nested tables), and a table whose last row exactly fills a page does not
+  push the content after it.
 - `<select>` boxes are drawn by hand in Qt's style (list box scroll bars are plain); canvas is painted
   as vectors where the original rasterises it.
 - Quirks mode (no DOCTYPE) is rendered as standards mode: a line holding only an image keeps the
@@ -150,7 +152,7 @@ Not yet matched:
 | P2 — static pipeline | Loader, HTML/CSS layout, paginator, PDF output | **P2a done**: pdfkit's invocation (stdin → stdout) and file/URL inputs produce real PDFs. 13 of 13 `conversion` fixtures reproduce stderr and exit code exactly (`toc` included). L2 on `tests/corpus`: page count and size match on 6/6 pages, and text similarity is ≥ 0.95 on every corpus page. **P2b done** (rendering fidelity): see below the table |
 | P3 — wkhtmltopdf parts | Headers/footers, cover, TOC, outline, links | **Done**: text and HTML headers/footers with every variable, cover/TOC/page objects with per-object options, default and custom-XSL TOCs, outline and `--dump-outline`, named-destination links, `--page-offset`, forms, copies/collate, grayscale, including the upstream quirks of spec §10. `tests/parts`: 22 of 22 reference cases pass at L2 (`parts.rs`). Deviations: see below the table |
 | P4 — JavaScript | Boa, DOM bindings, `--javascript-delay`, `--window-status` | **Done** (`crates/wk-js`): scripts run in document order with a script-pausing parser, `document.write`, events, timers and `Date` on a virtual clock, `--window-status`, `--run-script`, `window.print()`, `--debug-javascript`, dialogs, the slow-script budget, XMLHttpRequest over the loader, canvas 2D painted as vector. `warn` and `info_b` reproduce exactly; `tests/js` (jQuery 3.7.1 and 1.12.4, Chart.js 2.9.4, footer substitution, …) is at L2 parity on 13/13 cases. Gaps: see below the table |
-| P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: QtWebKit's table-row pagination struts (statement page 2), canvas painted as vector where the reference rasterises it |
+| P5 — fidelity | Tables, forms, fonts, raster parity | **In progress**: the L3 raster check covers `tests/corpus`, `tests/parts` and `tests/js` (per-page thresholds in each `l3-thresholds.txt`). Header/footer geometry like QPrinter (device-pixel margins, FreeType text metrics, measured HTML header height), form controls in Qt's default style, canvas fill rule and dashes like QtWebKit 2.2, `text-overflow: ellipsis`, `small-caps`. Still divergent: canvas painted as vector where the reference rasterises it |
 | P6 — release | Static musl builds, pdfkit test suite | **Release candidate**: static musl/macOS/Windows release builds, pdfkit integration run, benchmark and visual parity reports (`bench/`) |
 
 P4 gaps: timers fire on a virtual clock that stops at the end of the wait, so a timer set
@@ -160,7 +162,7 @@ after 60 s of virtual time (upstream waits forever); canvas pixel access (`getIm
 shadows and compositing modes are not implemented; a failed synchronous XHR prints its loader
 error before the script continues (upstream: later); `document.write` after the load is ignored.
 
-P2b (rendering fidelity): text metrics, tables, the WebKit-2012 CSS profile ([`docs/webkit2012-profile.md`](docs/webkit2012-profile.md)), shadows, outlines, `--minimum-font-size`, `--viewport-size` (media queries), `--image-dpi`, and an L3 raster check (`crates/wkhtmltopdf/tests/corpus_l3.rs`, thresholds in `tests/corpus/l3-thresholds.txt`). Still divergent: QtWebKit's tall table rows at page boundaries (statement page 2), a float placed before a collapsing margin, `-webkit-text-stroke`, web fonts picked by their internal family name, the server's HTTP reason phrase (canonical phrases are printed), `SSL error ignored` warnings, client certificates, `--cache-dir`, `--image-quality` and `--lowquality` (no visible effect found in the 0.12.6 binary), `orphans`/`widows` (not applied by 0.12.6 either).
+P2b (rendering fidelity): text metrics, tables, the WebKit-2012 CSS profile ([`docs/webkit2012-profile.md`](docs/webkit2012-profile.md)), shadows, outlines, `--minimum-font-size`, `--viewport-size` (media queries), `--image-dpi`, and an L3 raster check (`crates/wkhtmltopdf/tests/corpus_l3.rs`, thresholds in `tests/corpus/l3-thresholds.txt`). Still divergent: a float placed before a collapsing margin, `-webkit-text-stroke`, web fonts picked by their internal family name, the server's HTTP reason phrase (canonical phrases are printed), `SSL error ignored` warnings, client certificates, `--cache-dir`, `--image-quality` and `--lowquality` (no visible effect found in the 0.12.6 binary), `orphans`/`widows` (not applied by 0.12.6 either).
 
 P3 deviations: header/footer HTML is rendered without running its scripts (P4 plugs into
 `wk_converter::scripts::run_scripts`); `[date]`/`[time]` are UTC; the custom TOC style sheet runs on

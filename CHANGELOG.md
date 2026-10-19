@@ -45,6 +45,10 @@ Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.985.
   borders drawn like QtWebKit, auto column shares in WebKit's arithmetic order.
 - Pagination: boxes run down to the page bottom when the content after them is pushed to the
   next page (background and side borders).
+- Table pagination as QtWebKit's print layout: cells first laid out where the screen layout
+  left them get pagination struts that make their rows taller, a row that exactly fills the
+  rest of a page pushes the following rows down, and a cut in the border spacing below a row
+  moves that row to the next page.
 - Floats next to collapsing margins, replaced and percentage sizes truncated to device pixels,
   unthemed `--enable-forms` widgets, `repeat-x`/`repeat-y` anchoring, broken image icons.
 - SVG text is drawn with the engine's fonts (it was missing on hosts without system fonts).
