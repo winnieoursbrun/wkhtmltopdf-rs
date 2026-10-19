@@ -34,7 +34,14 @@ use crate::{Clear, Float, FloatDirection};
 /// externally to Taffy.
 pub fn compute_block_align_content_offset(align_content: AlignContent, free_space: f32) -> f32 {
     let keyword = apply_alignment_fallback(free_space, 1, align_content);
-    compute_alignment_offset(free_space, 1, 0.0, keyword, false, true)
+    let offset = compute_alignment_offset(free_space, 1, 0.0, keyword, false, true);
+    // wkhtmltopdf-rs: QtWebKit 2.2 centres in whole pixels, rounding down (a table cell's
+    // `vertical-align: middle` is `(rowHeight - contentHeight) / 2` in integers).
+    if offset > 0.0 && keyword == crate::style::AlignContentKeyword::Center {
+        offset.floor()
+    } else {
+        offset
+    }
 }
 
 /// Context for positioning Block and Float boxes within a Block Formatting Context
