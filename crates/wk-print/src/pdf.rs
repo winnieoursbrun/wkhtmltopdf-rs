@@ -868,7 +868,12 @@ impl Replayer<'_, '_, '_> {
                             let stream = builder.finish();
                             let pattern = krilla::paint::Pattern {
                                 stream,
-                                transform: tf(c.brush_transform.unwrap_or(Affine::IDENTITY)),
+                                transform: tf(page_anchored_pattern(
+                                    c.transform,
+                                    c.brush_transform.unwrap_or(Affine::IDENTITY),
+                                    (iw, ih),
+                                    y0d,
+                                )),
                                 width: size.width(),
                                 height: size.height(),
                             };
@@ -1410,4 +1415,23 @@ mod tests {
         assert_eq!(civil(0), (1970, 1, 1));
         assert_eq!(civil(20_740), (2026, 10, 14));
     }
+}
+
+/// The brush transform of a repeated image (tiles `iw`x`ih`) whose pattern starts as near
+/// the origin of the page (whose top is at `page_top` in the document) as the tiling allows:
+/// the same tiles, the matrix moved by whole tiles. Qt's PDF engine writes every pattern
+/// with the page's matrix, and rasterisers place a pattern's cells from its origin, so this
+/// gives the reference's sub-pixel placement of the cells.
+fn page_anchored_pattern(transform: Affine, brush: Affine, (iw, ih): (f64, f64), page_top: f64) -> Affine {
+    let full = transform * brush;
+    let [a, b, c, d, e, f] = full.as_coeffs();
+    if b != 0.0 || c != 0.0 || a == 0.0 || d == 0.0 {
+        return brush;
+    }
+    let (px, py) = ((a * iw).abs(), (d * ih).abs());
+    if px <= 0.0 || py <= 0.0 {
+        return brush;
+    }
+    let anchored = Affine::new([a, b, c, d, e.rem_euclid(px), page_top + (f - page_top).rem_euclid(py)]);
+    transform.inverse() * anchored
 }
