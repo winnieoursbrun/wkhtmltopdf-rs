@@ -1100,6 +1100,18 @@ fn collect_table_cells(
             let mut style = table_taffy_style(stylo_style, wm);
             let col = cursor.next_free();
 
+            // wkhtmltopdf-rs: a cell's length `height` is a minimum: the row grows to the
+            // cell's content (`RenderTableSection::calcRowLogicalHeight`); as in stylo_taffy's
+            // `TaffyStyloStyle::min_size`.
+            let height = style.size.height.into_raw();
+            if height.tag() == taffy::CompactLength::LENGTH_TAG {
+                let min = style.min_size.height.into_raw();
+                if min.tag() != taffy::CompactLength::LENGTH_TAG || min.value() < height.value() {
+                    style.min_size.height = style_helpers::length(height.value());
+                }
+                style.size.height = taffy::Dimension::auto();
+            }
+
             // In the collapsed borders model the borders are laid out as gutters between
             // the cells (see the table's `gap`) rather than as part of the cells
             if border_collapse == BorderCollapse::Collapse {

@@ -64,6 +64,15 @@ pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
 }
 
 impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
+    /// wkhtmltopdf-rs: the length `height` of a table cell, which acts as a minimum.
+    fn cell_length_height(&self) -> Option<f32> {
+        if self.effective_display().inside() != stylo::DisplayInside::TableCell {
+            return None;
+        }
+        let h = convert::dimension(&self.style.get_position().height).into_raw();
+        (h.tag() == taffy::CompactLength::LENGTH_TAG).then(|| h.value())
+    }
+
     /// The display used for contents layout, including button-input fixups.
     #[inline]
     pub fn effective_display(&self) -> stylo::Display {
@@ -255,18 +264,31 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
     #[inline]
     fn size(&self) -> taffy::Size<taffy::Dimension> {
         let position_styles = self.style.get_position();
+        // wkhtmltopdf-rs: a table cell's length `height` is a minimum (`min_size`): the row
+        // grows to the cell's content (`RenderTableSection::calcRowLogicalHeight`).
+        let height = match self.cell_length_height() {
+            Some(_) => taffy::Dimension::auto(),
+            None => convert::dimension(&position_styles.height),
+        };
         self.size(taffy::Size {
             width: convert::dimension(&position_styles.width),
-            height: convert::dimension(&position_styles.height),
+            height,
         })
     }
 
     #[inline]
     fn min_size(&self) -> taffy::Size<taffy::LengthPercentageAuto> {
         let position_styles = self.style.get_position();
+        let mut height = convert::min_size(&position_styles.min_height);
+        if let Some(h) = self.cell_length_height() {
+            let min = height.into_raw();
+            if min.tag() != taffy::CompactLength::LENGTH_TAG || min.value() < h {
+                height = taffy::LengthPercentageAuto::length(h);
+            }
+        }
         self.size(taffy::Size {
             width: convert::min_size(&position_styles.min_width),
-            height: convert::min_size(&position_styles.min_height),
+            height,
         })
     }
 
