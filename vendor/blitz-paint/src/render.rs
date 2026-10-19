@@ -801,7 +801,10 @@ fn marker_text_width(layout: &parley::Layout<blitz_dom::node::TextBrush>, text: 
     let width: f32 = text
         .chars()
         .map(|c| {
-            let adv = charmap.map(c).and_then(|g| metrics.advance_width(g)).unwrap_or(0.0);
+            // A character missing from the font is measured as its `.notdef` glyph, drawn
+            // in its place (QtWebKit 2.2: `cjk-ideographic` markers in DejaVu Sans).
+            let glyph = charmap.map(c).unwrap_or(skrifa::GlyphId::new(0));
+            let adv = metrics.advance_width(glyph).unwrap_or(0.0);
             (adv * 64.0).floor() / 64.0
         })
         .sum();
