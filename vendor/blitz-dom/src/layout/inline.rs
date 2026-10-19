@@ -674,8 +674,11 @@ impl LayoutPassState<'_> {
                     AvailableSpace::Definite(limit) => (limit * scale)
                         .min(max_content_width + float_width)
                         .max(min_content_width),
-                }
-                .ceil();
+                };
+                // wkhtmltopdf-rs: the widths are sums of whole device pixels made fractional by
+                // the zoom (43 px at `--zoom 0.75` came back as 43.000002); round them up past
+                // that error only.
+                let computed_width = (computed_width - 1e-3).ceil();
 
                 let style_width = node_size.width.map(|w| w * scale);
                 let min_width = node_min_size.width.map(|w| w * scale);
@@ -757,7 +760,7 @@ impl LayoutPassState<'_> {
                 .inline_layout_data = Some(inline_layout);
 
             let measured_size = inputs.known_dimensions.unwrap_or(taffy::Size {
-                width: width.ceil() / scale,
+                width: (width - 1e-3).ceil() / scale,
                 // Height is ignored if RequestedAxis if Horizontal
                 height: 0.0,
             });
