@@ -10,14 +10,14 @@
 # change improves a page (FIDELITY_WRITE_THRESHOLDS=1 does it and never lowers a line); never
 # lower one to make a change pass.
 
-backgrounds                 1 0.92
+backgrounds                 1 0.95
 backgrounds-body            1 0.98
 backgrounds-body-nobg       1 0.98
-backgrounds-gradients       1 0.95
-backgrounds-gradients-gray  1 0.95
+backgrounds-gradients       1 0.97
+backgrounds-gradients-gray  1 0.97
 block-box-sizing            1 0.98
 block-margins               1 0.98
-borders-radius              1 0.93
+borders-radius              1 0.96
 borders-styles              1 0.96
 box-shadow-outline          1 0.96
 breaks                      1 0.98
@@ -58,8 +58,8 @@ dpi-300                     1 0.96
 floats                      1 0.97
 fonts-unicode               1 0.96
 fonts-webfont               1 0.98
-forms-acroform              1 0.95
-forms-controls              1 0.95
+forms-acroform              1 0.96
+forms-controls              1 0.96
 forms-inputs                1 0.97
 hf-html                     1 0.98
 hf-html                     2 0.98
@@ -67,7 +67,7 @@ hf-html                     3 0.98
 hf-text                     1 0.98
 hf-text                     2 0.98
 hf-text                     3 0.98
-images-formats              1 0.94
+images-formats              1 0.96
 images-none                 1 0.98
 images-sizing               1 0.96
 inline-block                1 0.96
@@ -78,7 +78,7 @@ margins-zero                1 0.96
 media-print                 1 0.98
 media-screen                1 0.98
 media-viewport              1 0.98
-overflow                    1 0.90
+overflow                    1 0.98
 page-a4                     1 0.98
 page-a5-landscape           1 0.98
 page-custom                 1 0.98
