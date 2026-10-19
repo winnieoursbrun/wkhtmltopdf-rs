@@ -110,6 +110,11 @@ impl ElementCx<'_, '_> {
         let border = style.get_border();
         let current_color = style.clone_color();
 
+        // wkhtmltopdf-rs: a translucent dashed border all of one colour.
+        if self.draw_qt_translucent_dashed_border(scene) {
+            return;
+        }
+
         // Fast path: a uniform-width, single-color solid border whose corners are
         // all circular arcs (equal x and y radius — sharp rectangles, ordinary
         // rounded rectangles and circles all qualify) can be drawn as a single
@@ -318,6 +323,63 @@ impl ElementCx<'_, '_> {
             scene.fill(Fill::NonZero, self.transform, color, None, &path);
             start = next;
         }
+    }
+
+    /// A `dashed` border of a square box whose four sides share a translucent
+    /// colour, as QtWebKit 2.2 prints it: WebKit paints sides of a shared translucent colour
+    /// opaque inside a transparency layer of the colour's alpha
+    /// (`RenderBoxModelObject::paintTranslucentBorderSides`), which Qt rasterises, so the
+    /// corners are not painted twice and the dashes are Qt's raster ones: `3w` dashes spread
+    /// evenly along each side, from corner to corner, with dashes at both ends
+    /// (measured on the 0.12.6 binary). Returns whether the border was drawn.
+    fn draw_qt_translucent_dashed_border(&self, scene: &mut impl PaintScene) -> bool {
+        let border = self.style.get_border();
+        let style = border.border_top_style;
+        if style != BorderStyle::Dashed
+            || [border.border_right_style, border.border_bottom_style, border.border_left_style]
+                .iter()
+                .any(|s| *s != style)
+            || self.frame.has_border_radius()
+        {
+            return false;
+        }
+        let current = self.style.clone_color();
+        let color = border.border_top_color.resolve_to_absolute(&current).as_srgb_color();
+        let same = [&border.border_right_color, &border.border_bottom_color, &border.border_left_color]
+            .iter()
+            .all(|c| c.resolve_to_absolute(&current).as_srgb_color() == color);
+        let alpha = color.components[3];
+        if !same || alpha >= 1.0 || alpha <= 0.0 {
+            return false;
+        }
+        let opaque = color.with_alpha(1.0);
+        let bb = self.frame.border_box;
+        scene.push_layer(Fill::NonZero, peniko::Mix::Normal, alpha, self.transform, &bb, None, None);
+        let mut path = BezPath::new();
+        for edge in [Edge::Top, Edge::Right, Edge::Bottom, Edge::Left] {
+            let w = self.edge_width(edge);
+            if w <= 0.0 {
+                continue;
+            }
+            let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
+            let len = if horizontal { bb.width() } else { bb.height() };
+            let dash = 3.0 * w;
+            let count = ((len + dash) / (2.0 * dash)).round().max(1.0);
+            let seg = len / (2.0 * count - 1.0);
+            for k in 0..count as usize {
+                let (a, b) = (2.0 * k as f64 * seg, (2.0 * k as f64 + 1.0) * seg);
+                let r = match edge {
+                    Edge::Top => Rect::new(bb.x0 + a, bb.y0, bb.x0 + b, bb.y0 + w),
+                    Edge::Bottom => Rect::new(bb.x0 + a, bb.y1 - w, bb.x0 + b, bb.y1),
+                    Edge::Left => Rect::new(bb.x0, bb.y0 + a, bb.x0 + w, bb.y0 + b),
+                    Edge::Right => Rect::new(bb.x1 - w, bb.y0 + a, bb.x1, bb.y0 + b),
+                };
+                path.extend(r.path_elements(0.1));
+            }
+        }
+        scene.fill(Fill::NonZero, self.transform, opaque, None, &path);
+        scene.pop_layer();
+        true
     }
 
     /// The border width (in device pixels) of a single edge.
