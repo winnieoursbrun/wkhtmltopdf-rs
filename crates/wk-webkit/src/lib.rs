@@ -11,6 +11,7 @@ pub mod paint;
 mod parser;
 pub mod profile;
 mod scripting;
+mod struts;
 
 pub use blitz_paint::run_text::RunText;
 pub use net::Fetcher;

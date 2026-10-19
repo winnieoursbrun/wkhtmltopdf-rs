@@ -139,6 +139,9 @@ pub struct Node {
     /// (`LayoutPassState::layout_with_qt_scrollbars`): [`QT_SCROLLBAR_VERTICAL`] and
     /// [`QT_SCROLLBAR_HORIZONTAL`]. Each takes 16px from the padding box.
     pub qt_scrollbars: Cell<u8>,
+    /// wkhtmltopdf-rs: for a table cell, the pagination strut QtWebKit's first print layout
+    /// pass gave its content (added to its bottom padding, see `TaffyStyloStyle`).
+    pub pagination_strut: Cell<f32>,
 
     /// Node type (Element, TextNode, etc) specific data.
     ///
@@ -437,6 +440,7 @@ impl Node {
             flags: NodeFlags::empty(),
             collapsed_border: Cell::new(None),
             qt_scrollbars: Cell::new(0),
+            pagination_strut: Cell::new(0.0),
             data,
         }
     }
@@ -1171,6 +1175,7 @@ impl Node {
         if bars & QT_SCROLLBAR_HORIZONTAL != 0 {
             style.flags |= stylo_taffy::StyleFlags::SCROLLBAR_HORIZONTAL;
         }
+        style.extra_padding_bottom = self.pagination_strut.get();
         style
     }
 

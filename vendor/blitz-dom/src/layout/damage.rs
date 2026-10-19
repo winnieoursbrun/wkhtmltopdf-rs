@@ -44,6 +44,21 @@ pub(crate) const ALL_DAMAGE: RestyleDamage =
     RestyleDamage::from_bits_retain(0b_0000_0000_1110_1111);
 
 impl BaseDocument {
+    /// wkhtmltopdf-rs: set the pagination strut of a table cell (`Node::pagination_strut`),
+    /// to be laid out on the next `resolve`. Returns whether it changed.
+    pub fn set_pagination_strut(&mut self, node_id: NodeId, strut: f32) -> bool {
+        let Some(node) = self.nodes.get_mut(node_id) else {
+            return false;
+        };
+        if (node.pagination_strut.get() - strut).abs() < 1e-3 {
+            return false;
+        }
+        node.pagination_strut.set(strut);
+        node.insert_damage(RestyleDamage::RELAYOUT | ONLY_RELAYOUT);
+        node.mark_ancestors_dirty();
+        true
+    }
+
     /// Union `RestyleDamage` up the tree and clear the layout caches of every
     /// node whose subtree needs relayout.
     ///

@@ -1103,7 +1103,11 @@ fn draw_band<'d>(
     };
     let p = band.slice;
     let mut dy = 0.0;
-    for b in [p.thead, Some((p.y0, p.y1)), p.tfoot] {
+    for (i, b) in [p.thead, Some((p.y0, p.y1)), p.tfoot].into_iter().enumerate() {
+        if i == 1 {
+            // The blank space QtWebKit's row pagination leaves below the header.
+            dy += p.gap;
+        }
         let Some((b0, b1)) = b else { continue };
         surface.push_transform(&Transform::from_translate(0.0, dy - b0));
         if let Some(clip) = rect_path(cx0, b0, cx1, b1) {

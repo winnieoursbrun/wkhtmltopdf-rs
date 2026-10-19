@@ -121,6 +121,8 @@ pub struct TableInfo {
     pub bottom: f32,
     pub thead: Option<(f32, f32)>,
     pub tfoot: Option<(f32, f32)>,
+    /// The rows (the extent of their cells), top to bottom.
+    pub rows: Vec<(f32, f32)>,
 }
 
 /// The background and side borders of a box, in document px: what QtWebKit shows of a box
@@ -468,9 +470,22 @@ impl WebPage {
             viewport_shifts: Vec::new(),
         };
         page.mask_passwords();
+        // A page with tables is first laid out at the screen viewport, which the print
+        // layout starts from (see `struts`): the load-time layout is that one.
+        if page.settings.print_area.is_some() && crate::struts::has_cells(&page.doc) {
+            let (w, h) = page.screen_viewport();
+            page.doc.set_viewport(Viewport::new(w as u32, h as u32, 1.0, ColorScheme::Light));
+        }
         page.load_resources(fetcher);
         crate::timing("resources loaded");
         page
+    }
+
+    /// The viewport of the screen layout, in CSS px: `--viewport-size`, 0×0 by default.
+    fn screen_viewport(&self) -> (f32, f32) {
+        let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
+        let (w, h) = self.settings.viewport.unwrap_or((0, 0));
+        (w as f32 / zoom, h as f32 / zoom)
     }
 
     /// A page loaded with scripts (`scripting.rs`): password values are
@@ -693,11 +708,25 @@ impl WebPage {
         self.qt_sized_field_margins();
         self.inline_edges();
         let alt_boxes = self.broken_images();
+        // The layout QtWebKit's print layout starts from, where a table lays its cells out
+        // first (`struts`): the screen layout at the viewport (0×0 by default).
+        let mut stale = None;
+        if crate::struts::has_cells(&self.doc) {
+            crate::struts::reset(&mut self.doc);
+            let (sw, sh) = self.screen_viewport();
+            self.set_viewport(sw, sh);
+            stale = Some(crate::struts::stale_origins(&self.doc));
+            crate::timing("screen layout");
+        }
         self.set_viewport(layout_w, vh);
         crate::timing("viewport set");
         if self.settings.smart_shrinking {
             let content_w = self.content_width();
             if content_w > layout_w + 0.5 {
+                // The second print layout starts from the first one.
+                if stale.is_some() {
+                    stale = Some(crate::struts::stale_origins(&self.doc));
+                }
                 // A wider document lays out at its width, up to the maximum shrink, keeping the
                 // page's ratio (`resizePageRectsKeepingRatio`), both truncated.
                 let w = ((content_w * zoom - 1e-3).ceil()).min((print_w * max_shrink + 1e-3).floor());
@@ -709,6 +738,25 @@ impl WebPage {
         let alt_settled = self.settle_alt_boxes(&alt_boxes);
         if self.settle_legends() || alt_settled {
             self.set_viewport(layout_w, vh);
+        }
+        if let Some(stale) = &stale {
+            // Each pass moves the tables below the cells that changed.
+            for _ in 0..4 {
+                let g = collect_geometry(&self.doc);
+                let first =
+                    g.content_starts.iter().copied().find(|&c| c >= -0.01 && c < g.doc_height).unwrap_or(0.0);
+                let struts =
+                    crate::struts::cell_struts(&self.doc, stale, first.max(0.0), page_h / zoom, zoom);
+                let mut changed = false;
+                for (id, strut) in struts {
+                    changed |= self.doc.set_pagination_strut(id, strut);
+                }
+                if !changed {
+                    break;
+                }
+                self.set_viewport(layout_w, vh);
+            }
+            crate::timing("cell struts");
         }
         let pt_per_px = printable_w_pt / layout_w;
 
@@ -1862,6 +1910,22 @@ fn collect_cell_edges(doc: &BaseDocument, node: &Node, out: &mut Vec<(f32, f32)>
     }
 }
 
+/// Vertical extents of the rows of a table (not of nested tables).
+fn collect_rows(doc: &BaseDocument, node: &Node, out: &mut Vec<(f32, f32)>) {
+    for &c in node.children.iter() {
+        let Some(child) = doc.get_node(c) else { continue };
+        match tag(child) {
+            "tr" => {
+                if let Some(e) = extent(doc, child) {
+                    out.push(e);
+                }
+            }
+            "table" | "td" | "th" => {}
+            _ => collect_rows(doc, child, out),
+        }
+    }
+}
+
 /// The [`BoxFill`] of `node`, when it has a background colour or solid side borders. A table
 /// with collapsing borders paints no border of its own.
 fn box_fill(
@@ -2052,7 +2116,10 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry, mut oof: bool) {
             let b = if bottom - b < 8.0 { bottom } else { b };
             (if prev.is_finite() { prev } else { a }, b)
         });
-        g.tables.push(TableInfo { top, bottom, thead, tfoot });
+        let mut rows = Vec::new();
+        collect_rows(doc, node, &mut rows);
+        rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+        g.tables.push(TableInfo { top, bottom, thead, tfoot, rows });
     }
 
     if let Some(text) = node.element_data().and_then(|e| e.inline_layout_data.as_ref()) {

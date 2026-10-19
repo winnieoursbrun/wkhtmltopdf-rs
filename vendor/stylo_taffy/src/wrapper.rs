@@ -67,6 +67,9 @@ pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
     /// style's, for the cells of a `border-collapse: collapse` table (WebKit gives
     /// each cell half of each collapsed border).
     pub border_override: Option<[f32; 4]>,
+    /// wkhtmltopdf-rs: length added to the physical bottom padding: the pagination strut a
+    /// table cell got in QtWebKit's first print layout pass (`wk-webkit`, `cell_struts`).
+    pub extra_padding_bottom: f32,
 }
 
 impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
@@ -105,6 +108,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
             #[cfg(feature = "writing-mode")]
             percent_basis: None,
             border_override: None,
+            extra_padding_bottom: 0.0,
         }
     }
 
@@ -122,6 +126,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
             #[cfg(feature = "writing-mode")]
             percent_basis: None,
             border_override: None,
+            extra_padding_bottom: 0.0,
         }
     }
 
@@ -302,7 +307,14 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
     fn min_size(&self) -> taffy::Size<taffy::LengthPercentageAuto> {
         let position_styles = self.style.get_position();
         let mut height = convert::min_size(&position_styles.min_height);
-        if let Some(h) = self.cell_length_height() {
+        if let Some(mut h) = self.cell_length_height() {
+            // The pagination strut grows the cell's content, not its specified height
+            // (`calcRowLogicalHeight` takes the larger of both).
+            if self.extra_padding_bottom != 0.0
+                && self.style.get_position().box_sizing == stylo::BoxSizing::ContentBox
+            {
+                h = (h - self.extra_padding_bottom).max(0.0);
+            }
             let min = height.into_raw();
             if min.tag() != taffy::CompactLength::LENGTH_TAG || min.value() < h {
                 height = taffy::LengthPercentageAuto::length(h);
@@ -354,14 +366,25 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
                 left: resolve(&padding_styles.padding_left.0),
                 right: resolve(&padding_styles.padding_right.0),
                 top: resolve(&padding_styles.padding_top.0),
-                bottom: resolve(&padding_styles.padding_bottom.0),
+                bottom: taffy::LengthPercentage::length(
+                    convert::length_percentage(&padding_styles.padding_bottom.0)
+                        .resolve_or_zero(Some(basis), convert::resolve_calc_value)
+                        + self.extra_padding_bottom,
+                ),
             });
+        }
+        let mut bottom = convert::length_percentage(&padding_styles.padding_bottom.0);
+        if self.extra_padding_bottom != 0.0 {
+            let raw = bottom.into_raw();
+            if raw.tag() == taffy::CompactLength::LENGTH_TAG {
+                bottom = taffy::LengthPercentage::length(raw.value() + self.extra_padding_bottom);
+            }
         }
         self.rect(taffy::Rect {
             left: convert::length_percentage(&padding_styles.padding_left.0),
             right: convert::length_percentage(&padding_styles.padding_right.0),
             top: convert::length_percentage(&padding_styles.padding_top.0),
-            bottom: convert::length_percentage(&padding_styles.padding_bottom.0),
+            bottom,
         })
     }
 

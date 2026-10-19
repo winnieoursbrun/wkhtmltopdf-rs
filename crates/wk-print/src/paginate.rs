@@ -34,6 +34,10 @@ pub struct PageSlice {
     /// layout pushes that content down with a strut, so the boxes around it run on to the
     /// page bottom ([`wk_webkit::BoxFill`]).
     pub fill_to: Option<f32>,
+    /// Blank space between the repeated header and the band: QtWebKit's `layoutRows` pushes
+    /// the rows after a row that exactly fills the rest of a page by that row's height (and
+    /// the border spacing below it) further down.
+    pub gap: f32,
 }
 
 impl PageSlice {
@@ -42,11 +46,16 @@ impl PageSlice {
         self.thead.map(|(a, b)| b - a).unwrap_or(0.0)
     }
 
+    /// Offset of the band from the top of the content area: the repeated header and the gap.
+    pub fn band_offset(&self) -> f32 {
+        self.thead_height() + self.gap
+    }
+
     /// Vertical offset (px from the top of the content area) of document
     /// position `y`, when it lies in this page's band.
     pub fn offset_of(&self, y: f32) -> Option<f32> {
         if y >= self.y0 - 0.5 && y < self.y1 {
-            Some(self.thead_height() + (y - self.y0).max(0.0))
+            Some(self.band_offset() + (y - self.y0).max(0.0))
         } else {
             None
         }
@@ -120,12 +129,13 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
     let mut pages = vec![];
     let mut y = 0.0f32;
     let mut thead: Option<(f32, f32)> = None;
+    let mut gap = 0.0f32;
     let page_h = page_h.max(1.0);
     let atomic = Atomic::new(g);
     // Truncate the margins at the top of the first page.
     y = next_content(g, y);
     while y < g.doc_height - 0.5 && pages.len() < 100_000 {
-        let thead_h = thead.map(|(a, b)| b - a).unwrap_or(0.0);
+        let thead_h = thead.map(|(a, b)| b - a).unwrap_or(0.0) + gap;
         let mut avail = (page_h - thead_h).max(page_h * 0.25);
         // A table that goes on past this page repeats its footer here.
         let mut tfoot = None;
@@ -150,7 +160,27 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
             }
         }
         let crossed = forced.is_none() && limit < g.doc_height && crosses(g, y, limit);
-        let pushed = forced.is_some() || crossed;
+        // QtWebKit's `layoutRows` gives each table row the room left on its page less the
+        // border spacing below it (and the repeated footer): a row that needs more is pushed to
+        // the next page with the rows after it, and one that needs exactly that much stays but
+        // still pushes the rows after it by `remainingLogicalHeight + headHeight` (measured on
+        // the 0.12.6 binary). So a cut in the spacing below a row moves up to that row's top,
+        // and a cut at the top of a row that follows one ending at the cut leaves that row's
+        // height and spacing blank below the repeated header on the next page.
+        let row_fit = (forced.is_none() && !crossed && limit < g.doc_height)
+            .then(|| {
+                g.tables
+                    .iter()
+                    .filter(|t| t.top < limit && limit < t.bottom - 0.5)
+                    .flat_map(|t| t.rows.windows(2))
+                    .find(|w| w[0].0 > y + 0.5 && w[0].1 <= limit + 0.01 && w[1].0 >= limit - 0.01)
+                    .map(|w| (w[0].0, w[1].0))
+            })
+            .flatten();
+        let row_pushed = row_fit.filter(|&(_, next)| next > limit + 0.01).map(|(top, _)| top);
+        let next_gap =
+            row_fit.filter(|&(_, next)| next <= limit + 0.01).map_or(0.0, |(top, next)| next - top);
+        let pushed = forced.is_some() || crossed || row_pushed.is_some();
         let end = if let Some(f) = forced {
             f
         } else if limit >= g.doc_height {
@@ -163,6 +193,8 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
                 .filter(|&c| c > y + 1.0 && c <= print_bottom(y, limit) && atomic.is_safe(c))
                 .fold(None, |acc: Option<f32>, c| Some(acc.map_or(c, |a| a.max(c))))
                 .unwrap_or(limit)
+        } else if let Some(top) = row_pushed {
+            top
         } else {
             // Nothing straddles the cut: the page is full height, and the next one starts
             // inside whatever gap (margins) the cut falls in.
@@ -171,7 +203,8 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
         // The footer is only repeated when the table really continues.
         let tfoot = tfoot.filter(|_| g.tables.iter().any(|t| t.tfoot == tfoot && t.bottom > end + 0.5));
         let fill_to = (pushed && tfoot.is_none() && end < limit - 0.5).then_some(limit);
-        pages.push(PageSlice { y0: y, y1: end, thead, tfoot, fill_to });
+        pages.push(PageSlice { y0: y, y1: end, thead, tfoot, fill_to, gap });
+        gap = next_gap;
         // Repeat the header group when the break falls inside a table body.
         thead = g
             .tables
@@ -206,12 +239,20 @@ pub fn paginate(g: &Geometry, page_h: f32) -> Vec<PageSlice> {
         }
     }
     if pages.is_empty() {
-        pages.push(PageSlice { y0: 0.0, y1: page_h, thead: None, tfoot: None, fill_to: None });
+        pages.push(PageSlice { y0: 0.0, y1: page_h, thead: None, tfoot: None, fill_to: None, gap: 0.0 });
     }
     if std::env::var_os("WKHTMLTOPDF_DEBUG_PAGES").is_some() {
         eprintln!("paginate: page_h={page_h} doc_h={}", g.doc_height);
         for (i, p) in pages.iter().enumerate() {
-            eprintln!("  page {}: [{}, {}) thead={:?} tfoot={:?}", i + 1, p.y0, p.y1, p.thead, p.tfoot);
+            eprintln!(
+                "  page {}: [{}, {}) thead={:?} tfoot={:?} gap={}",
+                i + 1,
+                p.y0,
+                p.y1,
+                p.thead,
+                p.tfoot,
+                p.gap
+            );
         }
     }
     pages
@@ -329,6 +370,7 @@ mod tests {
             bottom: 400.0,
             thead: Some((0.0, 20.0)),
             tfoot: Some((380.0, 400.0)),
+            rows: vec![],
         });
         let p = paginate(&g, 200.0);
         assert!(p.len() >= 3);
@@ -336,5 +378,47 @@ mod tests {
         assert_eq!(p[1].thead, Some((0.0, 20.0)));
         // The real footer ends the table; it is not drawn twice.
         assert!(p.last().unwrap().y1 >= 400.0);
+    }
+
+    /// A table of `n` rows `h` px tall, `spacing` px apart, from `top`.
+    fn rows(top: f32, n: usize, h: f32, spacing: f32) -> Geometry {
+        // Content above the table starts the first page at 0.
+        let mut g = Geometry { content_starts: vec![0.0], ..Default::default() };
+        let mut rows = vec![];
+        for i in 0..n {
+            let a = top + spacing + i as f32 * (h + spacing);
+            rows.push((a, a + h));
+            g.atomic.push((a, a + h));
+            g.straddlers.push((a, a + h));
+            g.content_starts.push(a);
+            g.candidates.extend([a, a + h]);
+        }
+        let bottom = top + spacing + n as f32 * (h + spacing);
+        g.doc_height = bottom;
+        g.tables.push(TableInfo { top, bottom, thead: None, tfoot: None, rows });
+        g
+    }
+
+    #[test]
+    fn a_row_that_fills_the_page_pushes_the_next_rows() {
+        // Rows 100 px tall from 40: the 10th ends exactly at the page bottom, 1140. The
+        // next page starts with the 11th, 100 px down.
+        let p = paginate(&rows(40.0, 30, 100.0, 0.0), 1140.0);
+        assert_eq!((p[0].y1, p[1].y0, p[1].gap), (1140.0, 1140.0, 100.0));
+        assert_eq!(p[2].gap, 0.0);
+        // One px lower, the row crosses the bottom: pushed, no gap.
+        let p = paginate(&rows(41.0, 16, 100.0, 0.0), 1140.0);
+        assert_eq!((p[0].y1, p[1].gap), (1041.0, 0.0));
+    }
+
+    #[test]
+    fn a_cut_in_the_border_spacing_pushes_the_row_above() {
+        // Rows 100 px tall, 4 px apart: the 10th row ends at 1137, the next starts at 1141.
+        let p = paginate(&rows(97.0, 16, 100.0, 4.0), 1140.0);
+        assert_eq!((p[0].y1, p[1].y0, p[1].gap), (1037.0, 1037.0, 0.0));
+        // Ending at 1136, the next row starting at the cut: the room of the row and the
+        // spacing is left blank.
+        let p = paginate(&rows(96.0, 16, 100.0, 4.0), 1140.0);
+        assert_eq!((p[0].y1, p[1].y0, p[1].gap), (1140.0, 1140.0, 104.0));
     }
 }

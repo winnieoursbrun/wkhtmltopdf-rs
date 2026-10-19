@@ -1205,6 +1205,7 @@ fn first_slice(r: &RenderedPage) -> PageSlice {
         thead: None,
         tfoot: None,
         fill_to: None,
+        gap: 0.0,
     })
 }
 
@@ -1433,7 +1434,7 @@ fn locate(slices: &[PageSlice], y: f32) -> Option<(usize, f32)> {
         // Positions past the last band belong to the last page.
         let last = slices.len().checked_sub(1)?;
         let s = &slices[last];
-        (y >= s.y1).then(|| (last, s.thead_height() + (s.y1 - s.y0)))
+        (y >= s.y1).then(|| (last, s.band_offset() + (s.y1 - s.y0)))
     })
 }
 
