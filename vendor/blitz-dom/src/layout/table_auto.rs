@@ -465,7 +465,9 @@ pub(crate) fn auto_layout(
         available += alloc_auto;
         for (i, c) in cols.iter().enumerate() {
             if c.eff_kind == Kind::Auto && !c.empty && total_auto > 0 {
-                let cell = widths[i].max((available as f32 * (c.max as f32 / total_auto as f32)) as i32);
+                // `available * float(max) / totalAuto`, in that order: 97 * 64 / 97 is 64, while
+                // 97 * (64 / 97) truncates to 63.
+                let cell = widths[i].max((available as f32 * c.max as f32 / total_auto as f32) as i32);
                 available -= cell;
                 total_auto -= i64::from(c.max);
                 widths[i] = cell;
