@@ -1391,40 +1391,6 @@ pub fn write_pdf(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A draft that panics on a pool thread must not leave the document waiting for it: the
-    /// document draws the page itself and the panic reaches it when the drafting ends.
-    #[test]
-    fn a_panicking_draft_does_not_hang_the_document() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let result = std::panic::catch_unwind(|| {
-                let drafts = Drafts::new(2);
-                let panics = |_: usize| -> Draft { panic!("draft failed") };
-                // Page 0 is claimed by a drafting thread before the document reaches it.
-                assert!(drafts.claim(0, 1));
-                std::thread::scope(|s| {
-                    s.spawn(|| drafts.fill(0, &panics));
-                    // The document waits for page 0, then draws it (page 1 is past `end`).
-                    assert!(drafts.take(0, 1, &panics).is_none());
-                });
-            });
-            let _ = tx.send(result.is_err());
-        });
-        let propagated = rx.recv_timeout(std::time::Duration::from_secs(30)).expect("the document hangs");
-        assert!(propagated, "the draft's panic must reach the document");
-    }
-
-    #[test]
-    fn civil_dates() {
-        assert_eq!(civil(0), (1970, 1, 1));
-        assert_eq!(civil(20_740), (2026, 10, 14));
-    }
-}
-
 /// The brush transform of a repeated image (tiles `iw`x`ih`) whose pattern starts as near
 /// the origin of the page (whose top is at `page_top` in the document) as the tiling allows:
 /// the same tiles, the matrix moved by whole tiles. Qt's PDF engine writes every pattern
@@ -1483,4 +1449,38 @@ fn draw_pixel_tile(surface: &mut Surface, img: &peniko::ImageBrush, gray: bool) 
         surface.draw_path(&p);
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A draft that panics on a pool thread must not leave the document waiting for it: the
+    /// document draws the page itself and the panic reaches it when the drafting ends.
+    #[test]
+    fn a_panicking_draft_does_not_hang_the_document() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = std::panic::catch_unwind(|| {
+                let drafts = Drafts::new(2);
+                let panics = |_: usize| -> Draft { panic!("draft failed") };
+                // Page 0 is claimed by a drafting thread before the document reaches it.
+                assert!(drafts.claim(0, 1));
+                std::thread::scope(|s| {
+                    s.spawn(|| drafts.fill(0, &panics));
+                    // The document waits for page 0, then draws it (page 1 is past `end`).
+                    assert!(drafts.take(0, 1, &panics).is_none());
+                });
+            });
+            let _ = tx.send(result.is_err());
+        });
+        let propagated = rx.recv_timeout(std::time::Duration::from_secs(30)).expect("the document hangs");
+        assert!(propagated, "the draft's panic must reach the document");
+    }
+
+    #[test]
+    fn civil_dates() {
+        assert_eq!(civil(0), (1970, 1, 1));
+        assert_eq!(civil(20_740), (2026, 10, 14));
+    }
 }
