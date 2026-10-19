@@ -1882,10 +1882,13 @@ fn box_fill(
             == style::computed_values::border_collapse::T::Collapse;
     let border = styles.get_border();
     let side = |w: f32, st: BorderStyle, c: &style::values::computed::Color| {
-        (!collapsed && st == BorderStyle::Solid && w > 0.0).then(|| (w, srgb(&c.resolve_to_absolute(&current))))
+        (!collapsed && st == BorderStyle::Solid && w > 0.0)
+            .then(|| (w, srgb(&c.resolve_to_absolute(&current))))
     };
-    let left = side(border.border_left_width.0.to_f32_px(), border.border_left_style, &border.border_left_color);
-    let right = side(border.border_right_width.0.to_f32_px(), border.border_right_style, &border.border_right_color);
+    let left =
+        side(border.border_left_width.0.to_f32_px(), border.border_left_style, &border.border_left_color);
+    let right =
+        side(border.border_right_width.0.to_f32_px(), border.border_right_style, &border.border_right_color);
     if background.is_none() && left.is_none() && right.is_none() {
         return None;
     }
@@ -1985,7 +1988,8 @@ fn walk(doc: &BaseDocument, node: &Node, g: &mut Geometry, mut oof: bool) {
             if b.display.is_none() {
                 return;
             }
-            if !oof && bottom > top && !matches!(t.as_str(), "td" | "th" | "tr" | "thead" | "tbody" | "tfoot") {
+            if !oof && bottom > top && !matches!(t.as_str(), "td" | "th" | "tr" | "thead" | "tbody" | "tfoot")
+            {
                 if let Some(fill) = box_fill(node, &styles, top, bottom) {
                     g.fills.push(fill);
                 }

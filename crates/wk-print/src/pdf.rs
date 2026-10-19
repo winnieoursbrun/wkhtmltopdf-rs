@@ -1040,12 +1040,21 @@ fn draw_band<'d>(
 /// The boxes that run on below content pushed to the next page at `y1` (document px): each box
 /// across `y1` gets its background and solid side borders down to `to`, the page bottom, as
 /// QtWebKit's pagination strut makes it grow there ([`PageSlice::fill_to`]).
-fn draw_pushed_fills(surface: &mut Surface, page: &RenderedPage, y1: f32, to: f32, (cx0, cx1): (f32, f32), gray: bool) {
+fn draw_pushed_fills(
+    surface: &mut Surface,
+    page: &RenderedPage,
+    y1: f32,
+    to: f32,
+    (cx0, cx1): (f32, f32),
+    gray: bool,
+) {
     let Some(clip) = rect_path(cx0, y1, cx1, to) else { return };
     surface.push_clip_path(&clip, &FillRule::NonZero);
     surface.set_stroke(None);
     let mut fill_rect = |x0: f32, x1: f32, color: peniko::Color| {
-        let Some(fill) = paint_fill(&Paint::Solid(color), None, 1.0, peniko::Fill::NonZero, gray) else { return };
+        let Some(fill) = paint_fill(&Paint::Solid(color), None, 1.0, peniko::Fill::NonZero, gray) else {
+            return;
+        };
         if let Some(path) = rect_path(x0, y1, x1, to) {
             surface.set_fill(Some(fill));
             surface.draw_path(&path);
