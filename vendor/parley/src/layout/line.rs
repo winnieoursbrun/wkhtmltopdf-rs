@@ -526,6 +526,7 @@ impl<'a, B: Brush> Iterator for GlyphRunIter<'a, B> {
                         let correction = super::alignment::text_box_correction(
                             clusters,
                             shaped_clusters.start as usize..shaped_clusters.end as usize,
+                            run.data.spacing.letter,
                             false,
                             shaped_clusters.start == item_range.start
                                 && is_box(self.item_index.checked_sub(1)),

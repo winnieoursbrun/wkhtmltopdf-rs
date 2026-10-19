@@ -196,6 +196,7 @@ fn box_correction<B: Brush>(layout: &LayoutData<B>, line: &super::data::LineData
             correction += text_box_correction(
                 clusters,
                 group..group_end,
+                layout.runs[item.index].spacing.letter,
                 group_end == end && cut_at_end,
                 group == start && box_before,
                 group_end == item_end && box_after,
@@ -212,9 +213,15 @@ fn box_correction<B: Brush>(layout: &LayoutData<B>, line: &super::data::LineData
 /// rounded sum of the unrounded advances. `cut` tells that the box ends where hanging
 /// whitespace was left out, so it does not hold the whole node; `node_start`/`node_end` that
 /// an inline box (another element) is next to the box on that side.
+///
+/// The preferred width leaves the `letter_spacing` of the spaces out (WebKit measures a word
+/// with the space after it, then takes the space's spaced width off): in QtWebKit 2.2 a
+/// right-aligned `AB C` with `letter-spacing: 40px` ends its `C` at the right edge, `A B C`
+/// past it, while `ABC` keeps 40px after its `C`.
 pub(crate) fn text_box_correction(
     clusters: &[parley_engine::shape::ShapedCluster],
     range: core::ops::Range<usize>,
+    letter_spacing: f32,
     cut: bool,
     node_start: bool,
     node_end: bool,
@@ -222,13 +229,18 @@ pub(crate) fn text_box_correction(
     use parley_engine::shape::Whitespace;
     let Some(g) = clusters.get(range.clone()) else { return 0.0 };
     let Some(style) = g.first().map(|c| c.style_index) else { return 0.0 };
-    if g.iter().all(|c| c.paint_delta == 0.0) {
-        // Nothing was rounded: the laid-out width is the text's.
-        return 0.0;
-    }
     let whole = (node_start || range.start == 0 || clusters[range.start - 1].style_index != style)
         && !cut
         && (node_end || clusters.get(range.end).is_none_or(|c| c.style_index != style));
+    let unspaced = if whole && letter_spacing != 0.0 {
+        letter_spacing * g.iter().filter(|c| c.whitespace() == Whitespace::Space).count() as f32
+    } else {
+        0.0
+    };
+    if g.iter().all(|c| c.paint_delta == 0.0) {
+        // Nothing was rounded: the laid-out width is the text's.
+        return unspaced;
+    }
     let laid_out: f32 = g.iter().map(|c| c.advance).sum();
     let target = if whole {
         let (mut width, mut word) = (0.0f32, 0.0f32);
@@ -250,5 +262,5 @@ pub(crate) fn text_box_correction(
     } else {
         parley_engine::device_px::round(g.iter().map(|c| c.advance - c.paint_delta).sum::<f32>())
     };
-    laid_out - target
+    laid_out - target + unspaced
 }
