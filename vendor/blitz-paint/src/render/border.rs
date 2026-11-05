@@ -224,7 +224,14 @@ impl ElementCx<'_, '_> {
                     borders.push((color, self.frame.border_edge_shape(edge)));
                 }
                 BorderStyle::Dotted | BorderStyle::Dashed if !self.frame.has_border_radius() => {
-                    self.draw_qt_dashed_edge(scene, edge, color, edge_style == BorderStyle::Dotted)
+                    let clip = self.qt_side_clip(edge, color, current_color);
+                    if let Some(clip) = &clip {
+                        scene.push_clip_layer(Fill::NonZero, self.transform, clip);
+                    }
+                    self.draw_qt_dashed_edge(scene, edge, color, edge_style == BorderStyle::Dotted);
+                    if clip.is_some() {
+                        scene.pop_layer();
+                    }
                 }
                 BorderStyle::Dotted => self.draw_dotted_border_edge(scene, edge, color),
                 BorderStyle::Dashed => self.draw_dashed_border_edge(scene, edge, color),
@@ -380,6 +387,52 @@ impl ElementCx<'_, '_> {
         scene.fill(Fill::NonZero, self.transform, opaque, None, &path);
         scene.pop_layer();
         true
+    }
+
+    /// The polygon QtWebKit 2.2 clips a `dashed`/`dotted` side of a square box to
+    /// (`RenderBoxModelObject::clipBorderSidePolygon`): the side's mitred trapezoid between
+    /// the border and padding boxes, when an adjacent side has another colour (a `none`
+    /// side keeps its colour, `currentColor` by default) and the two are not both
+    /// transparent (`joinRequiresMitre`).
+    fn qt_side_clip(&self, edge: Edge, color: Color, current_color: style::color::AbsoluteColor) -> Option<BezPath> {
+        let border = self.style.get_border();
+        let side_color = |e: Edge| {
+            match e {
+                Edge::Top => &border.border_top_color,
+                Edge::Right => &border.border_right_color,
+                Edge::Bottom => &border.border_bottom_color,
+                Edge::Left => &border.border_left_color,
+            }
+            .resolve_to_absolute(&current_color)
+            .as_srgb_color()
+            .to_rgba8()
+        };
+        let adjacent = match edge {
+            Edge::Top | Edge::Bottom => [Edge::Left, Edge::Right],
+            Edge::Left | Edge::Right => [Edge::Top, Edge::Bottom],
+        };
+        let own = color.to_rgba8();
+        let mitre = adjacent.iter().any(|&a| {
+            let c = side_color(a);
+            !(own.a == 0 && c.a == 0) && c != own
+        });
+        if !mitre {
+            return None;
+        }
+        let (o, i) = (self.frame.border_box, self.frame.padding_box);
+        let quad = match edge {
+            Edge::Top => [(o.x0, o.y0), (i.x0, i.y0), (i.x1, i.y0), (o.x1, o.y0)],
+            Edge::Bottom => [(o.x0, o.y1), (i.x0, i.y1), (i.x1, i.y1), (o.x1, o.y1)],
+            Edge::Left => [(o.x0, o.y0), (i.x0, i.y0), (i.x0, i.y1), (o.x0, o.y1)],
+            Edge::Right => [(o.x1, o.y0), (i.x1, i.y0), (i.x1, i.y1), (o.x1, o.y1)],
+        };
+        let mut path = BezPath::new();
+        path.move_to(quad[0]);
+        for p in &quad[1..] {
+            path.line_to(*p);
+        }
+        path.close_path();
+        Some(path)
     }
 
     /// The border width (in device pixels) of a single edge.
