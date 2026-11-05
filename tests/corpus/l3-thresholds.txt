@@ -23,7 +23,7 @@ medium     1  0.99
 medium     2  0.99
 medium     3  0.99
 medium     4  0.99
-report     1  0.84  # cover: centred heading glyph positions
+report     1  0.95  # cover: centred heading glyph positions
 report     2  0.96
 report     3  0.99  # two lines only: glyph positions dominate
 report     4  0.95
@@ -34,10 +34,10 @@ statement  1  0.98
 statement  2  0.99
 statement  3  0.98
 statement  4  0.99
-webkit2012  *  0.95
-webkit2012b *  0.90
-imagedpi   *  0.91  # --image-dpi 100
+webkit2012  *  0.96
+webkit2012b *  0.91
+imagedpi   *  0.99  # --image-dpi 100
 media      *  0.98  # media queries see a 0x0 viewport
 media-viewport * 0.98  # --viewport-size 900x700
 minfont    *  0.99  # --minimum-font-size 12
-tables     *  0.95
+tables     *  0.99

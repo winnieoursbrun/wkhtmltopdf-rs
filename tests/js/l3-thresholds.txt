@@ -5,7 +5,7 @@
 # the measured value rounded down to the hundredth minus 0.01; raise a line when a
 # change improves a page, never lower it).
 
-canvas         *  0.83  # canvas painted as vector (the reference rasterises it)
+canvas         *  0.90  # canvas painted as vector (the reference rasterises it)
 chart2         *  0.88  # canvas painted as vector (the reference rasterises it)
 debugjs        *  0.99
 docwrite       *  0.98
