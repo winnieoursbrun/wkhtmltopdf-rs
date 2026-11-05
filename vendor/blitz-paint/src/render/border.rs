@@ -471,7 +471,7 @@ impl ElementCx<'_, '_> {
 
 /// One `dashed`/`dotted` side `w` wide of the box `bb` as QtWebKit draws it
 /// ([`ElementCx::draw_qt_dashed_edge`]).
-fn qt_dashed_side(
+pub(crate) fn qt_dashed_side(
     scene: &mut impl PaintScene,
     transform: kurbo::Affine,
     bb: Rect,

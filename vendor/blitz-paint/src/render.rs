@@ -6,6 +6,8 @@ mod form_controls;
 mod mask;
 mod qt_scrollbar;
 
+pub(crate) use border::qt_dashed_side;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;

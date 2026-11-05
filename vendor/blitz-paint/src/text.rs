@@ -283,53 +283,26 @@ pub(crate) fn draw_inline_backgrounds<'a>(
                 continue;
             }
             let color = |c: &style::values::computed::Color| c.resolve_to_absolute(&current_color).as_srgb_color();
+            use crate::kurbo_css::Edge;
+            use style::values::specified::border::BorderStyle;
             let edges = [
-                (Rect::new(rect.x0, rect.y0, rect.x1, rect.y0 + bt), color(&border.border_top_color), border.border_top_style, bt, true),
-                (Rect::new(rect.x0, rect.y1 - bb, rect.x1, rect.y1), color(&border.border_bottom_color), border.border_bottom_style, bb, true),
-                (Rect::new(rect.x0, rect.y0, rect.x0 + bl, rect.y1), color(&border.border_left_color), border.border_left_style, bl, false),
-                (Rect::new(rect.x1 - br, rect.y0, rect.x1, rect.y1), color(&border.border_right_color), border.border_right_style, br, false),
+                (Edge::Top, Rect::new(rect.x0, rect.y0, rect.x1, rect.y0 + bt), color(&border.border_top_color), border.border_top_style, bt),
+                (Edge::Bottom, Rect::new(rect.x0, rect.y1 - bb, rect.x1, rect.y1), color(&border.border_bottom_color), border.border_bottom_style, bb),
+                (Edge::Left, Rect::new(rect.x0, rect.y0, rect.x0 + bl, rect.y1), color(&border.border_left_color), border.border_left_style, bl),
+                (Edge::Right, Rect::new(rect.x1 - br, rect.y0, rect.x1, rect.y1), color(&border.border_right_color), border.border_right_style, br),
             ];
-            for (r, c, st, w, horizontal) in edges {
+            for (edge, r, c, st, w) in edges {
                 if w <= 0.0 {
                     continue;
                 }
-                fill_border_side(scene, transform, r, c, st, w, horizontal);
+                match st {
+                    BorderStyle::Dashed | BorderStyle::Dotted => {
+                        crate::render::qt_dashed_side(scene, transform, rect, w, edge, c, st == BorderStyle::Dotted)
+                    }
+                    _ => scene.fill(Fill::NonZero, transform, c, None, &r),
+                }
             }
         }
-    }
-}
-
-/// One side of an inline fragment's border: solid, or dashes (3 widths long) and dots
-/// (squares) with equal gaps, as QtWebKit strokes them; other styles are drawn solid.
-fn fill_border_side(
-    scene: &mut impl PaintScene,
-    transform: Affine,
-    r: Rect,
-    color: Color,
-    style: style::values::specified::border::BorderStyle,
-    width: f64,
-    horizontal: bool,
-) {
-    use style::values::specified::border::BorderStyle;
-    let dash = match style {
-        BorderStyle::Dashed => 3.0 * width,
-        BorderStyle::Dotted => width,
-        _ => {
-            scene.fill(Fill::NonZero, transform, color, None, &r);
-            return;
-        }
-    };
-    let len = if horizontal { r.width() } else { r.height() };
-    let mut t = 0.0;
-    while t < len {
-        let e = (t + dash).min(len);
-        let seg = if horizontal {
-            Rect::new(r.x0 + t, r.y0, r.x0 + e, r.y1)
-        } else {
-            Rect::new(r.x0, r.y0 + t, r.x1, r.y0 + e)
-        };
-        scene.fill(Fill::NonZero, transform, color, None, &seg);
-        t += 2.0 * dash;
     }
 }
 
