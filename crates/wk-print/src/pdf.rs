@@ -1030,7 +1030,6 @@ impl Replayer<'_, '_, '_> {
                             kurbo::Join::Round => krilla::paint::LineJoin::Round,
                         },
                         miter_limit: c.style.miter_limit as f32,
-                        ..Default::default()
                     }));
                     surface.draw_path(&p);
                     surface.set_stroke(None);
