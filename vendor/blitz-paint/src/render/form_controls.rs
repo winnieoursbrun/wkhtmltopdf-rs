@@ -2,7 +2,7 @@ use super::ElementCx;
 use crate::color::{Color, ToColorColor as _};
 use anyrender::PaintScene;
 use blitz_dom::local_name;
-use kurbo::{Affine, Arc, BezPath, Circle, Join, Point, Rect, Shape as _, Stroke, Vec2};
+use kurbo::{Affine, Arc, BezPath, Cap, Circle, Join, Point, Rect, Shape as _, Stroke, Vec2};
 use peniko::Fill;
 use style::dom::TElement as _;
 
@@ -230,9 +230,10 @@ impl ElementCx<'_, '_> {
         Some((offset, gap))
     }
 
-    /// Qt's raised push button bevel on a button whose border is the user-agent one: white
-    /// and black outside, `#d4d0c8` and `#6a6864` inside (top-left, bottom-right), each
-    /// 1px, as QWindowsStyle prints it (measured on the 0.12.6 binary).
+    /// Qt's raised push button bevel on a button whose border is the user-agent one, as
+    /// QWindowsStyle prints it (`qDrawWinShades`): cosmetic (zero-width) polylines through
+    /// the box's whole-pixel coordinates, white and black outside, `#d4d0c8` and `#6a6864`
+    /// inside (top-left, bottom-right), around the button's fill ([`Self::qt_bevel_fill`]).
     pub(super) fn draw_qt_button_bevel(&self, scene: &mut impl PaintScene) {
         let border = self.style.get_border();
         if self.node.final_layout().border.top < 1.0 {
@@ -255,18 +256,32 @@ impl ElementCx<'_, '_> {
         if w < 4.0 || h < 4.0 {
             return;
         }
-        let o = r.origin();
-        for (color, rect) in [
-            (Color::WHITE, Rect::new(0.0, 0.0, 1.0, h - 1.0)),
-            (Color::WHITE, Rect::new(0.0, 0.0, w - 1.0, 1.0)),
-            (QT_BLACK, Rect::new(0.0, h - 1.0, w, h)),
-            (QT_BLACK, Rect::new(w - 1.0, 0.0, w, h)),
-            (QT_LIGHT, Rect::new(1.0, 1.0, 2.0, h - 2.0)),
-            (QT_LIGHT, Rect::new(1.0, 1.0, w - 2.0, 2.0)),
-            (QT_SHADOW, Rect::new(1.0, h - 2.0, w - 1.0, h - 1.0)),
-            (QT_SHADOW, Rect::new(w - 2.0, 1.0, w - 1.0, h - 1.0)),
+        let (x, y) = (r.x0, r.y0);
+        let hairline = Stroke::new(0.0).with_caps(Cap::Square).with_join(Join::Bevel);
+        for (color, pts) in [
+            (Color::WHITE, [(x, y + h - 2.0), (x, y), (x + w - 2.0, y)]),
+            (QT_BLACK, [(x, y + h - 1.0), (x + w - 1.0, y + h - 1.0), (x + w - 1.0, y)]),
+            (QT_LIGHT, [(x + 1.0, y + h - 3.0), (x + 1.0, y + 1.0), (x + w - 3.0, y + 1.0)]),
+            (QT_SHADOW, [(x + 1.0, y + h - 2.0), (x + w - 2.0, y + h - 2.0), (x + w - 2.0, y + 1.0)]),
         ] {
-            self.fill_units(scene, o, 1.0, color, rect);
+            let mut line = BezPath::new();
+            line.move_to(pts[0]);
+            line.line_to(pts[1]);
+            line.line_to(pts[2]);
+            scene.stroke(&hairline, self.transform, color, None, &line);
         }
+    }
+
+    /// The area a Qt push button's background fills inside its bevel
+    /// ([`Self::draw_qt_button_bevel`]): the border box less 2px on each side.
+    pub(super) fn qt_bevel_fill(&self) -> Option<Rect> {
+        let current = self.style.clone_color();
+        let top = self.style.get_border().border_top_color.resolve_to_absolute(&current).as_srgb_color();
+        let r = self.frame.border_box;
+        (self.node.final_layout().border.top >= 1.0
+            && is_qt_bevel_sentinel(top)
+            && r.width() >= 4.0
+            && r.height() >= 4.0)
+            .then(|| r.inset(-2.0))
     }
 }

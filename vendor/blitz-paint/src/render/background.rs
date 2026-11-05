@@ -141,7 +141,10 @@ impl ElementCx<'_, '_> {
         // The background color is clipped by the clip of the last layer in the list
         let background_clip: BoxModelBox =
             (*get_cyclic(&bg_styles.background_clip.0, layer_count - 1)).into();
-        let background_clip_path = self.box_path(background_clip);
+        let background_clip_path = match self.qt_bevel_fill() {
+            Some(fill) => fill.to_path(0.1),
+            None => self.box_path(background_clip),
+        };
 
         // Draw background color (if any)
         self.draw_solid_bg(scene, &background_clip_path);

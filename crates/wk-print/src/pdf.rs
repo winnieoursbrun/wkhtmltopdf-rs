@@ -1019,6 +1019,17 @@ impl Replayer<'_, '_, '_> {
                                 offset: c.style.dash_offset as f32,
                             })
                         },
+                        line_cap: match c.style.start_cap {
+                            kurbo::Cap::Butt => krilla::paint::LineCap::Butt,
+                            kurbo::Cap::Round => krilla::paint::LineCap::Round,
+                            kurbo::Cap::Square => krilla::paint::LineCap::Square,
+                        },
+                        line_join: match c.style.join {
+                            kurbo::Join::Bevel => krilla::paint::LineJoin::Bevel,
+                            kurbo::Join::Miter => krilla::paint::LineJoin::Miter,
+                            kurbo::Join::Round => krilla::paint::LineJoin::Round,
+                        },
+                        miter_limit: c.style.miter_limit as f32,
                         ..Default::default()
                     }));
                     surface.draw_path(&p);
