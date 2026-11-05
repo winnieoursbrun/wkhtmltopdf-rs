@@ -969,12 +969,21 @@ impl Replayer<'_, '_, '_> {
                             surface.pop();
                             continue;
                         }
+                        // The whole image is drawn as is, unclipped, like Qt's drawPixmap.
+                        let whole = in_image.x0 <= 0.01
+                            && in_image.y0 <= 0.01
+                            && in_image.x1 >= iw - 0.01
+                            && in_image.y1 >= ih - 0.01;
                         surface.push_transform(&tf(c.transform));
-                        surface.push_clip_path(&clip, &FillRule::NonZero);
+                        if !whole {
+                            surface.push_clip_path(&clip, &FillRule::NonZero);
+                        }
                         surface.push_transform(&tf(c.brush_transform.unwrap_or(Affine::IDENTITY)));
                         surface.draw_image(kimg, size);
                         surface.pop();
-                        surface.pop();
+                        if !whole {
+                            surface.pop();
+                        }
                         surface.pop();
                     }
                     brush => {
