@@ -3,7 +3,7 @@ use crate::color::{Color, ToColorColor};
 use crate::gradient::to_peniko_gradient;
 use anyrender::PaintScene;
 use blitz_dom::NodeId;
-use blitz_dom::node::{ImageData, ImageResourceData, SpecialElementData};
+use blitz_dom::node::{ImageData, ImageResourceData, RasterImageData, SpecialElementData};
 use kurbo::{self, Affine, BezPath, Point, Rect, Shape, Size, Vec2};
 use peniko::{self, Fill};
 use style::{
@@ -527,8 +527,8 @@ impl ElementCx<'_, '_> {
             (self.box_rect(layer.origin), self.transform)
         };
 
-        let image_width = image_data.width as f64;
-        let image_height = image_data.height as f64;
+        let mut image_width = image_data.width as f64;
+        let mut image_height = image_data.height as f64;
 
         let (bg_pos, bg_size) = compute_layer_position_and_size(
             layer,
@@ -538,14 +538,30 @@ impl ElementCx<'_, '_> {
         );
 
         let bg_pos = (bg_pos.to_vec2() * self.scale).to_point();
-        let bg_size = bg_size * self.scale;
+        let mut bg_size = bg_size * self.scale;
+
+        let mut anchor = self.qt_pattern_anchor(layer, base_transform, origin_rect, bg_pos, bg_size);
+        // wkhtmltopdf-rs: Image::drawPattern scales a pattern's pixmap to the tile's size in
+        // CSS pixels (rounded) before making the brush, so the pattern holds that bitmap.
+        let mut scaled = None;
+        if anchor.is_some() {
+            let (sw, sh) = (
+                (bg_size.width / self.scale).round(),
+                (bg_size.height / self.scale).round(),
+            );
+            if sw >= 1.0 && sh >= 1.0 && sw <= image_width && sh <= image_height && (sw, sh) != (image_width, image_height) {
+                scaled = Some(qt_smooth_scaled(image_data, sw as u32, sh as u32));
+                (image_width, image_height) = (sw, sh);
+                bg_size = Size::new(sw * self.scale, sh * self.scale);
+                anchor = self.qt_pattern_anchor(layer, base_transform, origin_rect, bg_pos, bg_size);
+            }
+        }
+        let image_data = scaled.as_ref().unwrap_or(image_data);
 
         let x_ratio = bg_size.width / image_width;
         let y_ratio = bg_size.height / image_height;
 
         let BackgroundRepeat(repeat_x, repeat_y) = layer.repeat;
-
-        let anchor = self.qt_pattern_anchor(layer, base_transform, origin_rect, bg_pos, bg_size);
         // wkhtmltopdf-rs: with a Qt pattern, an axis that does not repeat is a band one tile
         // across, filled with the pattern at the page's phase.
         use style::values::specified::background::BackgroundRepeatKeyword::{NoRepeat, Repeat};
@@ -706,6 +722,63 @@ impl ElementCx<'_, '_> {
             }
         }
     }
+}
+
+/// `image` scaled down to `w`x`h` as Qt's smooth pixmap scaling does (`qSmoothScaleImage`):
+/// each pixel the average of the source area it covers, on premultiplied colours.
+/// Cached per source image and size.
+fn qt_smooth_scaled(image: &RasterImageData, w: u32, h: u32) -> RasterImageData {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    thread_local! {
+        static CACHE: RefCell<HashMap<(u64, u32, u32), RasterImageData>> = RefCell::new(HashMap::new());
+    }
+    let key = (image.data.id(), w, h);
+    if let Some(hit) = CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let (sw, sh) = (image.width as usize, image.height as usize);
+    let src = image.data.data();
+    let spans = |n: usize, out: usize| -> Vec<Vec<(usize, f64)>> {
+        let step = n as f64 / out as f64;
+        (0..out)
+            .map(|i| {
+                let (a, b) = (i as f64 * step, (i + 1) as f64 * step);
+                (a.floor() as usize..(b.ceil() as usize).min(n))
+                    .map(|j| (j, ((j + 1) as f64).min(b) - (j as f64).max(a)))
+                    .filter(|&(_, wt)| wt > 0.0)
+                    .collect()
+            })
+            .collect()
+    };
+    let (xs, ys) = (spans(sw, w as usize), spans(sh, h as usize));
+    let mut out = Vec::with_capacity(w as usize * h as usize * 4);
+    for yspan in &ys {
+        for xspan in &xs {
+            let mut acc = [0.0f64; 4];
+            let mut total = 0.0;
+            for &(y, wy) in yspan {
+                for &(x, wx) in xspan {
+                    let p = &src[(y * sw + x) * 4..][..4];
+                    let (wt, a) = (wx * wy, f64::from(p[3]));
+                    acc[0] += f64::from(p[0]) * a * wt;
+                    acc[1] += f64::from(p[1]) * a * wt;
+                    acc[2] += f64::from(p[2]) * a * wt;
+                    acc[3] += a * wt;
+                    total += wt;
+                }
+            }
+            let a = acc[3] / total;
+            for c in &acc[..3] {
+                out.push(if a > 0.0 { (c / total / a).round().clamp(0.0, 255.0) as u8 } else { 0 });
+            }
+            out.push(a.round().clamp(0.0, 255.0) as u8);
+        }
+    }
+    let scaled = RasterImageData::new(w, h, Arc::new(out));
+    CACHE.with(|c| c.borrow_mut().insert(key, scaled.clone()));
+    scaled
 }
 
 fn compute_layer_position_and_size(
