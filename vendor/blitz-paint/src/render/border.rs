@@ -152,6 +152,20 @@ impl ElementCx<'_, '_> {
                 // corners, whose arcs meet the straight edges tangentially.
                 let stroke = Stroke::new(width).with_join(Join::Miter);
 
+                // wkhtmltopdf-rs: QtWebKit fills a square box's four sides as rectangles
+                // (top, bottom, left, right), overlapping at the corners.
+                if self.frame.border_radii.average() == 0.0 && color.components[3] >= 1.0 {
+                    let w = width;
+                    for r in [
+                        Rect::new(bb.x0, bb.y0, bb.x1, bb.y0 + w),
+                        Rect::new(bb.x0, bb.y1 - w, bb.x1, bb.y1),
+                        Rect::new(bb.x0, bb.y0, bb.x0 + w, bb.y1),
+                        Rect::new(bb.x1 - w, bb.y0, bb.x1, bb.y1),
+                    ] {
+                        scene.fill(Fill::NonZero, self.transform, color, None, &r);
+                    }
+                    return;
+                }
                 if self.frame.is_uniform_corner_border() {
                     let radii = self.frame.border_radii;
                     // The stroke matches the CSS border shape only when each corner is
@@ -502,23 +516,10 @@ fn qt_dashed_side(
         if (end - start).hypot() <= 0.0 {
             return;
         }
-        // The dashes, as rectangles (one path).
+        // The dashes, stroked as Qt writes them (a rasteriser widens a thin stroke).
         let dash = if dotted { w } else { 3.0 * w };
-        let horizontal = start.y == end.y;
-        let len = if horizontal { end.x - start.x } else { end.y - start.y };
-        let mut dashes = BezPath::new();
-        let mut t = 0.0;
-        while t < len {
-            let e = (t + dash).min(len);
-            let r = if horizontal {
-                Rect::new(start.x + t, start.y - h, start.x + e, start.y + h)
-            } else {
-                Rect::new(start.x - h, start.y + t, start.x + h, start.y + e)
-            };
-            dashes.extend(kurbo::Shape::path_elements(&r, 0.1));
-            t += 2.0 * dash;
-        }
-        scene.fill(Fill::NonZero, transform, color, None, &dashes);
+        let stroke = Stroke::new(w).with_caps(Cap::Butt).with_dashes(0.0, [dash, dash]);
+        scene.stroke(&stroke, transform, color, None, &kurbo::Line::new(start, end));
     }
 }
 
