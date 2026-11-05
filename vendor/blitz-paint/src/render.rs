@@ -337,10 +337,28 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
                 && display.inside() != DisplayInside::TableCell;
             !display.is_inline_flow() && !is_internal_table_box_other_than_cell
         };
+        // wkhtmltopdf-rs: an image filling its content box needs no clip (Qt's drawPixmap
+        // has none, and a clip antialiases the image's edges).
         let is_image = node
             .element_data()
             .and_then(|e| e.raster_image_data())
-            .is_some();
+            .is_some()
+            && {
+                use style::properties::generated::longhands::object_fit::computed_value::T as ObjectFit;
+                let b = styles.get_border();
+                let rounded = [
+                    &b.border_top_left_radius,
+                    &b.border_top_right_radius,
+                    &b.border_bottom_right_radius,
+                    &b.border_bottom_left_radius,
+                ]
+                .iter()
+                .any(|r| {
+                    let len = CSSPixelLength::new(100.0);
+                    r.0.width.0.resolve(len).px() != 0.0 || r.0.height.0.resolve(len).px() != 0.0
+                });
+                rounded || styles.clone_object_fit() != ObjectFit::Fill
+            };
         let is_sub_doc = node
             .element_data()
             .and_then(|el| el.sub_doc_data())
