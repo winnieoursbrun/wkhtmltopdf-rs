@@ -15,7 +15,7 @@ reproduced is that of wkhtmltopdf 0.12.6 (with patched Qt).
 
 ### Fixed
 
-Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.985.
+Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.991.
 
 - Pagination: page-top margins are truncated like QtWebKit, the CSS3 `break-*` names are ignored,
   fixed and absolute boxes are placed against the document span, pages are clipped horizontally
@@ -52,6 +52,15 @@ Mean per-page SSIM on the fidelity corpus went from 0.698 to 0.985.
 - Floats next to collapsing margins, replaced and percentage sizes truncated to device pixels,
   unthemed `--enable-forms` widgets, `repeat-x`/`repeat-y` anchoring, broken image icons.
 - SVG text is drawn with the engine's fonts (it was missing on hosts without system fonts).
+- Scroll bars for `overflow: scroll` and overflowing `overflow: auto` boxes, drawn in Qt's
+  Windows style and taking layout space.
+- Rounded dashed borders stroked like QtWebKit, translucent dashed borders through a layer,
+  repeated-image patterns anchored at the page origin, `-webkit-gradient(radial, ...)` as Qt
+  draws it.
+- Text: `::first-line` ends where its own style breaks the line, letter-spacing after the last
+  character is left out of right-aligned boxes, justified lines are shaped with kerning and
+  ligatures, right-to-left list markers read ` .1`, Arabic text maps to presentation forms,
+  text-shadows without blur are written as text, ellipsis keeps the straddling character.
 
 ## [0.1.0-rc.1] - 2026-10-16
 
