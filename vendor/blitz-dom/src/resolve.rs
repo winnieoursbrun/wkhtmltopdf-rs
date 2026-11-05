@@ -440,6 +440,54 @@ impl BaseDocument {
         // println!("\n\n");
         // taffy::print_tree(self, root_node_id)
     }
+
+    /// wkhtmltopdf-rs: lay the subtree of `node_id` out on its own, as the root of a layout
+    /// whose available width is `width` (and whose height is unconstrained). The subtree's
+    /// layouts (and line breaks) are those of that width until
+    /// [`invalidate_subtree_layout`](Self::invalidate_subtree_layout) and the next `resolve`.
+    pub fn layout_subtree(&mut self, node_id: NodeId, width: f32) {
+        let available_space = taffy::Size {
+            width: AvailableSpace::Definite(width),
+            height: AvailableSpace::MaxContent,
+        };
+        let root = crate::taffy_node_id(node_id);
+        let mut state = LayoutPassState::new(self);
+        #[cfg(feature = "writing-mode")]
+        let available_space = {
+            state.layout_wm = state.layout_wm_of(node_id);
+            if state.layout_wm.is_vertical() {
+                available_space.transpose()
+            } else {
+                available_space
+            }
+        };
+        taffy::compute_root_layout(&mut state, root, available_space);
+        #[cfg(feature = "writing-mode")]
+        state.physicalise_and_round_layout(root);
+        #[cfg(not(feature = "writing-mode"))]
+        taffy::round_layout(&mut state, root);
+    }
+
+    /// wkhtmltopdf-rs: clear the layout caches of the subtree of `node_id` and of its
+    /// ancestors, so that the next `resolve` lays the subtree out again.
+    pub fn invalidate_subtree_layout(&mut self, node_id: NodeId) {
+        let mut stack = vec![node_id];
+        while let Some(id) = stack.pop() {
+            let Some(node) = self.nodes.get_mut(id) else { continue };
+            node.clear_layout_cache();
+            match node.layout_children.get_mut().as_ref() {
+                Some(c) => stack.extend(c.iter().copied()),
+                None => stack.extend(node.children.iter().copied()),
+            }
+            stack.extend(node.hoisted_children.get_mut().iter().copied());
+        }
+        let mut parent = self.nodes.get(node_id).and_then(|n| n.layout_parent.get().or(n.parent));
+        while let Some(id) = parent {
+            let Some(node) = self.nodes.get_mut(id) else { break };
+            node.clear_layout_cache();
+            parent = node.layout_parent.get().or(node.parent);
+        }
+    }
 }
 
 /// Build the inline layout of one deferred construction task.

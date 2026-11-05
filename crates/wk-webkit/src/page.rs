@@ -470,12 +470,6 @@ impl WebPage {
             viewport_shifts: Vec::new(),
         };
         page.mask_passwords();
-        // A page with tables is first laid out at the screen viewport, which the print
-        // layout starts from (see `struts`): the load-time layout is that one.
-        if page.settings.print_area.is_some() && crate::struts::has_cells(&page.doc) {
-            let (w, h) = page.screen_viewport();
-            page.doc.set_viewport(Viewport::new(w as u32, h as u32, 1.0, ColorScheme::Light));
-        }
         page.load_resources(fetcher);
         crate::timing("resources loaded");
         page
@@ -486,6 +480,28 @@ impl WebPage {
         let zoom = if self.settings.zoom > 0.0 { self.settings.zoom } else { 1.0 };
         let (w, h) = self.settings.viewport.unwrap_or((0, 0));
         (w as f32 / zoom, h as f32 / zoom)
+    }
+
+    /// The content origins of the cells of `tables` in the screen layout (`struts`). At the
+    /// default 0-wide viewport, a table whose ancestors are plain blocks of automatic width
+    /// gets no width from them: it is laid out on its own at width 0, the rest of the
+    /// document keeping its print layout. Otherwise the whole document is laid out at the
+    /// screen viewport. The print layout must be laid out again afterwards.
+    fn screen_origins(&mut self, tables: &[NodeId]) -> HashMap<NodeId, f32> {
+        let (sw, sh) = self.screen_viewport();
+        if sw == 0.0 && tables.iter().all(|&t| crate::struts::isolable(&self.doc, t)) {
+            for &t in tables {
+                self.doc.layout_subtree(t, 0.0);
+            }
+            let stale = crate::struts::stale_origins(&self.doc, tables);
+            for &t in tables {
+                self.doc.invalidate_subtree_layout(t);
+            }
+            stale
+        } else {
+            self.set_viewport(sw, sh);
+            crate::struts::stale_origins(&self.doc, tables)
+        }
     }
 
     /// A page loaded with scripts (`scripting.rs`): password values are
@@ -708,24 +724,21 @@ impl WebPage {
         self.qt_sized_field_margins();
         self.inline_edges();
         let alt_boxes = self.broken_images();
-        // The layout QtWebKit's print layout starts from, where a table lays its cells out
-        // first (`struts`): the screen layout at the viewport (0×0 by default).
-        let mut stale = None;
-        if crate::struts::has_cells(&self.doc) {
-            crate::struts::reset(&mut self.doc);
-            let (sw, sh) = self.screen_viewport();
-            self.set_viewport(sw, sh);
-            stale = Some(crate::struts::stale_origins(&self.doc));
-            crate::timing("screen layout");
+        // The tables whose cells QtWebKit's print layout may paginate where the previous
+        // layout left them (`struts`); most documents have none.
+        let tables = crate::struts::paginated_tables(&self.doc);
+        if !tables.is_empty() {
+            crate::struts::reset(&mut self.doc, &tables);
         }
+        let mut stale = None;
         self.set_viewport(layout_w, vh);
         crate::timing("viewport set");
         if self.settings.smart_shrinking {
             let content_w = self.content_width();
             if content_w > layout_w + 0.5 {
                 // The second print layout starts from the first one.
-                if stale.is_some() {
-                    stale = Some(crate::struts::stale_origins(&self.doc));
+                if !tables.is_empty() {
+                    stale = Some(crate::struts::stale_origins(&self.doc, &tables));
                 }
                 // A wider document lays out at its width, up to the maximum shrink, keeping the
                 // page's ratio (`resizePageRectsKeepingRatio`), both truncated.
@@ -739,29 +752,61 @@ impl WebPage {
         if self.settle_legends() || alt_settled {
             self.set_viewport(layout_w, vh);
         }
-        if let Some(stale) = &stale {
+        // The geometry of the print layout, kept when the struts do not change it.
+        let mut print_geometry = None;
+        if !tables.is_empty() {
+            // The top of the first page (struts do not move it).
+            let g = collect_geometry(&self.doc);
+            let first = g
+                .content_starts
+                .iter()
+                .copied()
+                .find(|&c| c >= -0.01 && c < g.doc_height)
+                .unwrap_or(0.0)
+                .max(0.0);
+            print_geometry = Some(g);
+            let page = page_h / zoom;
+            // Only the tables whose stale cells can reach a page boundary.
+            let tables: Vec<NodeId> = if stale.is_some() {
+                tables
+            } else {
+                tables.into_iter().filter(|&t| crate::struts::may_cross(&self.doc, t, first, page)).collect()
+            };
+            if tables.is_empty() {
+                stale = Some(HashMap::new());
+            }
+            let print = crate::struts::capture(&self.doc, &tables);
+            let (stale, mut relayout) = match stale {
+                Some(stale) => (stale, false),
+                None => (self.screen_origins(&tables), true),
+            };
+            crate::timing("screen layout");
+            let mut struts = crate::struts::struts(&print, &stale, first, page, zoom);
             // Each pass moves the tables below the cells that changed.
             for _ in 0..4 {
-                let g = collect_geometry(&self.doc);
-                let first =
-                    g.content_starts.iter().copied().find(|&c| c >= -0.01 && c < g.doc_height).unwrap_or(0.0);
-                let struts =
-                    crate::struts::cell_struts(&self.doc, stale, first.max(0.0), page_h / zoom, zoom);
-                let mut changed = false;
                 for (id, strut) in struts {
-                    changed |= self.doc.set_pagination_strut(id, strut);
+                    relayout |= self.doc.set_pagination_strut(id, strut);
                 }
-                if !changed {
+                if !relayout {
                     break;
                 }
                 self.set_viewport(layout_w, vh);
+                print_geometry = None;
+                relayout = false;
+                struts = crate::struts::struts(
+                    &crate::struts::capture(&self.doc, &tables),
+                    &stale,
+                    first,
+                    page,
+                    zoom,
+                );
             }
             crate::timing("cell struts");
         }
         let pt_per_px = printable_w_pt / layout_w;
 
         crate::timing("pre-geometry");
-        let mut geometry = collect_geometry(&self.doc);
+        let mut geometry = print_geometry.unwrap_or_else(|| collect_geometry(&self.doc));
         if self.place_viewport_boxes(&geometry, vh) {
             geometry = collect_geometry(&self.doc);
         }
